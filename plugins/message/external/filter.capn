@@ -1,0 +1,28 @@
+@0xacdcc264a86fbe56;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct EventFilterCapn { 
+   limit       @0:   Int64; 
+   notSenders  @1:   List(Text); 
+   notTypes    @2:   List(Text); 
+   senders     @3:   List(Text); 
+   types       @4:   List(Text); 
+} 
+
+struct GetUserFilterRequestCapn { 
+   userID    @0:   Text; 
+   filterID  @1:   Text; 
+} 
+
+struct PostUserFilterResponseCapn { 
+   filterID  @0:   Text; 
+} 
+
+struct RoomEventFilterCapn { 
+   eventFilter  @0:   EventFilterCapn; 
+   notRooms     @1:   List(Text); 
+   rooms        @2:   List(Text); 
+   containsURL  @3:   Bool; 
+} 

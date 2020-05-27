@@ -1,0 +1,196 @@
+@0xbbb9351a324b17d4;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct AccountDataCapn { 
+   events  @0:   List(EventCapn); 
+} 
+
+struct DeviceListsCapn { 
+   changed  @0:   List(Text); 
+   left     @1:   List(Text); 
+} 
+
+struct EphemeralCapn { 
+   events  @0:   List(EventCapn); 
+} 
+
+struct EventCapn { 
+   content  @0:   Data; 
+   type     @1:   Text; 
+} 
+
+struct GetEventByIDRequestCapn { 
+   eventID  @0:   Text; 
+} 
+
+struct GetInitialSyncRequestCapn { 
+   limit       @0:   Int64; 
+   archived    @1:   Bool; 
+	timeout     @2:   Int64; 
+	fullState   @3:   Text; 
+	setPresence @4:   Text; 
+	from        @5:   Text; 
+	since       @6:   Text; 
+} 
+
+struct GetRoomEventByIDRequestCapn { 
+   roomID   @0:   Text; 
+   eventID  @1:   Text; 
+} 
+
+struct GetRoomInitialSyncRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct GetRoomJoinedMembersRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct GetRoomMembersRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct GetRoomMessagesRequestCapn { 
+   roomID  @0:   Text; 
+   from    @1:   Text; 
+   dir     @2:   Text; 
+   limit   @3:   Text; 
+   filter  @4:   Text; 
+} 
+
+struct GetRoomMessagesResponseCapn { 
+   start  @0:   Text; 
+   end    @1:   Text; 
+   chunk  @2:   List(RoomEventCapn); 
+} 
+
+struct GetRoomStateByTypeAndStateKeyRequestCapn { 
+   roomID     @0:   Text; 
+   eventType  @1:   Text; 
+   stateKey   @2:   Text; 
+} 
+
+struct GetRoomStateByTypeRequestCapn { 
+   roomID     @0:   Text; 
+   eventType  @1:   Text; 
+} 
+
+struct GetRoomStateRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct GetSyncRequestCapn { 
+   filter       @0:   Text; 
+   since        @1:   Text; 
+   fullState    @2:   Text; 
+   setPresence  @3:   Text; 
+   timeOut      @4:   Text; 
+   from         @5:   Text; 
+} 
+
+struct InviteCapn { 
+   displayName  @0:   Text; 
+   signed       @1:   SignedCapn; 
+} 
+
+struct PaginationChunkCapn { 
+   start  @0:   Text; 
+   end    @1:   Text; 
+   chunk  @2:   List(RoomEventCapn); 
+} 
+
+struct PresenceCapn { 
+   events  @0:   List(EventCapn); 
+} 
+
+struct PutRedactEventRequestCapn { 
+   roomID   @0:   Text; 
+   eventID  @1:   Text; 
+   reason   @2:   Text; 
+   content  @3:   Data; 
+} 
+
+struct PutRedactWithTxnIDEventRequestCapn { 
+   roomID   @0:   Text; 
+   eventID  @1:   Text; 
+   txnID    @2:   Text; 
+   reason   @3:   Text; 
+   content  @4:   Data; 
+} 
+
+struct PutRoomStateByTypeCapn { 
+   roomID     @0:   Text; 
+   eventType  @1:   Text; 
+   content    @2:   Data; 
+} 
+
+struct PutRoomStateByTypeAndStateKeyCapn { 
+   roomID     @0:   Text; 
+   eventType  @1:   Text; 
+   stateKey   @2:   Text; 
+   content    @3:   Data; 
+} 
+
+struct PutRoomStateByTypeWithTxnIDCapn { 
+   roomID     @0:   Text; 
+   eventType  @1:   Text; 
+   stateKey   @2:   Text; 
+   txnID      @3:   Text; 
+   content    @4:   Data; 
+   ip         @5:   Text; 
+} 
+
+struct PutRoomStateResponseCapn { 
+   eventID  @0:   Text; 
+} 
+
+struct RoomEventCapn { 
+   content         @0:   Data; 
+   type            @1:   Text; 
+   eventID         @2:   Text; 
+   sender          @3:   Text; 
+   originServerTS  @4:   Int64; 
+   unsigned        @5:   UnsignedDataCapn; 
+   roomID          @6:   Text; 
+} 
+
+struct SignedCapn { 
+   mxID        @0:   Text; 
+   signatures  @1:   Text; 
+   token       @2:   Text; 
+} 
+
+struct TimelineCapn { 
+   events     @0:   List(RoomEventCapn); 
+   limited    @1:   Bool; 
+   prevBatch  @2:   Text; 
+} 
+
+struct ToDeviceCapn { 
+   events  @0:   List(EventCapn); 
+} 
+
+struct UnreadNotificationsCapn { 
+   highLightCount     @0:   Int64; 
+   notificationCount  @1:   Int64; 
+} 
+
+struct UnsignedDataCapn { 
+   age              @0:   Int64; 
+   redactedBecause  @1:   EventCapn; 
+   transactionID    @2:   Text; 
+} 
+
+struct PutRoomStateByTypeResponseCapn {
+   eventID  @0:   Text;
+}
+
+struct PutRoomStateByTypeWithTxnIDResponseCapn {
+   eventID  @0:   Text;
+}
+
+struct PutRedactEventResponseCapn {
+   eventID  @0:   Text;
+}

@@ -1,0 +1,66 @@
+@0xf54464a6078c8b5c;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct GetAccount3PIDResponseCapn { 
+   threePIDs  @0:   ThirdPartyIdentifierCapn; 
+} 
+
+struct GetAccountWhoAmIRquestCapn { 
+   userID  @0:   Text; 
+} 
+
+struct PostAccount3PIDDelRequestCapn { 
+   medium   @0:   Text; 
+   address  @1:   Text; 
+} 
+
+struct PostAccount3PIDEmailRequestCapn { 
+   path          @0:   Text; 
+   clientSecret  @1:   Text; 
+   email         @2:   Text; 
+   sendAttempt   @3:   Text; 
+   nextLink      @4:   Text; 
+   idServer      @5:   Text; 
+} 
+
+struct PostAccount3PIDEmailResponseCapn { 
+   sid  @0:   Text; 
+} 
+
+struct PostAccount3PIDMsisdnRequestCapn { 
+   path          @0:   Text; 
+   clientSecret  @1:   Text; 
+   country       @2:   Text; 
+   phoneNumber   @3:   Text; 
+   sendAttempt   @4:   Text; 
+   nextLink      @5:   Text; 
+   idServer      @6:   Text; 
+} 
+
+struct PostAccount3PIDMsisdnResponseCapn { 
+   sid  @0:   Text; 
+} 
+
+struct PostAccount3PIDRequestCapn { 
+   threePIDCreds  @0:   ThreePidCredentialsCapn; 
+   bind           @1:   Bool; 
+} 
+
+struct ThirdPartyIdentifierCapn { 
+   medium       @0:   Text; 
+   address      @1:   Text; 
+   validatedAt  @2:   Int64; 
+   addedAt      @3:   Int64; 
+} 
+
+struct ThreePidCredentialsCapn { 
+   clientSecret  @0:   Text; 
+   idServer      @1:   Text; 
+   sid           @2:   Text; 
+} 
+
+struct GetAccountWhoAmIResponseCapn {
+   userID   @0:   Text;
+}
