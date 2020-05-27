@@ -1,0 +1,46 @@
+version: '2'
+services:
+  zookeeper:
+    hostname: zookeeper
+    image: 'zookeeper'
+  kafka:
+    image: 'wurstmeister/kafka'
+    ports:
+     - 9092:9092
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ADVERTISED_PORT: 9092
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS: "true"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LOG_RETENTION_HOURS: 24
+    depends_on:
+      - zookeeper
+    links:
+     - 'zookeeper'
+  redis:
+    image: 'redis'
+    ports:
+     - 6379:6379
+  pg-master:
+    image: 'postgres'
+    environment:
+      POSTGRES_USER: 'postgres'
+      POSTGRES_PASSWORD: 'postgres'
+      POSTGRES_DB: 'postgres'
+      PGDATA: '/var/lib/postgresql/data'
+      REDIS_SERVER: 'redis'
+    depends_on:
+     - redis
+    ports:
+     - 5432:5432
+    links:
+     - 'redis'
+  nats:
+    image: 'apcera/gnatsd'
+    environment:
+      MAX_PAYLOAD: 33554432
+    ports:
+     - 4222:4222

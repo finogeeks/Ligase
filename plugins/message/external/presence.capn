@@ -1,0 +1,53 @@
+@0xfef752e0bb5f7b2f;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct GetPresenceListRequestCapn { 
+   userID  @0:   Text; 
+} 
+
+struct GetPresenceListResponseCapn { 
+   presenceList  @0:   List(PresenceJSONCapn); 
+} 
+
+struct GetPresenceRequestCapn { 
+   userID  @0:   Text; 
+} 
+
+struct GetPresenceResponseCapn { 
+   presence         @0:   Text; 
+   lastActiveAgo    @1:   Int64; 
+   statusMsg        @2:   Text; 
+   extStatusMsg     @3:   Text; 
+   currentlyActive  @4:   Bool; 
+} 
+
+struct PresenceJSONCapn { 
+   avatarURL        @0:   Text; 
+   displayName      @1:   Text; 
+   lastActiveAgo    @2:   Int64; 
+   presence         @3:   Text; 
+   currentlyActive  @4:   Bool; 
+   userID           @5:   Text; 
+   statusMsg        @6:   Text; 
+   extStatusMsg     @7:   Text; 
+} 
+
+struct PresenceListJSONCapn { 
+   content  @0:   PresenceJSONCapn; 
+   typ      @1:   Text; 
+} 
+
+struct PutPresenceRequestCapn { 
+   userID        @0:   Text; 
+   presence      @1:   Text; 
+   statusMsg     @2:   Text; 
+   extStatusMsg  @3:   Text; 
+} 
+
+struct PostPresenceListRequestCapn {
+   userID @0: Text;
+   invite @1: List(Text);
+   drop   @2: List(Text);
+}
