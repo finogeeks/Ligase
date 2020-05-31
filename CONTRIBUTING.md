@@ -58,11 +58,13 @@ git remote -v
 ```sh
 cd $working_dir/ligase
 git fetch upstream
-git checkout master
-git rebase upstream/master
+
+# Base your changes on the develop branch.
+git checkout -b develop
+git rebase upstream/develop
 ```
 
-Branch from master:
+Branch from develop:
 
 ```sh
 git checkout -b myfeature
@@ -102,7 +104,7 @@ make checklist
 ```sh
 # While on your myfeature branch.
 git fetch upstream
-git rebase upstream/master
+git rebase upstream/develop
 ```
 
 Please don't use `git pull` instead of the above `fetch`/`rebase`. `git pull`
