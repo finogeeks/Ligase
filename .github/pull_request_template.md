@@ -8,8 +8,7 @@
 <!-- Thank you for contributing to Ligase!
 
 PR Title Format:
-1. pkg [, pkg2, pkg3]: what's changed
-2. *: what's changed
+1. *: what's changed
 
 -->
 
@@ -21,17 +20,9 @@ Problem Summary:
 
 ### What is changed and how it works?
 
-Proposal: [xxx](url) <!-- REMOVE this line if not applicable -->
-
 What's Changed:
 
 How it Works:
-
-### Related changes
-
-- PR to update `pingcap/docs`/`pingcap/docs-cn`:
-- PR to update `pingcap/tidb-ansible`:
-- Need to cherry-pick to the release branch
 
 ### Check List <!--REMOVE the items that are not applicable-->
 
@@ -50,4 +41,3 @@ Side effects
 - Breaking backward compatibility
 
 ### Release note <!-- bugfixes or new feature need a release note -->
-
