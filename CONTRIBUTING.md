@@ -73,7 +73,7 @@ git checkout -b myfeature
 
 You can now edit the code on the `myfeature` branch.
 
-### Build && Run xxx
+### Build && Run Ligase
 ```sh
 # start up the dependency services
 docker-compose up -d
