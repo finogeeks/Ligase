@@ -1,5 +1,0 @@
-#! /bin/bash
-
-set -eu
-
-./scripts/build-test-lint.sh

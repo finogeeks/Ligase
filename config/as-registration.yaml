@@ -1,0 +1,17 @@
+# (Optional) Specify this file in config.yaml if you have application service
+id: "<your application id>"
+url: "<your callback url>" 
+as_token: "<your application verification token>"
+hs_token: "<your homeserver verification token>"
+sender_localpart: 
+namespaces: 
+    
+    users: []
+    
+
+    
+    aliases: []
+    
+
+    
+    rooms: []

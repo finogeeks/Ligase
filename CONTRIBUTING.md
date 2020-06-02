@@ -1,46 +1,150 @@
-# Contributing to Dendrite
+# Overview
 
-Everyone is welcome to contribute to Dendrite! We aim to make it as easy as
-possible to get started.
+Ligase is a community driven open source project and we welcome any contributor!
 
-Please ensure that you sign off your contributions! See [Sign Off](#sign-off)
-section below.
+If you think something should be changed or added, please open an issue to discuss the change. You can open a PR if you want to be explicit about the change, but the change may need extensive discussion and possibly revision before it is accepted.
 
-## Getting up and running
+Feedback is welcome, feel free to open issue for any problem
 
-See [INSTALL.md](INSTALL.md) for instructions on setting up a running dev
-instance of dendrite, and [CODE_STYLE.md](CODE_STYLE.md) for the code style
-guide.
+# Development Environment
 
-We use `gb` for managing our dependencies, so `gb build` and `gb test` is how
-to build dendrite and run the unit tests respectively. There are [scripts](scripts)
-for [linting](scripts/find-lint.sh) and doing a [build/test/lint run](scripts/build-test-lint.sh).
+[How to Write Go Code](http://golang.org/doc/code.html)
 
+Ligase use [`Go Modules`](https://github.com/golang/go/wiki/Modules) to manage dependencies
 
-## Picking Things To Do
+The version of GO should be **1.13** or above
 
-If you're new then feel free to pick up an issue labelled [good first issue](https://github.com/matrix-org/dendrite/labels/good%20first%20issue).
-These should be well-contained, small pieces of work that can be picked up to
-help you get familiar with the code base.
+# Style Guide
 
-Once you're comfortable with hacking on Dendrite there are issues lablled as
-[help wanted](https://github.com/matrix-org/dendrite/labels/help%20wanted), these
-are often slightly larger or more complicated pieces of work but are hopefully
-nonetheless fairly well-contained.
+Working with our source code involves some famous rules:
 
-We ask people who are familiar with Dendrite to leave the [good first issue](https://github.com/matrix-org/dendrite/labels/good%20first%20issue)
-issues so that there is always a way for new people to come and get involved.
+[Effective GO](https://golang.org/doc/effective_go.html)
 
-## Getting Help
+[Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
 
-For questions related to developing on Dendrite we have a dedicated room on
-Matrix [#dendrite-dev:matrix.org](https://riot.im/develop/#/room/#dendrite-dev:matrix.org)
-where we're happy to help.
+# Workflow
 
-For more general questions please use [#dendrite:matrix.org](https://riot.im/develop/#/room/#dendrite:matrix.org).
+## step 1: Fork in the cloud
 
-## Sign off
+1. Visit https://github.com/finogeeks/ligase
+2. On the top right of the page, click the `Fork` button (top right) to create a cloud-based fork of the repository.
 
-We ask that everyone who contributes to the project signs off their
-contributions, in accordance with the [DCO](https://github.com/matrix-org/matrix-doc/blob/master/CONTRIBUTING.rst#sign-off).
+## step 2: Clone fork to local storage
 
+```sh
+mkdir -p $working_dir
+cd $working_dir
+git clone https://github.com/$user/ligase.git
+# or: git clone git@github.com:$user/ligase.git
+
+cd $working_dir/ligase
+git remote add upstream https://github.com/finogeeks/ligase.git
+# or: git remote add upstream git@github.com:finogeeks/ligase.git
+
+# Never push to the upstream master.
+git remote set-url --push upstream no_push
+
+# Confirm that your remotes make sense:
+# It should look like:
+# origin    git@github.com:$(user)/ligase.git (fetch)
+# origin    git@github.com:$(user)/ligase.git (push)
+# upstream  https://github.com/finogeeks/ligase (fetch)
+# upstream  no_push (push)
+git remote -v
+```
+
+## step 3: Branch
+
+```sh
+cd $working_dir/ligase
+git fetch upstream
+
+# Base your changes on the develop branch.
+git checkout -b develop
+git rebase upstream/develop
+```
+
+Branch from develop:
+
+```sh
+git checkout -b myfeature
+```
+
+## Step 4: Develop
+### Edit the code
+
+You can now edit the code on the `myfeature` branch.
+
+### Build && Run Ligase
+```sh
+# start up the dependency services
+docker-compose up -d
+
+# build
+./build.sh
+
+# run the server
+./run.sh
+
+```
+### Test
+
+```sh
+
+# build and run the unit test to make sure all tests are passed.
+make test
+
+# Check the checklist (gofmt -> golint)
+make checklist
+
+```
+
+## Step 5: Keep your branch in sync
+
+```sh
+# While on your myfeature branch.
+git fetch upstream
+git rebase upstream/develop
+```
+
+Please don't use `git pull` instead of the above `fetch`/`rebase`. `git pull`
+does a merge, which leaves merge commits. These make the commit history messy
+and violate the principle that commits ought to be individually understandable
+and useful (see below). You can also consider changing your `.git/config` file
+via `git config branch.autoSetupRebase` always to change the behavior of `git pull`.
+
+## Step 6: Commit
+
+Commit your changes.
+
+```sh
+git commit
+```
+
+Likely you'll go back and edit/build/test further, and then `commit --amend` in a
+few cycles.
+
+## Step 7: Push
+
+When the changes are ready to review (or you just to create an offsite backup
+or your work), push your branch to your fork on `github.com`:
+
+```sh
+git push --set-upstream ${your_remote_name} myfeature
+```
+
+## Step 8: Create a pull request
+
+1. Visit your fork at `https://github.com/$user/ligase`.
+2. Click the `Compare & Pull Request` button next to your `myfeature` branch.
+3. Fill in the required information in the PR template.
+
+### Get a code review
+
+If your pull request (PR) is opened, it will be assigned to one or more
+reviewers. Those reviewers will do a thorough code review, looking at
+correctness, bugs, opportunities for improvement, documentation and comments,
+and style.
+
+To address review comments, you should commit the changes to the same branch of
+the PR on your fork
