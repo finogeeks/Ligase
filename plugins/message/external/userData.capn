@@ -1,0 +1,42 @@
+@0x87ebf98ac187faed;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct GetUserProfileAvatarURLRequestCapn { 
+   userID  @0:   Text; 
+} 
+
+struct GetUserProfileDisplayNameRequestCapn { 
+   userID  @0:   Text; 
+} 
+
+struct GetUserProfileRequestCapn { 
+   userID  @0:   Text; 
+} 
+
+struct PostUserSearchRequestCapn { 
+   searchTerm  @0:   Text; 
+   limit       @1:   Int64; 
+} 
+
+struct PostUserSearchResponseCapn { 
+   results  @0:   List(UserCapn); 
+   limited  @1:   Bool; 
+} 
+
+struct PutUserProfileAvatarURLRequestCapn { 
+   userID     @0:   Text; 
+   avatarURL  @1:   Text; 
+} 
+
+struct PutUserProfileDisplayNameRequestCapn { 
+   userID       @0:   Text; 
+   displayName  @1:   Text; 
+} 
+
+struct UserCapn { 
+   userID       @0:   Text; 
+   displayName  @1:   Text; 
+   avatarURL    @2:   Text; 
+} 

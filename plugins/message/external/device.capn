@@ -1,0 +1,37 @@
+@0xd3996cfefe9023b6;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct DelDeviceRequestCapn { 
+   deviceID  @0:   Text; 
+   auth      @1:   DeviceAuthDictCapn; 
+} 
+
+struct DeviceCapn { 
+   deviceID     @0:   Text; 
+   displayName  @1:   Text; 
+   lastSeenIP   @2:   Text; 
+   lastSeenTs   @3:   Int64; 
+   userID       @4:   Text; 
+} 
+
+struct DeviceAuthDictCapn { 
+   type      @0:   Text; 
+   session   @1:   Text; 
+   password  @2:   Text; 
+   user      @3:   Text; 
+} 
+
+struct DeviceListCapn { 
+   devices  @0:   List(DeviceCapn); 
+} 
+
+struct GetDeviceRequestCapn { 
+   deviceID  @0:   Text; 
+} 
+
+struct PutDeviceRequestCapn { 
+   deviceID     @0:   Text; 
+   displayName  @1:   Text; 
+} 
