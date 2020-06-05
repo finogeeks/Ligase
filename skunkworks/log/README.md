@@ -1,0 +1,1 @@
+Log interface for dendrite.
