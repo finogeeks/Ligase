@@ -16,6 +16,5 @@
 
 bin
 .vscode
-log
+./log
 .DS_Store
-.idea
