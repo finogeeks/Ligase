@@ -112,7 +112,10 @@ func (fed *FederationAPIComponent) OnMessage(ctx context.Context, topic string, 
 		log.Errorf("decode error: %v", err)
 		return
 	}
-	log.Infof("fed-api recv topic:%s cmd:%d", topic, msg.Cmd)
+	if msg.Key == nil {
+		msg.Key = []byte{}
+	}
+	log.Infof("fed-api recv topic:%s cmd:%d key:%s", topic, msg.Cmd, string(msg.Key))
 
 	// call federation api by commandID
 	var retMsg *model.GobMessage
@@ -131,21 +134,21 @@ func (fed *FederationAPIComponent) OnMessage(ctx context.Context, topic string, 
 	retMsg.MsgType = model.REPLY
 	retMsg.MsgSeq = msg.MsgSeq
 	retMsg.NodeId = id.GetNodeId()
-
+	retMsg.Key = msg.Key
 	//nodeID := strings.TrimPrefix(subject, fmt.Sprintf("%s.", fed.cfg.GetMsgBusReqTopic()))
 	//resSubject := fmt.Sprintf("%s.%s", fed.cfg.GetMsgBusResTopic(), nodeID)
-	log.Infof("resSubject: %s, cmd: %d, retMsg: %s", fed.cfg.Kafka.Producer.FedAPIOutput.Topic, msg.Cmd, retMsg.Body)
+	log.Infof("resSubject: %s, cmd: %d, key:%s, retMsg: %s ", fed.cfg.Kafka.Producer.FedAPIOutput.Topic, msg.Cmd, string(msg.Key), retMsg.Body)
 
 	span, _ := common.StartSpanFromContext(ctx, fed.cfg.Kafka.Producer.FedAPIOutput.Name)
 	defer span.Finish()
 	common.ExportMetricsBeforeSending(span, fed.cfg.Kafka.Producer.FedAPIOutput.Name,
 		fed.cfg.Kafka.Producer.FedAPIOutput.Underlying)
-	common.GetTransportMultiplexer().SendWithRetry(
+	common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		fed.cfg.Kafka.Producer.FedAPIOutput.Underlying,
 		fed.cfg.Kafka.Producer.FedAPIOutput.Name,
 		&core.TransportPubMsg{
 			//Format: core.FORMAT_GOB,
-			Keys:    []byte{},
+			Keys:    retMsg.Key,
 			Obj:     retMsg,
 			Headers: common.InjectSpanToHeaderForSending(span),
 		})
