@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS syncapi_user_time_line (
 );
 CREATE INDEX IF NOT EXISTS syncapi_user_time_line_user_idx ON syncapi_user_time_line(user_id);
 CREATE INDEX IF NOT EXISTS syncapi_user_time_line_room_idx ON syncapi_user_time_line(room_id);
-CREATE INDEX IF NOT EXISTS syncapi_user_time_line_evoffset_idx ON syncapi_user_time_line(user_id,event_offset);
+CREATE INDEX IF NOT EXISTS syncapi_user_time_line_evoffset_idx ON syncapi_user_time_line(user_id, event_offset);
+CREATE INDEX IF NOT EXISTS syncapi_user_time_line_user_id_desc_null_last_idx ON syncapi_user_time_line(user_id, id DESC NULLS LAST);
 `
 
 const insertUserTimeLineSQL = "" +
@@ -51,10 +52,10 @@ const selectHistoryUserTimeLineSQL = "" +
 	"SELECT id, user_id, room_id, event_offset, room_state FROM syncapi_user_time_line WHERE user_id = $1 AND id > $2 order by id asc limit $3"
 
 const selectHistorySQL = "" +
-	"SELECT id, user_id, room_id, event_offset, room_state FROM syncapi_user_time_line WHERE user_id = $1 order by id desc limit $2"
+	"SELECT id, user_id, room_id, event_offset, room_state FROM syncapi_user_time_line WHERE user_id = $1 order by id desc NULLS LAST limit $2"
 
 const selectUserTimeLineMinPosSQL = "" +
-	"SELECT COALESCE(id, -1) AS min_pos FROM syncapi_user_time_line WHERE user_id = $1 ORDER BY min_pos LIMIT 1"
+	"SELECT COALESCE(id, -1) AS min_pos FROM syncapi_user_time_line WHERE user_id = $1 ORDER BY id ASC NULLS FIRST LIMIT 1"
 
 const selectOffsetSQL = "" +
 	"SELECT id, user_id, room_id, event_offset, room_state FROM syncapi_user_time_line WHERE user_id = $1 AND event_offset = ANY($2)"
