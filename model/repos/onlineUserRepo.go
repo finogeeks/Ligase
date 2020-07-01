@@ -15,14 +15,12 @@
 package repos
 
 import (
-	"context"
-	"github.com/finogeeks/ligase/common"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/finogeeks/ligase/model/types"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 )
 
 //ios not call report state, last_state 、cur_state = OFFLINE_STATE
@@ -34,13 +32,13 @@ const (
 )
 
 type StateChangeHandler interface {
-	OnStateChange(context.Context, *types.NotifyDeviceState)
+	OnStateChange(*types.NotifyDeviceState)
 }
 
 type DefaultHander struct {
 }
 
-func (d *DefaultHander) OnStateChange(ctx context.Context, state *types.NotifyDeviceState) {
+func (d *DefaultHander) OnStateChange(*types.NotifyDeviceState) {
 }
 
 type Device struct {
@@ -66,7 +64,7 @@ func (u *User) isEmpty() bool {
 	return cnt == 0
 }
 
-func (u *User) checkDeviceTtl(ctx context.Context, ol *OnlineUserRepo, now, ttl int64) int {
+func (u *User) checkDeviceTtl(ol *OnlineUserRepo, now, ttl int64) int {
 	cnt := 0
 	hasDelete := false
 	u.devMap.Range(func(key, value interface{}) bool {
@@ -78,7 +76,7 @@ func (u *User) checkDeviceTtl(ctx context.Context, ol *OnlineUserRepo, now, ttl 
 			dev.lastState = dev.curState
 			dev.curState = OFFLINE_STATE
 			if dev.lastState != dev.curState {
-				ol.Notify(ctx, u.id, key.(string), dev.lastState, dev.curState)
+				ol.Notify(u.id, key.(string), dev.lastState, dev.curState)
 			}
 		} else {
 			cnt = cnt + 1
@@ -111,7 +109,7 @@ func NewOnlineUserRepo(ttl, ttlIOS int64) *OnlineUserRepo {
 	return ol
 }
 
-func (ol *OnlineUserRepo) Pet(ctx context.Context, uid, devId string, pos, ttl int64) {
+func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 	var user *User
 	var dev *Device
 	if val, ok := ol.userMap.Load(uid); ok {
@@ -140,19 +138,19 @@ func (ol *OnlineUserRepo) Pet(ctx context.Context, uid, devId string, pos, ttl i
 	}
 	if dev != nil {
 		if dev.curState == OFFLINE_STATE {
-			ol.UpdateState(ctx, uid, devId, FORE_GROUND_STATE)
+			ol.UpdateState(uid, devId, FORE_GROUND_STATE)
 		}
 	}
 	if devId != "virtual-restore" {
 		if val, ok := user.devMap.Load("virtual-restore"); ok {
 			if val.(*Device).curState != OFFLINE_STATE {
-				ol.UpdateState(ctx, uid, "virtual-restore", OFFLINE_STATE)
+				ol.UpdateState(uid, "virtual-restore", OFFLINE_STATE)
 			}
 		}
 	}
 }
 
-func (ol *OnlineUserRepo) UpdateState(ctx context.Context, uid, devId string, state int) {
+func (ol *OnlineUserRepo) UpdateState(uid, devId string, state int) {
 	var user *User
 	var dev *Device
 	if val, ok := ol.userMap.Load(uid); ok {
@@ -170,7 +168,7 @@ func (ol *OnlineUserRepo) UpdateState(ctx context.Context, uid, devId string, st
 		dev.lastState = dev.curState
 		dev.curState = state
 		if dev.lastState != dev.curState {
-			ol.Notify(ctx, uid, devId, dev.lastState, dev.curState)
+			ol.Notify(uid, devId, dev.lastState, dev.curState)
 		}
 	} else {
 		dev = new(Device)
@@ -181,7 +179,7 @@ func (ol *OnlineUserRepo) UpdateState(ctx context.Context, uid, devId string, st
 		user.devMap.Store(devId, dev)
 		atomic.AddInt32(&ol.onlineDeviceCnt, 1)
 		if dev.lastState != dev.curState {
-			ol.Notify(ctx, uid, devId, dev.lastState, dev.curState)
+			ol.Notify(uid, devId, dev.lastState, dev.curState)
 		}
 	}
 }
@@ -222,9 +220,7 @@ func (ol *OnlineUserRepo) clean(ttl, ttlIOS int64) {
 			now := time.Now().Unix()
 			ol.userMap.Range(func(key, value interface{}) bool {
 				user := value.(*User)
-				span, ctx := common.StartSobSomSpan(context.Background(), "OnlineUserRepo.clean")
-				defer span.Finish()
-				remain := user.checkDeviceTtl(ctx, ol, now, ttl)
+				remain := user.checkDeviceTtl(ol, now, ttl)
 				if remain == 0 {
 					ol.userMap.Delete(key)
 					atomic.AddInt32(&ol.onlineUserCnt, -1)
@@ -244,8 +240,8 @@ func (ol *OnlineUserRepo) SetHandler(handler StateChangeHandler) {
 	ol.handler = handler
 }
 
-func (ol *OnlineUserRepo) Notify(ctx context.Context, userID, devID string, lastState, curState int) {
-	ol.handler.OnStateChange(ctx, &types.NotifyDeviceState{
+func (ol *OnlineUserRepo) Notify(userID, devID string, lastState, curState int) {
+	ol.handler.OnStateChange(&types.NotifyDeviceState{
 		UserID:    userID,
 		DeviceID:  devID,
 		LastState: lastState,

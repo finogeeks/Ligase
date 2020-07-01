@@ -27,9 +27,9 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -55,11 +55,11 @@ func GenNewToken(
 	domain, _ := common.DomainFromID(device.UserID)
 
 	//异步删db
-	err = encryptDB.DeleteMacKeys(ctx, deviceID, device.UserID, mac)
+	err = encryptDB.DeleteMacKeys(context.TODO(), deviceID, device.UserID, mac)
 	if err != nil {
 		log.Errorf("Login remove device keys error, device: %s ,  user: %s , error: %v", deviceID, device.UserID, err)
 	}
-	err = syncDB.DeleteMacStdMessage(ctx, mac, device.UserID, deviceID)
+	err = syncDB.DeleteMacStdMessage(context.TODO(), mac, device.UserID, deviceID)
 	if err != nil {
 		log.Errorf("Login remove std message error, device: %s ,  user: %s , error: %v", deviceID, device.UserID, err)
 	}
@@ -127,11 +127,11 @@ func GetSuperAdminToken(
 	}
 
 	//异步删db
-	err = encryptDB.DeleteMacKeys(ctx, deviceID, userID, mac)
+	err = encryptDB.DeleteMacKeys(context.TODO(), deviceID, userID, mac)
 	if err != nil {
 		log.Errorf("Login remove device keys error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
-	err = syncDB.DeleteMacStdMessage(ctx, mac, userID, deviceID)
+	err = syncDB.DeleteMacStdMessage(context.TODO(), mac, userID, deviceID)
 	if err != nil {
 		log.Errorf("Login remove std message error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}

@@ -16,14 +16,13 @@ package model
 
 import (
 	"context"
-
 	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 type EncryptorAPIDatabase interface {
 	//NewDatabase(driver, createAddr, address, topic string, useAsync bool) (interface{}, error)
 
-	WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error
+	WriteDBEvent(update *dbtypes.DBEvent) error
 
 	RecoverCache()
 

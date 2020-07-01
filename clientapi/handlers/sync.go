@@ -15,7 +15,6 @@
 package handlers
 
 import (
-	"context"
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
@@ -31,14 +30,14 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type InputRpcCB struct {
 	topic   string
-	handler common.MsgHandlerWithContext
+	handler nats.MsgHandler
 }
 
 func (i *InputRpcCB) GetTopic() string {
 	return i.topic
 }
 
-func (i *InputRpcCB) GetCB() common.MsgHandlerWithContext {
+func (i *InputRpcCB) GetCB() nats.MsgHandler {
 	return i.handler
 }
 
@@ -72,7 +71,7 @@ func NewInputConsumer(
 }
 
 type IMshHandler interface {
-	ProcessInputMsg(context.Context, *internals.InputMsg)
+	ProcessInputMsg(*internals.InputMsg)
 }
 
 func (s *InputConsumer) RegisterHandler(key int32, handler IMshHandler) {
@@ -80,7 +79,7 @@ func (s *InputConsumer) RegisterHandler(key int32, handler IMshHandler) {
 }
 
 //when nats, write data to chan, when process done need to replay, called by nats transport
-func (s *InputConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *InputConsumer) cb(msg *nats.Msg) {
 	var input internals.InputMsg
 
 	if err := input.Decode(msg.Data); err != nil {
@@ -91,7 +90,7 @@ func (s *InputConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	val, ok := s.handlers.Load(input.GetCategory())
 	if ok {
 		handler := val.(IMshHandler)
-		handler.ProcessInputMsg(ctx, &input)
+		handler.ProcessInputMsg(&input)
 		if msg.Reply != "" {
 			s.rpcClient.PubObj(msg.Reply, nil)
 		}

@@ -1,0 +1,117 @@
+@0xe5137205f57b43a9;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct AuthDataCapn { 
+   type     @0:   Text; 
+   session  @1:   Text; 
+} 
+
+struct AuthDictCapn { 
+   type      @0:   Text; 
+   session   @1:   Text; 
+   mac       @2:   Data; 
+   response  @3:   Text; 
+} 
+
+struct AuthFlowCapn { 
+   stages  @0:   List(Text); 
+} 
+
+struct GetRegisterAvailCapn { 
+   userName  @0:   Text; 
+} 
+
+struct GetRegisterAvailResponseCapn {
+   available @0:  Bool;
+}
+
+struct LegacyRegisterRequestCapn { 
+   password  @0:   Text; 
+   username  @1:   Text; 
+   admin     @2:   Bool; 
+   type      @3:   Text; 
+   mac       @4:   Data; 
+} 
+
+struct PostAccountDeactivateRequestCapn { 
+   auth  @0:   AuthDataCapn; 
+} 
+
+struct PostAccountPasswordEmailRequestCapn { 
+   clientSecret  @0:   Text; 
+   email         @1:   Text; 
+   sendAttempt   @2:   Int64; 
+   nextLink      @3:   Text; 
+   iDServer      @4:   Text; 
+} 
+
+struct PostAccountPasswordEmailResponseCapn { 
+   sID  @0:   Text; 
+} 
+
+struct PostAccountPasswordMsisdResponseCapn { 
+   sID  @0:   Text; 
+} 
+
+struct PostAccountPasswordMsisdnRequestCapn { 
+   clientSecret  @0:   Text; 
+   country       @1:   Text; 
+   phoneNumber   @2:   Text; 
+   sendAttempt   @3:   Int64; 
+   nextLink      @4:   Text; 
+   iDServer      @5:   Text; 
+} 
+
+struct PostAccountPasswordRequestCapn { 
+   newPassword  @0:   Text; 
+   auth         @1:   AuthDataCapn; 
+} 
+
+struct PostRegisterEmailRequestCapn { 
+   clientSecret  @0:   Text; 
+   email         @1:   Text; 
+   sendAttempt   @2:   Int64; 
+   nextLink      @3:   Text; 
+   iDServer      @4:   Text; 
+} 
+
+struct PostRegisterEmailResponseCapn { 
+   sID  @0:   Text; 
+} 
+
+struct PostRegisterMsisdResponseCapn { 
+   sID  @0:   Text; 
+} 
+
+struct PostRegisterMsisdnRequestCapn { 
+   clientSecret  @0:   Text; 
+   country       @1:   Text; 
+   phoneNumber   @2:   Text; 
+   sendAttempt   @3:   Int64; 
+   nextLink      @4:   Text; 
+   iDServer      @5:   Text; 
+} 
+
+struct PostRegisterRequestCapn { 
+   auth                @0:   AuthDictCapn; 
+   bindEmail           @1:   Bool; 
+   username            @2:   Text; 
+   password            @3:   Text; 
+   deviceID            @4:   Text; 
+   initialDisplayName  @5:   Text; 
+   inhibitLogin        @6:   Bool; 
+   kind                @7:   Text; 
+   domain              @8:   Text; 
+   accessToken         @9:   Text; 
+   remoteAddr          @10:  Text; 
+   admin               @11:  Bool; 
+} 
+
+struct RegisterResponseCapn { 
+   userID       @0:   Text; 
+   accessToken  @1:   Text; 
+   homeServer   @2:   Text; 
+   deviceID     @3:   Text; 
+} 

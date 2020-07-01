@@ -40,12 +40,10 @@ type FederationDatabase interface {
 	UpdateJoinedRoomsRecvOffset(ctx context.Context, roomID string, recvOffset string) error
 	InsertJoinedRooms(ctx context.Context, roomID, eventID string) error
 
-	SelectAllSendRecord(ctx context.Context) ([]string, []string, []string, []int32, []int32, []int64, int, error)
-	SelectPendingSendRecord(ctx context.Context) ([]string, []string, []string, []int32, []int32, []int64, int, error)
-	SelectSendRecord(ctx context.Context, roomID, domain string) (eventID string, sendTimes, pendingSize int32, domainOffset int64, err error)
-	InsertSendRecord(ctx context.Context, roomID, domain string, domainOffset int64) error
-	UpdateSendRecordPendingSize(ctx context.Context, roomID, domain string, size int32, domainOffset int64) error
-	UpdateSendRecordPendingSizeAndEventID(ctx context.Context, room, domain string, size int32, eventID string, domainOffset int64) error
+	SelectAllSendRecord(ctx context.Context) ([]string, []string, []string, []int32, []int32, int, error)
+	InsertSendRecord(ctx context.Context, roomID, domain string) error
+	UpdateSendRecordPendingSize(ctx context.Context, roomID, domain string, size int32) error
+	UpdateSendRecordPendingSizeAndEventID(ctx context.Context, room, domain string, size int32, eventID string) error
 
 	SelectAllBackfillRecord(ctx context.Context) ([]BackfillRecord, error)
 	SelectBackfillRecord(ctx context.Context, roomID string) (BackfillRecord, error)

@@ -15,6 +15,6 @@
 package entry
 
 const (
-	VERSION = "4.9.4-120-gcf21346e3"
-	BUILD   = "2020-04-26T15:52:43+0800"
+	VERSION = "2020.623.1"
+	BUILD   = "2020-06-24T14:24:59+0800"
 )

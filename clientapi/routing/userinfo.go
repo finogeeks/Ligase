@@ -28,13 +28,13 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 // GetUserInfo implements GET /user_info/{userID}
@@ -136,7 +136,7 @@ func AddUserInfo(
 		LastActiveAgo:   0,
 	}
 
-	displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+	displayName, avatarURL, _ := complexCache.GetProfileByUserID(userID)
 	content.DisplayName = displayName
 	content.AvatarURL = avatarURL
 
@@ -158,32 +158,21 @@ func AddUserInfo(
 	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
-
-	span1, _ := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputProfileData.Name)
-	defer span1.Finish()
-	common.ExportMetricsBeforeSending(span1, cfg.Kafka.Producer.OutputProfileData.Name,
-		cfg.Kafka.Producer.OutputProfileData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span1),
+			Keys: []byte(userID),
+			Obj:  data,
 		})
 
 	// Will be consumed by finstore.
-	span2, _ := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.UserInfoUpdate.Name)
-	defer span2.Finish()
-	common.ExportMetricsBeforeSending(span2, cfg.Kafka.Producer.UserInfoUpdate.Name,
-		cfg.Kafka.Producer.UserInfoUpdate.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.UserInfoUpdate.Underlying,
 		cfg.Kafka.Producer.UserInfoUpdate.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     r,
-			Headers: common.InjectSpanToHeaderForSending(span2),
+			Keys: []byte(userID),
+			Obj:  r,
 		})
 
 	return http.StatusOK, nil
@@ -234,7 +223,7 @@ func SetUserInfo(
 		LastActiveAgo:   0,
 	}
 
-	displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+	displayName, avatarURL, _ := complexCache.GetProfileByUserID(userID)
 	content.DisplayName = displayName
 	content.AvatarURL = avatarURL
 
@@ -256,17 +245,12 @@ func SetUserInfo(
 	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
-	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputProfileData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputProfileData.Name,
-		cfg.Kafka.Producer.OutputProfileData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(userID),
+			Obj:  data,
 		})
 
 	/*

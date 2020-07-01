@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"sync"
 
@@ -24,12 +23,12 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -60,7 +59,7 @@ func (ReqGetUserUnread) FillRequest(coder core.Coder, req *http.Request, vars ma
 func (ReqGetUserUnread) NewResponse(code int) core.Coder {
 	return new(GetUserUnreadResponse)
 }
-func (ReqGetUserUnread) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
@@ -68,7 +67,7 @@ func (ReqGetUserUnread) Process(ctx context.Context, consumer interface{}, msg c
 	req := msg.(*external.GetUserUnread)
 
 	userID := req.UserID
-	joinMap, err := c.userTimeLine.GetJoinRooms(ctx, userID)
+	joinMap, err := c.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown(err.Error())
 	}

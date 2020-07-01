@@ -15,8 +15,8 @@
 package types
 
 import (
-	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/authtypes"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -46,27 +46,8 @@ var PresenceTopicDef = "sync-presence-topic"
 var RCSEventTopicDef = "rcs-event-topic"
 
 const (
-	//proxy -> front
-	PUSH_API_GROUP       = "pushapi"
-	ENCRY_API_GROUP      = "encryptoapi"
-	CLIENT_API_GROUP     = "clientapi"
-	PUBLICROOM_API_GROUP = "publicroomapi"
-	RCSSERVER_API_GROUP  = "rcsserverapi"
-
-	//other server -> front
-	PROFILE_RPC_GROUP    = "profilerpc"
-	PUBLICROOM_RPC_GROUP = "publicroomrpc"
-	RCSSERVER_RPC_GROUP  = "rcsserverrpc"
-	ROOMINPUT_RPC_GROUP  = "roominputrpc"
-	ROOOMALIAS_RPC_GROUP = "roomaliasrpc"
-	ROOMQRY_PRC_GROUP    = "roomqryrpc"
-)
-
-//dist_lock prefix
-const (
-	LOCK_INSTANCE_PREFIX      = "dist_lock_instance:"
-	LOCK_ROOMSTATE_PREFIX     = "dist_lock_roomstate:"
-	LOCK_ROOMSTATE_EXT_PREFIX = "dist_lock_roomstate_ext:"
+	SYNC_AGGR_GROUP = "synaggregatecapi"
+	SYNC_API_GROUP  = "syncapi"
 )
 
 const (
@@ -329,15 +310,15 @@ type CompressContent struct {
 }
 
 type RedactUnsigned struct {
-	Age             int64                          `json:"age,omitempty"`
-	PrevContent     []byte                         `json:"prev_content,omitempty"`
-	TransactionID   string                         `json:"transaction_id,omitempty"`
-	RedactedBecause *gomatrixserverlib.ClientEvent `json:"redacted_because,omitempty"`
-	UpdatedBecause  *gomatrixserverlib.ClientEvent `json:"updated_because,omitempty"`
+	Age             int64                          `json:"age",omitempty`
+	PrevContent     []byte                         `json:"prev_content",omitempty`
+	TransactionID   string                         `json:"transaction_id",omitempty`
+	RedactedBecause *gomatrixserverlib.ClientEvent `json:"redacted_because",omitempty`
+	UpdatedBecause  *gomatrixserverlib.ClientEvent `json:"updated_because",omitempty`
 }
 
 type Unsigned struct {
-	TransactionID string `json:"transaction_id,omitempty"`
+	TransactionID string `json:"transaction_id",omitempty`
 }
 
 type LoginInfoContent struct {
@@ -371,17 +352,4 @@ type OnlinePresence struct {
 	Presence     string `json:"presence,omitempty"`
 	StatusMsg    string `json:"status_msg,omitempty"`
 	ExtStatusMsg string `json:"ext_status_msg,omitempty"`
-}
-
-type RoomStateExt struct {
-	PreStateId  string `json:"pre_state_id"`
-	LastStateId string `json:"last_state_id"`
-	PreMsgId    string `json:"pre_msg_id"`
-	LastMsgId   string `json:"last_msg_id"`
-	Depth       int64  `json:"depth"`
-	HasUpdate   bool   `json:"has_update"`
-	//must consistent with depth, db not has
-	OutEventOffset int64 `json:"out_event_offset"`
-	//domain:offset
-	Domains map[string]int64 `json:"domains"`
 }

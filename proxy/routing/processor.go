@@ -15,32 +15,30 @@
 package routing
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/finogeeks/ligase/common/domain"
-	"github.com/finogeeks/ligase/proxy/api"
-	"github.com/finogeeks/ligase/storage/model"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/mediatypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/proxy/api"
+	"github.com/finogeeks/ligase/storage/model"
 	"github.com/gorilla/mux"
 )
 
@@ -241,10 +239,9 @@ func (w *HttpProcessor) Route(path, metricsName, topic string, msgType int32, ap
 					CacheIn:    w.cacheIn,
 					KeyDB:      w.keyDB,
 					LocalCache: w.localCache,
+					Origin:     origin,
 				}
-				span, ctx := common.StartSobSomSpan(context.Background(), "MakeFedAPI")
-				defer span.Finish()
-				code, resp := processor.Process(ctx, &ud, r, nil)
+				code, resp := processor.Process(&ud, r, nil)
 				return util.JSONResponse{
 					Code: code,
 					JSON: resp,
@@ -335,9 +332,6 @@ func (w *HttpProcessor) send(topic string, input *internals.InputMsg) (*internal
 		return nil, err
 	}
 
-	//span, ctx := common.StartSobSomSpan(context.Background(), topic)
-	//defer span.Finish()
-	//resp, err := w.rpcCli.RequestWithContext(ctx, topic, bytes, 60000000)
 	resp, err := w.rpcCli.Request(topic, bytes, 60000000)
 	if err != nil {
 		log.Errorf("OutputMsg decode error %s", err.Error())

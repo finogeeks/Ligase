@@ -18,19 +18,20 @@
 package roomserver
 
 import (
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/roomserver/consumers"
 	"github.com/finogeeks/ligase/roomserver/processors"
 	"github.com/finogeeks/ligase/roomserver/rpc"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -57,8 +58,20 @@ func SetupRoomServerComponent(
 	roomserverDB := rdb.(model.RoomServerDatabase)
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
 	roomserverDB.SetIDGenerator(idg)
-	repo := repos.NewRoomServerCurStateRepo(roomserverDB, repoCache, queryHitCounter)
-	umsRepo := repos.NewRoomServerUserMembershipRepo(roomserverDB, repoCache, queryHitCounter)
+	repo := new(repos.RoomServerCurStateRepo)
+	repo.SetPersist(roomserverDB)
+	repo.SetDomain(base.Cfg.Matrix.ServerName)
+	repo.SetCache(repoCache)
+	repo.SetMonitor(queryHitCounter)
+	repo.Start()
+
+	umsRepo := new(repos.RoomServerUserMembershipRepo)
+	umsRepo.SetPersist(roomserverDB)
+	umsRepo.SetMonitor(queryHitCounter)
+	umsRepo.Start()
+
+	lc := new(cache.LocalCacheRepo)
+	lc.Start(4, base.Cfg.Cache.DurationDefault)
 
 	inputAPI := processors.EventsProcessor{
 		DB:         roomserverDB,
@@ -84,13 +97,13 @@ func SetupRoomServerComponent(
 		DB:       roomserverDB,
 		Cfg:      base.Cfg,
 		Filter:   aliasFilter,
-		Cache:    repoCache,
+		Cache:    lc,
 		Repo:     repo,
 		Idg:      idg,
 		InputAPI: &inputAPI,
 		//QueryAPI: &queryAPI,
 	}
-	//aliasAPI.Init()
+	aliasAPI.Init()
 
 	fedProcessor := processors.FedProcessor{
 		Alias: aliasAPI,

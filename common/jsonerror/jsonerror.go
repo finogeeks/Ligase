@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/finogeeks/ligase/plugins/message/internals"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/plugins/message/internals"
 )
 
 type MatrixError = internals.MatrixError
@@ -45,97 +45,97 @@ func ServerTimeout(req *http.Request) util.JSONResponse {
 
 // Unknown is an unexpected error
 func Unknown(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_UNKNOWN", Err: msg}
+	return &MatrixError{"M_UNKNOWN", msg}
 }
 
 // Unknown is an unexpected error
 func Timeout(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_TIMEOUT", Err: msg}
+	return &MatrixError{"M_TIMEOUT", msg}
 }
 
 // Forbidden is an error when the client tries to access a resource
 // they are not allowed to access.
 func Forbidden(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_FORBIDDEN", Err: msg}
+	return &MatrixError{"M_FORBIDDEN", msg}
 }
 
 // BadJSON is an error when the client supplies malformed JSON.
 func BadJSON(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_BAD_JSON", Err: msg}
+	return &MatrixError{"M_BAD_JSON", msg}
 }
 
 // NotJSON is an error when the client supplies something that is not JSON
 // to a JSON endpoint.
 func NotJSON(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_NOT_JSON", Err: msg}
+	return &MatrixError{"M_NOT_JSON", msg}
 }
 
 // NotFound is an error when the client tries to access an unknown resource.
 func NotFound(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_NOT_FOUND", Err: msg}
+	return &MatrixError{"M_NOT_FOUND", msg}
 }
 
 // MissingArgument is an error when the client tries to access a resource
 // without providing an argument that is required.
 func MissingArgument(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_MISSING_ARGUMENT", Err: msg}
+	return &MatrixError{"M_MISSING_ARGUMENT", msg}
 }
 
 // InvalidArgumentValue is an error when the client tries to provide an
 // invalid value for a valid argument
 func InvalidArgumentValue(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_INVALID_ARGUMENT_VALUE", Err: msg}
+	return &MatrixError{"M_INVALID_ARGUMENT_VALUE", msg}
 }
 
 // MissingToken is an error when the client tries to access a resource which
 // requires authentication without supplying credentials.
 func MissingToken(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_MISSING_TOKEN", Err: msg}
+	return &MatrixError{"M_MISSING_TOKEN", msg}
 }
 
 func MissingEvent(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_MISSING_EVENT", Err: msg}
+	return &MatrixError{"M_MISSING_EVENT", msg}
 }
 
 // UnknownToken is an error when the client tries to access a resource which
 // requires authentication and supplies an unrecognized token
 func UnknownToken(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_UNKNOWN_TOKEN", Err: msg}
+	return &MatrixError{"M_UNKNOWN_TOKEN", msg}
 }
 
 func PwdChangeKick(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_PWD_CHANGE_KICK", Err: msg}
+	return &MatrixError{"M_PWD_CHANGE_KICK", msg}
 }
 
 // WeakPassword is an error which is returned when the client tries to register
 // using a weak password. http://matrix.org/docs/spec/client_server/r0.2.0.html#password-based
 func WeakPassword(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_WEAK_PASSWORD", Err: msg}
+	return &MatrixError{"M_WEAK_PASSWORD", msg}
 }
 
 // InvalidUsername is an error returned when the client tries to register an
 // invalid username
 func InvalidUsername(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_INVALID_USERNAME", Err: msg}
+	return &MatrixError{"M_INVALID_USERNAME", msg}
 }
 
 // UserInUse is an error returned when the client tries to register an
 // username that already exists
 func UserInUse(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_USER_IN_USE", Err: msg}
+	return &MatrixError{"M_USER_IN_USE", msg}
 }
 
 // ASExclusive is an error returned when an application service tries to
 // register an username that is outside of its registered namespace, or if a
 // user attempts to register a username within an exclusive namespace
 func ASExclusive(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_EXCLUSIVE", Err: msg}
+	return &MatrixError{"M_EXCLUSIVE", msg}
 }
 
 // GuestAccessForbidden is an error which is returned when the client is
 // forbidden from accessing a resource as a guest.
 func GuestAccessForbidden(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_GUEST_ACCESS_FORBIDDEN", Err: msg}
+	return &MatrixError{"M_GUEST_ACCESS_FORBIDDEN", msg}
 }
 
 // LimitExceededError is a rate-limiting error.
@@ -147,7 +147,7 @@ type LimitExceededError struct {
 // LimitExceeded is an error when the client tries to send events too quickly.
 func LimitExceeded(msg string, retryAfterMS int64) *LimitExceededError {
 	return &LimitExceededError{
-		MatrixError:  MatrixError{ErrCode: "M_LIMIT_EXCEEDED", Err: msg},
+		MatrixError:  MatrixError{"M_LIMIT_EXCEEDED", msg},
 		RetryAfterMS: retryAfterMS,
 	}
 }
@@ -166,5 +166,5 @@ func MissingParam(msg string) *MatrixError {
 }
 
 func MsgDiscard(msg string) *MatrixError {
-	return &MatrixError{ErrCode: "M_MSG_DISCARD", Err: msg}
+	return &MatrixError{"M_MSG_DISCARD", msg}
 }

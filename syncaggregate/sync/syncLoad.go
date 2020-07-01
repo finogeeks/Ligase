@@ -17,11 +17,11 @@ package sync
 import (
 	"context"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"math"
 	"sync"
 	"time"
@@ -39,7 +39,7 @@ type UserRoomOffset struct {
 	Offsets    map[string]map[int64]int64 //roomId, roomoffset, offset
 }
 
-func (sm *SyncMng) callSyncLoad(ctx context.Context, req *request) {
+func (sm *SyncMng) callSyncLoad(req *request) {
 	loadState := &LoadState{
 		fullSync: false,
 		maxPos:   int64(-1),
@@ -48,7 +48,7 @@ func (sm *SyncMng) callSyncLoad(ctx context.Context, req *request) {
 	if req.marks.utlRecv == 0 {
 		loadState.fullSync = true
 	} else {
-		low, up := sm.userTimeLine.GetUserRange(ctx, req.device.UserID)
+		low, up := sm.userTimeLine.GetUserRange(req.device.UserID)
 		log.Infof("SyncMng.callSyncLoad traceid:%s slot:%d user:%s device:%s utl:%d low:%d up:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, low, up)
 		if low > req.marks.utlRecv {
 			err := sm.loadSyncLag(req, loadState)
@@ -58,13 +58,13 @@ func (sm *SyncMng) callSyncLoad(ctx context.Context, req *request) {
 			}
 		} else {
 			if up > req.marks.utlRecv {
-				sm.loadSyncNormal(ctx, req, loadState)
+				sm.loadSyncNormal(req, loadState)
 			} else {
 				//no update
 				req.maxEvOffset = req.marks.utlRecv
 			}
 		}
-		joinRooms, err := sm.userTimeLine.GetJoinRooms(ctx, req.device.UserID)
+		joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 		if err != nil {
 			req.remoteReady = false
 			req.remoteFinished = true
@@ -77,15 +77,15 @@ func (sm *SyncMng) callSyncLoad(ctx context.Context, req *request) {
 	}
 
 	if loadState.fullSync {
-		sm.loadFullSync(ctx, req, loadState)
+		sm.loadFullSync(req, loadState)
 	}
 	req.isFullSync = loadState.fullSync
 	sm.buildLoadRequest(req, loadState)
 }
 
-func (sm *SyncMng) processSyncLoad(ctx context.Context, req *request) {
+func (sm *SyncMng) processSyncLoad(req *request) {
 	user := req.device.UserID
-	sm.userTimeLine.LoadHistory(ctx, user, req.device.IsHuman)
+	sm.userTimeLine.LoadHistory(user, req.device.IsHuman)
 	if sm.userTimeLine.CheckUserLoadingReady(req.device.UserID) {
 		if req.marks.utlRecv == 0 && req.device.IsHuman == false {
 			req.ready = true
@@ -94,26 +94,26 @@ func (sm *SyncMng) processSyncLoad(ctx context.Context, req *request) {
 			log.Infof("SyncMng processRequest return not load traceid:%s slot:%d user:%s device:%s", req.traceId, req.slot, user, req.device.ID)
 			return
 		}
-		go sm.callSyncLoad(ctx, req)
+		go sm.callSyncLoad(req)
 		if req.device.IsHuman == true {
 			start := time.Now().UnixNano()
-			sm.clientDataStreamRepo.LoadHistory(ctx, user, false)
-			sm.stdEventStreamRepo.LoadHistory(ctx, user, req.device.ID, false)
-			sm.presenceStreamRepo.LoadHistory(ctx, user, false)
-			sm.keyChangeRepo.LoadHistory(ctx, user, false)
+			sm.clientDataStreamRepo.LoadHistory(user, false)
+			sm.stdEventStreamRepo.LoadHistory(user, req.device.ID, false)
+			sm.presenceStreamRepo.LoadHistory(user, false)
+			sm.keyChangeRepo.LoadHistory(user, false)
 			loadStart := time.Now().Unix()
 			for {
 				loaded := true
-				if ok := sm.clientDataStreamRepo.CheckLoadReady(ctx, user, false); !ok {
+				if ok := sm.clientDataStreamRepo.CheckLoadReady(user, false); !ok {
 					loaded = false
 				}
-				if ok := sm.stdEventStreamRepo.CheckLoadReady(ctx, user, req.device.ID, false); !ok {
+				if ok := sm.stdEventStreamRepo.CheckLoadReady(user, req.device.ID, false); !ok {
 					loaded = false
 				}
-				if ok := sm.presenceStreamRepo.CheckLoadReady(ctx, user, false); !ok {
+				if ok := sm.presenceStreamRepo.CheckLoadReady(user, false); !ok {
 					loaded = false
 				}
-				if ok := sm.keyChangeRepo.CheckLoadReady(ctx, user, false); !ok {
+				if ok := sm.keyChangeRepo.CheckLoadReady(user, false); !ok {
 					loaded = false
 				}
 
@@ -211,8 +211,8 @@ func (sm *SyncMng) loadTimelineFromDb(req *request, loadState *LoadState) (err e
 	return nil
 }
 
-func (sm *SyncMng) loadSyncNormal(ctx context.Context, req *request, loadState *LoadState) {
-	timeLine := sm.userTimeLine.GetHistory(ctx, req.device.UserID)
+func (sm *SyncMng) loadSyncNormal(req *request, loadState *LoadState) {
+	timeLine := sm.userTimeLine.GetHistory(req.device.UserID)
 	newMsgRoom := make(map[string]bool)
 	if timeLine != nil {
 		feeds, start, end, low, up := timeLine.GetAllFeedsReverse()
@@ -247,7 +247,6 @@ func (sm *SyncMng) loadSyncNormal(ctx context.Context, req *request, loadState *
 	}
 	req.maxEvOffset = loadState.maxPos
 	log.Infof("SyncMng.userTimeLine.loadnormal traceid:%s slot:%d user:%s device:%s maxEvOffset:%d utlRecv:%d startPos:%d maxPos:%d newMsgRoom:%+v", req.traceId, req.slot, req.device.UserID, req.device.ID, req.maxEvOffset, req.marks.utlRecv, loadState.startPos, loadState.maxPos, newMsgRoom)
-
 }
 
 func (sm *SyncMng) getRoomLatest(offsetPair *repos.UserRoomOffset) int64 {
@@ -258,18 +257,18 @@ func (sm *SyncMng) getRoomLatest(offsetPair *repos.UserRoomOffset) int64 {
 	}
 }
 
-func (sm *SyncMng) loadFullSync(ctx context.Context, req *request, loadState *LoadState) {
-	loadState.maxPos = sm.userTimeLine.GetUserLatestOffset(ctx, req.device.UserID, req.device.IsHuman)
+func (sm *SyncMng) loadFullSync(req *request, loadState *LoadState) {
+	loadState.maxPos = sm.userTimeLine.GetUserLatestOffset(req.device.UserID, req.device.IsHuman)
 	if loadState.maxPos == -1 {
 		loadState.maxPos = req.marks.utlRecv
 	}
-	offsetPair := sm.userTimeLine.GetUserRoomLatestOffset(ctx, req.device.UserID, req.device.IsHuman)
+	offsetPair := sm.userTimeLine.GetUserRoomLatestOffset(req.device.UserID, req.device.IsHuman)
 	if offsetPair != nil {
 		sm.updateOffsetPair(req, offsetPair.GetRoomId(), offsetPair.GetRoomOffset(), offsetPair.GetUserOffset())
 	}
 	req.maxEvOffset = loadState.maxPos
 	if req.device.IsHuman {
-		joinRooms, err := sm.userTimeLine.GetJoinRooms(ctx, req.device.UserID)
+		joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 		if err != nil {
 			req.remoteReady = false
 			req.remoteFinished = true
@@ -287,7 +286,7 @@ func (sm *SyncMng) loadFullSync(ctx context.Context, req *request, loadState *Lo
 			return true
 		})
 
-		inviteRooms, err := sm.userTimeLine.GetInviteRooms(ctx, req.device.UserID)
+		inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)
 		if err != nil {
 			req.remoteReady = false
 			req.remoteFinished = true

@@ -21,11 +21,11 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/pkg/errors"
 )
 
@@ -34,7 +34,7 @@ func init() {
 	Register(model.CMD_FED_ROOM_STATE, RoomState)
 }
 
-func RoomDirectory(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func RoomDirectory(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	if msg == nil {
 		return nil, errors.New("msg from connector is nil")
 	}
@@ -42,12 +42,12 @@ func RoomDirectory(ctx context.Context, msg *model.GobMessage, cache service.Cac
 
 	queryReq := roomserverapi.GetAliasRoomIDRequest{Alias: roomAlias}
 	var queryRes roomserverapi.GetAliasRoomIDResponse
-	if err := rpcCli.GetAliasRoomID(ctx, &queryReq, &queryRes); err != nil {
+	if err := rpcCli.GetAliasRoomID(context.TODO(), &queryReq, &queryRes); err != nil {
 		return nil, errors.New("")
 	}
 	stateReq := roomserverapi.QueryRoomStateRequest(queryRes)
 	stateRes := roomserverapi.QueryRoomStateResponse{}
-	if err := rpcCli.QueryRoomState(ctx, &stateReq, &stateRes); err != nil {
+	if err := rpcCli.QueryRoomState(context.TODO(), &stateReq, &stateRes); err != nil {
 		return nil, err
 	}
 
@@ -74,7 +74,7 @@ func RoomDirectory(ctx context.Context, msg *model.GobMessage, cache service.Cac
 	return retMsg, nil
 }
 
-func RoomState(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func RoomState(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	if msg == nil {
 		return nil, errors.New("msg from connector is nil")
 	}
@@ -83,7 +83,7 @@ func RoomState(ctx context.Context, msg *model.GobMessage, cache service.Cache, 
 	queryReq := roomserverapi.QueryRoomStateRequest{RoomID: roomID}
 	var queryRes roomserverapi.QueryRoomStateResponse
 
-	if err := rpcCli.QueryRoomState(ctx, &queryReq, &queryRes); err != nil {
+	if err := rpcCli.QueryRoomState(context.TODO(), &queryReq, &queryRes); err != nil {
 		return nil, err
 	}
 

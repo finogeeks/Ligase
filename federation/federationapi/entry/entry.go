@@ -15,7 +15,6 @@
 package entry
 
 import (
-	"context"
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
@@ -27,15 +26,16 @@ import (
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/config"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
+	modelRepos "github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
 )
 
-type FedApiEntryCB func(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error)
+type FedApiEntryCB func(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error)
 
 var (
 	regMtx         sync.RWMutex
@@ -53,6 +53,7 @@ var (
 	rpcClient      *common.RpcClient
 	encryptionDB   dbmodel.EncryptorAPIDatabase
 	complexCache   *common.ComplexCache
+	rsRepo         *modelRepos.RoomServerCurStateRepo
 )
 
 func Register(cmd model.Command, f FedApiEntryCB) {
@@ -120,4 +121,8 @@ func SetEncryptionDB(db dbmodel.EncryptorAPIDatabase) {
 
 func SetComplexCache(cache *common.ComplexCache) {
 	complexCache = cache
+}
+
+func SetRepo(repo *modelRepos.RoomServerCurStateRepo) {
+	rsRepo = repo
 }

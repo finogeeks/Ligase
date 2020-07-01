@@ -22,10 +22,10 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/config"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/model/types"
 )
 
 type FederationRpcClient struct {
@@ -95,19 +95,14 @@ func (fed *FederationRpcClient) InputRoomEvents(
 
 	log.Infof("-------FederationRpcClient InputRoomEvents request topic:%s val:%s", fed.cfg.Rpc.RoomInputTopic, string(bytes))
 
-	span, _ := common.StartSpanFromContext(ctx, fed.cfg.Kafka.Producer.InputRoomEvent.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, fed.cfg.Kafka.Producer.InputRoomEvent.Name,
-		fed.cfg.Kafka.Producer.InputRoomEvent.Underlying)
 	err = common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		fed.cfg.Kafka.Producer.InputRoomEvent.Underlying,
 		fed.cfg.Kafka.Producer.InputRoomEvent.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(rawEvent.RoomID),
-			Topic:   fed.cfg.Kafka.Producer.InputRoomEvent.Topic,
-			Obj:     rawEvent,
-			Inst:    fed.cfg.Kafka.Producer.InputRoomEvent.Inst,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys:  []byte(rawEvent.RoomID),
+			Topic: fed.cfg.Kafka.Producer.InputRoomEvent.Topic,
+			Obj:   rawEvent,
+			Inst:  fed.cfg.Kafka.Producer.InputRoomEvent.Inst,
 		})
 
 	if err != nil {
@@ -250,38 +245,13 @@ func (fed *FederationRpcClient) QueryEventAuth( //fed
 	req *roomserverapi.QueryEventAuthRequest,
 	response *roomserverapi.QueryEventAuthResponse,
 ) error {
-	log.Infof("-------FederationRpcClient QueryEventAuth start, %v", fed.qry)
+	log.Infof("-------FederationRpcClient QueryBackFillEvents start, %v", fed.qry)
 	if fed.qry != nil {
 		return fed.qry.QueryEventAuth(ctx, req, response)
 	}
 
 	content := roomserverapi.RoomserverRpcRequest{
 		QueryEventAuth: req,
-	}
-	bytes, err := json.Marshal(content)
-
-	data, err := fed.rpcClient.Request(fed.cfg.Rpc.RsQryTopic, bytes, 30000)
-
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
-}
-
-func (fed *FederationRpcClient) QueryEventsByDomainOffset( //fed
-	ctx context.Context,
-	req *roomserverapi.QueryEventsByDomainOffsetRequest,
-	response *roomserverapi.QueryEventsByDomainOffsetResponse,
-) error {
-	log.Infof("-------FederationRpcClient QueryEventsByDomainOffset start, %v", fed.qry)
-	if fed.qry != nil {
-		return fed.qry.QueryEventsByDomainOffset(ctx, req, response)
-	}
-
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryEventsByDomainOffset: req,
 	}
 	bytes, err := json.Marshal(content)
 

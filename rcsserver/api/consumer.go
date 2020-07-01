@@ -16,14 +16,13 @@ package api
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/model/types"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -51,13 +50,13 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.InitGroup("rcsserverapi", c, c.Cfg.Rpc.ProxyRCSServerApiTopic, types.RCSSERVER_API_GROUP)
+	c.APIConsumer.Init("rcsserverapi", c, c.Cfg.Rpc.ProxyRCSServerApiTopic)
 	c.APIConsumer.Start()
 }
 
-func (c *InternalMsgConsumer) getFriendship(ctx context.Context, req *external.GetFriendshipRequest) (*external.GetFriendshipResponse, error) {
+func (c *InternalMsgConsumer) getFriendship(req *external.GetFriendshipRequest) (*external.GetFriendshipResponse, error) {
 	log.Infow("rcsserver=====================InternalMsgConsumer.getFriendship", log.KeysAndValues{req.FcID, req.ToFcID})
-	resp, err := c.db.GetFriendshipByFcIDOrToFcID(ctx, req.FcID, req.ToFcID)
+	resp, err := c.db.GetFriendshipByFcIDOrToFcID(context.Background(), req.FcID, req.ToFcID)
 	if err != nil {
 		if c.db.NotFound(err) {
 			log.Infoln("rcsserver=====================InternalMsgConsumer.getFriendship, c.db.NotFound")
@@ -69,14 +68,14 @@ func (c *InternalMsgConsumer) getFriendship(ctx context.Context, req *external.G
 	return resp, nil
 }
 
-func (c *InternalMsgConsumer) getFriendships(ctx context.Context, req *external.GetFriendshipsRequest, userID string) (*external.GetFriendshipsResponse, error) {
+func (c *InternalMsgConsumer) getFriendships(req *external.GetFriendshipsRequest, userID string) (*external.GetFriendshipsResponse, error) {
 	log.Infow("rcsserver=====================InternalMsgConsumer.getFriendships", log.KeysAndValues{"userID", userID, "req.Type", req.Type})
 	var resp external.GetFriendshipsResponse
 	var err error
 	if req.Type == external.RCSFriendshipTypeBot {
-		resp.Friendships, err = c.db.GetFriendshipsByFcIDOrToFcIDWithBot(ctx, userID)
+		resp.Friendships, err = c.db.GetFriendshipsByFcIDOrToFcIDWithBot(context.Background(), userID)
 	} else {
-		resp.Friendships, err = c.db.GetFriendshipsByFcIDOrToFcID(ctx, userID)
+		resp.Friendships, err = c.db.GetFriendshipsByFcIDOrToFcID(context.Background(), userID)
 	}
 	if err != nil {
 		log.Errorf("Failed to get friendships: %v\n", err)

@@ -19,16 +19,15 @@ package consumers
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/storage/model"
 	"sync/atomic"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/storage/model"
-
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -36,42 +35,39 @@ func init() {
 }
 
 type E2EDBEVConsumer struct {
-	db model.EncryptorAPIDatabase
-	//msgChan  []chan *dbtypes.DBEvent
-	msgChan  []chan common.ContextMsg
+	db       model.EncryptorAPIDatabase
+	msgChan  []chan *dbtypes.DBEvent
 	monState []*DBMonItem
 }
 
-func (s *E2EDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *E2EDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
 		data := output.E2EDBEvents
 		switch key {
 		case dbtypes.DeviceKeyInsertKey:
-			res = s.onDeviceKeyInsert(ctx, data.KeyInsert)
+			res = s.onDeviceKeyInsert(context.TODO(), data.KeyInsert)
 		case dbtypes.OneTimeKeyInsertKey:
-			res = s.onOneTimeKeyInsert(ctx, data.KeyInsert)
+			res = s.onOneTimeKeyInsert(context.TODO(), data.KeyInsert)
 		case dbtypes.OneTimeKeyDeleteKey:
-			res = s.onOneTimeKeyDelete(ctx, data.KeyDelete)
+			res = s.onOneTimeKeyDelete(context.TODO(), data.KeyDelete)
 		case dbtypes.MacOneTimeKeyDeleteKey:
-			res = s.onMacOneTimeKeyDelete(ctx, data.MacKeyDelete)
+			res = s.onMacOneTimeKeyDelete(context.TODO(), data.MacKeyDelete)
 		case dbtypes.AlInsertKey:
-			res = s.onAlInsert(ctx, data.AlInsert)
+			res = s.onAlInsert(context.TODO(), data.AlInsert)
 		case dbtypes.DeviceAlDeleteKey:
-			res = s.onAlDelete(ctx, data.DeviceKeyDelete)
+			res = s.onAlDelete(context.TODO(), data.DeviceKeyDelete)
 		case dbtypes.MacDeviceAlDeleteKey:
-			res = s.onMacAlDelete(ctx, data.MacKeyDelete)
+			res = s.onMacAlDelete(context.TODO(), data.MacKeyDelete)
 		case dbtypes.DeviceKeyDeleteKey:
-			res = s.onDeviceKeyDelete(ctx, data.DeviceKeyDelete)
+			res = s.onDeviceKeyDelete(context.TODO(), data.DeviceKeyDelete)
 		case dbtypes.MacDeviceKeyDeleteKey:
-			res = s.onMacDeviceKeyDelete(ctx, data.MacKeyDelete)
+			res = s.onMacDeviceKeyDelete(context.TODO(), data.MacKeyDelete)
 		case dbtypes.DeviceOneTimeKeyDeleteKey:
-			res = s.onDeviceOneTimeKeyDelete(ctx, data.DeviceKeyDelete)
+			res = s.onDeviceOneTimeKeyDelete(context.TODO(), data.DeviceKeyDelete)
 		default:
 			res = nil
 			log.Infow("encrypt api db event: ignoring unknown output type", log.KeysAndValues{"key", key})
@@ -106,9 +102,9 @@ func NewE2EDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, 3)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 3)
 	for i := uint64(0); i < 3; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 	return s
 }
@@ -128,7 +124,7 @@ func (s *E2EDBEVConsumer) Start() {
 	}
 }
 
-func (s *E2EDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
+func (s *E2EDBEVConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
 	chanID := 0
 	switch dbEv.Key {
 	case dbtypes.DeviceKeyInsertKey, dbtypes.DeviceKeyDeleteKey, dbtypes.MacDeviceKeyDeleteKey:
@@ -142,7 +138,7 @@ func (s *E2EDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) 
 		return nil
 	}
 
-	s.msgChan[chanID] <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+	s.msgChan[chanID] <- dbEv
 	return nil
 }
 

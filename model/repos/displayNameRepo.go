@@ -16,12 +16,11 @@ package repos
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/common"
 	"sync"
 
 	"github.com/finogeeks/ligase/common/utils"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/tidwall/gjson"
 )
@@ -93,11 +92,9 @@ func (tl *DisplayNameRepo) LoadHistory() {
 	offset := 0
 	exists := true
 
-	span, ctx := common.StartSobSomSpan(context.Background(), "DisplayNameRepo.LoadHistory")
-	defer span.Finish()
 	for exists {
 		exists = false
-		streams, _, err := tl.persist.GetHistoryPresenceDataStream(ctx, limit, offset)
+		streams, _, err := tl.persist.GetHistoryPresenceDataStream(context.TODO(), limit, offset)
 		if err != nil {
 			log.Panicf("PresenceDataStreamRepo load history err: %v", err)
 			return

@@ -22,9 +22,9 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const profilesSchema = `
@@ -110,18 +110,18 @@ func (s *profilesStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *profilesStatements) recoverProfile(ctx context.Context) error {
+func (s *profilesStatements) recoverProfile() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverProfileStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverProfileStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -130,7 +130,7 @@ func (s *profilesStatements) recoverProfile(ctx context.Context) error {
 	return nil
 }
 
-func (s *profilesStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *profilesStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -149,7 +149,7 @@ func (s *profilesStatements) processRecover(ctx context.Context, rows *sql.Rows)
 		update.IsRecovery = true
 		update.AccountDBEvents.ProfileInsert = &profileInsert
 		update.SetUid(int64(common.CalcStringHashCode64(profileInsert.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "account_profiles")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update profile cache error: %v", err2)
 			if err == nil {
@@ -174,7 +174,7 @@ func (s *profilesStatements) upsertProfile(
 			AvatarUrl:   avatarURL,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "account_profiles")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.upsertProfileSync(ctx, userID, displayName, avatarURL)
@@ -199,7 +199,7 @@ func (s *profilesStatements) initProfile(
 			AvatarUrl:   avatarURL,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "account_profiles")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	_, err := s.initProfilesStmt.ExecContext(ctx, userID, displayName, avatarURL)
@@ -218,7 +218,7 @@ func (s *profilesStatements) upsertDisplayName(
 			DisplayName: displayName,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "account_profiles")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.upsertDisplayNameSync(ctx, userID, displayName)
@@ -242,7 +242,7 @@ func (s *profilesStatements) upsertAvatar(
 			AvatarUrl: avatarURL,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "account_profiles")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.upsertAvatarSync(ctx, userID, avatarURL)

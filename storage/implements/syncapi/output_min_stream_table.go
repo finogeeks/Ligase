@@ -17,10 +17,9 @@ package syncapi
 import (
 	"context"
 	"database/sql"
-
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const OutputMinStreamSchema = `
@@ -77,7 +76,7 @@ func (s *outputMinStreamStatements) insertOutputMinStream(
 			RoomID: roomID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_output_min_stream")
+		s.db.WriteDBEvent(&update)
 		return nil
 	} else {
 		_, err = s.insertOutputMinStreamStmt.ExecContext(ctx, id, roomID)

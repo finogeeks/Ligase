@@ -15,7 +15,6 @@
 package sync
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -24,6 +23,8 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
@@ -32,8 +33,6 @@ import (
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/pushapi/routing"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncaggregate/consumers"
 	jsoniter "github.com/json-iterator/go"
@@ -42,11 +41,10 @@ import (
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type SyncMng struct {
-	db       model.SyncAPIDatabase
-	slot     uint32
-	chanSize int
-	//msgChan      []chan *request
-	msgChan      []chan common.ContextMsg
+	db           model.SyncAPIDatabase
+	slot         uint32
+	chanSize     int
+	msgChan      []chan *request
 	cfg          *config.Dendrite
 	rpcClient    *common.RpcClient
 	cache        service.Cache
@@ -116,7 +114,7 @@ func (sm *SyncMng) GetOnlineRepo() *repos.OnlineUserRepo {
 	return sm.onlineRepo
 }
 
-func (sm *SyncMng) OnStateChange(ctx context.Context, state *types.NotifyDeviceState) {
+func (sm *SyncMng) OnStateChange(state *types.NotifyDeviceState) {
 	if sm.cfg.StateMgr.StateNotify {
 		state.DeviceID = common.GetDeviceMac(state.DeviceID)
 		state.Pushkeys = sm.GetPushkeyByUserDeviceID(state.UserID, state.DeviceID)
@@ -135,10 +133,10 @@ func (sm *SyncMng) OnStateChange(ctx context.Context, state *types.NotifyDeviceS
 
 	}
 
-	sm.stateChangePresent(ctx, state)
+	sm.stateChangePresent(state)
 }
 
-func (sm *SyncMng) stateChangePresent(ctx context.Context, state *types.NotifyDeviceState) {
+func (sm *SyncMng) stateChangePresent(state *types.NotifyDeviceState) {
 	needAddPresentEv := true
 	presence := ""
 	presenceContent := types.PresenceShowJSON{}
@@ -181,7 +179,7 @@ func (sm *SyncMng) stateChangePresent(ctx context.Context, state *types.NotifyDe
 		extStatusMsg := presenceContent.ExtStatusMsg
 
 		sm.cache.SetPresences(state.UserID, presence, statusMsg, extStatusMsg)
-		displayName, avatarURL, _ := sm.complexCache.GetProfileByUserID(ctx, state.UserID)
+		displayName, avatarURL, _ := sm.complexCache.GetProfileByUserID(state.UserID)
 		user_info := sm.cache.GetUserInfoByUserID(state.UserID)
 		currentlyActive := false
 		if presence == "online" {
@@ -287,34 +285,33 @@ func (sm *SyncMng) SetUserDeviceActiveTsRepo(userDeviceActiveTsRepo *repos.UserD
 }
 
 func (sm *SyncMng) Start() {
-	sm.msgChan = make([]chan common.ContextMsg, sm.slot)
+	sm.msgChan = make([]chan *request, sm.slot)
 	for i := uint32(0); i < sm.slot; i++ {
-		sm.msgChan[i] = make(chan common.ContextMsg, sm.chanSize)
+		sm.msgChan[i] = make(chan *request, sm.chanSize)
 		go sm.startWorker(sm.msgChan[i])
 	}
 }
 
-func (sm *SyncMng) startWorker(channel chan common.ContextMsg) {
-	for data := range channel {
-		msg := data.Msg.(*request)
-		sm.processSyncLoad(data.Ctx, msg)
+func (sm *SyncMng) startWorker(channel chan *request) {
+	for msg := range channel {
+		sm.processSyncLoad(msg)
 	}
 }
 
-func (sm *SyncMng) dispatch(ctx context.Context, uid string, req *request) {
+func (sm *SyncMng) dispatch(uid string, req *request) {
 	hash := common.CalcStringHashCode(uid)
 	req.slot = hash % sm.slot
-	sm.msgChan[req.slot] <- common.ContextMsg{Ctx: ctx, Msg: req}
+	sm.msgChan[req.slot] <- req
 }
 
-func (sm *SyncMng) buildSyncData(ctx context.Context, req *request, res *syncapitypes.Response) bool {
+func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool {
 	if req.marks.utlRecv == 0 && req.device.IsHuman == false {
-		_, err := sm.userTimeLine.GetJoinRooms(ctx, req.device.UserID)
+		_, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 		if err != nil {
 			return false
 		}
 
-		_, err = sm.userTimeLine.GetInviteRooms(ctx, req.device.UserID)
+		_, err = sm.userTimeLine.GetInviteRooms(req.device.UserID)
 		if err != nil {
 			return false
 		}
@@ -328,7 +325,7 @@ func (sm *SyncMng) buildSyncData(ctx context.Context, req *request, res *syncapi
 	}
 
 	requestMap := make(map[uint32]*syncapitypes.SyncServerRequest)
-	maxReceiptOffset := sm.userTimeLine.GetUserLatestReceiptOffset(ctx, req.device.UserID, req.device.IsHuman)
+	maxReceiptOffset := sm.userTimeLine.GetUserLatestReceiptOffset(req.device.UserID, req.device.IsHuman)
 	req.reqRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
 		reqRoom := value.(*syncapitypes.SyncRoom)
@@ -469,8 +466,8 @@ func (sm *SyncMng) buildSyncData(ctx context.Context, req *request, res *syncapi
 	}
 }
 
-func (sm *SyncMng) addSendToDevice(ctx context.Context, req *request, response *syncapitypes.Response) {
-	stdTimeLine := sm.stdEventStreamRepo.GetHistory(ctx, req.device.UserID, req.device.ID)
+func (sm *SyncMng) addSendToDevice(req *request, response *syncapitypes.Response) {
+	stdTimeLine := sm.stdEventStreamRepo.GetHistory(req.device.UserID, req.device.ID)
 	if stdTimeLine == nil {
 		return
 	}
@@ -549,17 +546,16 @@ func (sm *SyncMng) addSendToDevice(ctx context.Context, req *request, response *
 	return
 }
 
-func (sm *SyncMng) addAccountData(ctx context.Context, req *request, response *syncapitypes.Response) *syncapitypes.Response {
+func (sm *SyncMng) addAccountData(req *request, response *syncapitypes.Response) *syncapitypes.Response {
 	if req.marks.accRecv == 0 {
-		return sm.addFullAccountData(ctx, req, response)
+		return sm.addFullAccountData(req, response)
 	}
-	return sm.addIncrementalAccountData(ctx, req, response)
+	return sm.addIncrementalAccountData(req, response)
 }
 
-func (sm *SyncMng) addIncrementalAccountData(ctx context.Context,
-	req *request, response *syncapitypes.Response) *syncapitypes.Response {
+func (sm *SyncMng) addIncrementalAccountData(req *request, response *syncapitypes.Response) *syncapitypes.Response {
 	userID := req.device.UserID
-	cdsTimeLine := sm.clientDataStreamRepo.GetHistory(ctx, userID)
+	cdsTimeLine := sm.clientDataStreamRepo.GetHistory(userID)
 	if cdsTimeLine == nil {
 		log.Errorf("SyncMng.addIncrementalAccountData get client data stream nil traceid:%s user:%s device:%s", req.traceId, userID, req.device.ID)
 		return response
@@ -632,7 +628,7 @@ func (sm *SyncMng) addIncrementalAccountData(ctx context.Context,
 	}
 
 	if len(tagIDs) > 0 {
-		response = sm.addRoomTags(ctx, req, response, tagIDs)
+		response = sm.addRoomTags(req, response, tagIDs)
 	}
 	if len(missRooms) > 0 {
 		response = sm.addRoomEmptyTags(req, response, missRooms)
@@ -651,7 +647,7 @@ func (sm *SyncMng) addIncrementalAccountData(ctx context.Context,
 		roomAccountKeys = append(roomAccountKeys, changeKey)
 	}
 	if len(roomAccountKeys) > 0 {
-		response = sm.addRoomAccountData(ctx, req, response, roomAccountKeys)
+		response = sm.addRoomAccountData(req, response, roomAccountKeys)
 	}
 
 	if pushRuleChanged {
@@ -670,12 +666,12 @@ func (sm *SyncMng) addIncrementalAccountData(ctx context.Context,
 	return response
 }
 
-func (sm *SyncMng) addFullAccountData(ctx context.Context, req *request, response *syncapitypes.Response) *syncapitypes.Response {
+func (sm *SyncMng) addFullAccountData(req *request, response *syncapitypes.Response) *syncapitypes.Response {
 	userID := req.device.UserID
 	response = sm.addPushRules(req, response)
 
 	if allTagIDs, ok := sm.cache.GetUserRoomTagIds(userID); ok {
-		response = sm.addRoomTags(ctx, req, response, allTagIDs)
+		response = sm.addRoomTags(req, response, allTagIDs)
 	}
 
 	if clientActIDs, ok := sm.cache.GetUserAccountDataIds(userID); ok {
@@ -683,10 +679,10 @@ func (sm *SyncMng) addFullAccountData(ctx context.Context, req *request, respons
 	}
 
 	if roomActIDs, ok := sm.cache.GetUserRoomAccountDataIds(userID); ok {
-		response = sm.addRoomAccountData(ctx, req, response, roomActIDs)
+		response = sm.addRoomAccountData(req, response, roomActIDs)
 	}
 
-	cdsTimeLine := sm.clientDataStreamRepo.GetHistory(ctx, userID)
+	cdsTimeLine := sm.clientDataStreamRepo.GetHistory(userID)
 	if cdsTimeLine == nil {
 		return response
 	}
@@ -718,9 +714,8 @@ func (sm *SyncMng) addClientAccountData(req *request, response *syncapitypes.Res
 	return response
 }
 
-func (sm *SyncMng) addRoomAccountData(ctx context.Context,
-	req *request, response *syncapitypes.Response, accountIDs []string) *syncapitypes.Response {
-	joinRooms, err := sm.userTimeLine.GetJoinRooms(ctx, req.device.UserID)
+func (sm *SyncMng) addRoomAccountData(req *request, response *syncapitypes.Response, accountIDs []string) *syncapitypes.Response {
+	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
 		return response
 	}
@@ -802,10 +797,10 @@ func (sm *SyncMng) addRoomEmptyTags(req *request, response *syncapitypes.Respons
 	return response
 }
 
-func (sm *SyncMng) addRoomTags(ctx context.Context, req *request, response *syncapitypes.Response, tagIDs []string) *syncapitypes.Response {
+func (sm *SyncMng) addRoomTags(req *request, response *syncapitypes.Response, tagIDs []string) *syncapitypes.Response {
 	roomTags := make(map[string]interface{})
 	var tagContent interface{}
-	joinRooms, err := sm.userTimeLine.GetJoinRooms(ctx, req.device.UserID)
+	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
 		return response
 	}
@@ -852,7 +847,7 @@ func (sm *SyncMng) addRoomTags(ctx context.Context, req *request, response *sync
 	return response
 }
 
-func (sm *SyncMng) addOneTimeKeyCountInfo(ctx context.Context, req *request, res *syncapitypes.Response) {
+func (sm *SyncMng) addOneTimeKeyCountInfo(req *request, res *syncapitypes.Response) {
 	alCountMap, err := sm.keyChangeRepo.GetOneTimeKeyCount(req.device.UserID, req.device.ID)
 	if err != nil {
 		log.Errorf("SyncMng add OneTimeKeyCountInfo, traceid:%s, user:%s, device:%s, err:%v ", req.traceId, req.device.UserID, req.device.ID, err)
@@ -862,11 +857,11 @@ func (sm *SyncMng) addOneTimeKeyCountInfo(ctx context.Context, req *request, res
 	return
 }
 
-func (sm *SyncMng) addPresence(ctx context.Context, req *request, response *syncapitypes.Response) {
+func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 	maxPos := int64(-1)
 	if sm.presenceStreamRepo.ExistsPresence(req.device.UserID, req.marks.preRecv) {
 		log.Infof("add presence for %s", req.device.UserID)
-		friendShipMap := sm.userTimeLine.GetFriendShip(ctx, req.device.UserID, true)
+		friendShipMap := sm.userTimeLine.GetFriendShip(req.device.UserID, true)
 		if friendShipMap != nil {
 			var presenceEvent gomatrixserverlib.ClientEvent
 			friendShipMap.Range(func(key, _ interface{}) bool {
@@ -900,13 +895,13 @@ func (sm *SyncMng) addPresence(ctx context.Context, req *request, response *sync
 	return
 }
 
-func (sm *SyncMng) addKeyChangeInfo(ctx context.Context, req *request, response *syncapitypes.Response) {
+func (sm *SyncMng) addKeyChangeInfo(req *request, response *syncapitypes.Response) {
 	maxPos := int64(-1)
 	if req.marks.utlRecv > 0 {
 		if sm.keyChangeRepo.ExistsKeyChange(req.marks.kcRecv, req.device.UserID) {
 			kcMap := sm.keyChangeRepo.GetHistory()
 			if kcMap != nil {
-				friendShipMap := sm.userTimeLine.GetFriendShip(ctx, req.device.UserID, true)
+				friendShipMap := sm.userTimeLine.GetFriendShip(req.device.UserID, true)
 				if friendShipMap != nil {
 					friendShipMap.Range(func(key, _ interface{}) bool {
 						if val, ok := kcMap.Load(key.(string)); ok {
@@ -935,10 +930,10 @@ func (sm *SyncMng) addKeyChangeInfo(ctx context.Context, req *request, response 
 	return
 }
 
-func (sm *SyncMng) addTyping(ctx context.Context, req *request, response *syncapitypes.Response, curRoomID string) {
+func (sm *SyncMng) addTyping(req *request, response *syncapitypes.Response, curRoomID string) {
 	if sm.typingConsumer.ExistsTyping(req.device.UserID, req.device.ID, curRoomID) {
 		events := sm.typingConsumer.GetTyping(req.device.UserID, req.device.ID, curRoomID)
-		joinRooms, err := sm.userTimeLine.GetJoinRooms(ctx, req.device.UserID)
+		joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 		if err != nil {
 			return
 		}

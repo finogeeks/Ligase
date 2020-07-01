@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"net/http"
 
@@ -45,8 +44,10 @@ func (ReqGetRoomStateByTypeAndKey) GetAPIType() int8 { return apiconsumer.APITyp
 func (ReqGetRoomStateByTypeAndKey) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }
-func (ReqGetRoomStateByTypeAndKey) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
-func (ReqGetRoomStateByTypeAndKey) GetPrefix() []string                  { return []string{"r0"} }
+func (ReqGetRoomStateByTypeAndKey) GetTopic(cfg *config.Dendrite) string {
+	return getProxyRpcTopic(cfg)
+}
+func (ReqGetRoomStateByTypeAndKey) GetPrefix() []string { return []string{"r0"} }
 func (ReqGetRoomStateByTypeAndKey) NewRequest() core.Coder {
 	return new(external.GetRoomStateByTypeAndStateKeyRequest)
 }
@@ -62,7 +63,7 @@ func (ReqGetRoomStateByTypeAndKey) FillRequest(coder core.Coder, req *http.Reque
 func (ReqGetRoomStateByTypeAndKey) NewResponse(code int) core.Coder {
 	return make(internals.JSONMap)
 }
-func (ReqGetRoomStateByTypeAndKey) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomStateByTypeAndKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomStateByTypeAndStateKeyRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -73,7 +74,7 @@ func (ReqGetRoomStateByTypeAndKey) Process(ctx context.Context, consumer interfa
 	evType := req.EventType
 	stateKey := req.StateKey
 
-	states := c.rsTimeline.GetStateStreams(ctx, roomID)
+	states := c.rsTimeline.GetStateStreams(roomID)
 	if states != nil {
 		rs := c.rsCurState.GetRoomState(roomID)
 		if rs == nil {

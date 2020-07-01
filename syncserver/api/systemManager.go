@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"runtime"
 	"runtime/debug"
@@ -23,10 +22,10 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -57,7 +56,7 @@ func (ReqPostSystemManager) FillRequest(coder core.Coder, req *http.Request, var
 func (ReqPostSystemManager) NewResponse(code int) core.Coder {
 	return nil
 }
-func (r ReqPostSystemManager) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (r ReqPostSystemManager) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.PostSystemManagerRequest)
 
 	switch req.Type {

@@ -17,13 +17,11 @@ package presence
 import (
 	"context"
 	"database/sql"
-	"time"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -50,10 +48,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 		return nil, err
 	}
 
-	dataBase.db.SetMaxOpenConns(30)
-	dataBase.db.SetMaxIdleConns(30)
-	dataBase.db.SetConnMaxLifetime(time.Minute * 3)
-
 	schemas := []string{dataBase.presence.getSchema()}
 	for _, sqlStr := range schemas {
 		_, err := dataBase.db.Exec(sqlStr)
@@ -78,38 +72,18 @@ func (d *Database) SetGauge(qryDBGauge mon.LabeledGauge) {
 }
 
 // WriteOutputEvents implements OutputRoomEventWriter
-func (d *Database) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *Database) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 
 func (d *Database) RecoverCache() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "RecoverCache")
-	defer span.Finish()
-	err := d.presence.recoverPresences(ctx)
+	err := d.presence.recoverPresences()
 	if err != nil {
 		log.Errorf("presence.recoverPresences error %v", err)
 	}

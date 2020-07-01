@@ -18,20 +18,19 @@
 package routing
 
 import (
-	"net/http"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/gorilla/mux"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
+	"net/http"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary

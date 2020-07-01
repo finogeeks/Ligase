@@ -19,8 +19,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const pushRulesEnableSchema = `
@@ -72,18 +72,18 @@ func (s *pushRulesEnableStatements) prepare(d *DataBase) (err error) {
 	return
 }
 
-func (s *pushRulesEnableStatements) recoverPushRuleEnable(ctx context.Context) error {
+func (s *pushRulesEnableStatements) recoverPushRuleEnable() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverPushRuleEnableStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverPushRuleEnableStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ func (s *pushRulesEnableStatements) recoverPushRuleEnable(ctx context.Context) e
 	return nil
 }
 
-func (s *pushRulesEnableStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *pushRulesEnableStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -110,7 +110,7 @@ func (s *pushRulesEnableStatements) processRecover(ctx context.Context, rows *sq
 		update.IsRecovery = true
 		update.PushDBEvents.PushRuleEnableInsert = &pushRuleEnableInsert
 		update.SetUid(int64(common.CalcStringHashCode64(pushRuleEnableInsert.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "push_rules_enable")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update pushRulesEnable cache error: %v", err2)
 			if err == nil {
@@ -135,7 +135,7 @@ func (s *pushRulesEnableStatements) insertPushRuleEnable(
 			Enabled: enable,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "push_rules_enable")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onInsertPushRuleEnable(ctx, userID, ruleID, enable)

@@ -19,19 +19,23 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	e2e "github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/gomodule/redigo/redis"
 )
 
 type RedisCache struct {
 	pools    []*redis.Pool
 	poolSize int
+
+	schTimer *time.Ticker
+	device   sync.Map
+	token    sync.Map
 }
 
 type DeviceInfo struct {
@@ -44,19 +48,39 @@ type DeviceInfo struct {
 	lastTouchTime int64
 }
 
+//定时清理缓存
+func (rc *RedisCache) scheduleJob() {
+	for t := range rc.schTimer.C {
+		rc.device.Range(func(key, value interface{}) bool {
+			d := value.(*DeviceInfo)
+			//10分钟失效
+			if t.Unix()-d.lastTouchTime > 600 {
+				rc.device.Delete(key)
+				rc.token.Delete(key)
+			}
+			return true
+		})
+	}
+
+}
+
 func (rc *RedisCache) Prepare(cfg []string) (err error) {
 	rc.poolSize = len(cfg)
 	rc.pools = make([]*redis.Pool, rc.poolSize)
 	for i := 0; i < rc.poolSize; i++ {
 		addr := cfg[i]
 		rc.pools[i] = &redis.Pool{
-			MaxIdle:     200,
+			MaxIdle:     10,
 			MaxActive:   200,
 			Wait:        true,
 			IdleTimeout: 240 * time.Second,
 			Dial:        func() (redis.Conn, error) { return redis.DialURL(addr) },
 		}
 	}
+	rc.schTimer = time.NewTicker(5 * time.Minute)
+	rand.Seed(time.Now().Unix())
+	go rc.scheduleJob()
+
 	return err
 }
 
@@ -85,36 +109,45 @@ func (rc *RedisCache) GetMigTokenByToken(token string) (string, error) {
 func (rc *RedisCache) GetDeviceByDeviceID(deviceID string, userID string) *authtypes.Device {
 	key := fmt.Sprintf("%s:%s:%s", "device", userID, deviceID)
 	var device *DeviceInfo
-	reply, err := redis.Values(rc.SafeDo("hmget", key, "did", "user_id", "created_ts", "display_name", "device_type", "identifier"))
-	if err != nil {
-		log.Warnf("cache missed for did:%s uid:%s err:%v", deviceID, userID, err)
-		device = nil
+	if dev, ok := rc.device.Load(key); ok {
+		device = dev.(*DeviceInfo)
+		device.lastTouchTime = time.Now().Unix()
+		rc.device.Store(key, device)
 	} else {
-		device = &DeviceInfo{}
-		reply, err = redis.Scan(reply, &device.id, &device.userID, &device.createdTime, &device.displayName, &device.deviceType, &device.identifier)
+		reply, err := redis.Values(rc.SafeDo("hmget", key, "did", "user_id", "created_ts", "display_name", "device_type", "identifier"))
+
 		if err != nil {
-			device = nil
-		} else if device.id == "" {
+			log.Warnf("cache missed for did:%s uid:%s err:%v", deviceID, userID, err)
 			device = nil
 		} else {
-			device.lastTouchTime = time.Now().Unix()
+			device = &DeviceInfo{}
+			reply, err = redis.Scan(reply, &device.id, &device.userID, &device.createdTime, &device.displayName, &device.deviceType, &device.identifier)
+			if err != nil {
+				device = nil
+			} else if device.id == "" {
+				device = nil
+			} else {
+				device.lastTouchTime = time.Now().Unix()
+				rc.device.Store(key, device)
+			}
 		}
 	}
+
 	if device != nil && device.userID != "" {
 		isHuman := true
 		if device.deviceType == "bot" {
 			isHuman = false
 		}
 		return &authtypes.Device{
-			ID:           device.id,
-			UserID:       device.userID,
-			DisplayName:  device.displayName,
-			DeviceType:   device.deviceType,
-			IsHuman:      isHuman,
-			Identifier:   device.identifier,
-			LastActiveTs: device.lastTouchTime,
+			ID:          device.id,
+			UserID:      device.userID,
+			DisplayName: device.displayName,
+			DeviceType:  device.deviceType,
+			IsHuman:     isHuman,
+			Identifier:  device.identifier,
 		}
 	}
+
 	return nil
 }
 
@@ -140,6 +173,25 @@ func (rc *RedisCache) GetDevicesByUserID(userID string) *[]authtypes.Device {
 	}
 
 	return &devices
+}
+
+func (rc *RedisCache) UpdateLocalDevice(deviceID string, userID string, displayName string) {
+	key := fmt.Sprintf("%s:%s:%s", "device", userID, deviceID)
+	var device *DeviceInfo
+	if dev, ok := rc.device.Load(key); ok {
+		device = dev.(*DeviceInfo)
+		device.lastTouchTime = time.Now().Unix()
+		device.displayName = displayName
+		rc.device.Store(key, device)
+	}
+}
+
+func (rc *RedisCache) DeleteLocalDevice(deviceID string, userID string) {
+	key := fmt.Sprintf("%s:%s:%s", "device", userID, deviceID)
+	if _, ok := rc.device.Load(key); ok {
+		rc.device.Delete(key)
+		rc.token.Delete(key)
+	}
 }
 
 func (rc *RedisCache) SetPwdChangeDevcie(deviceID, userID string) error {
@@ -823,6 +875,36 @@ func (rc *RedisCache) SetAccountData(userID, roomID, acctType, content string) e
 	return conn.Flush()
 }
 
+func (rc *RedisCache) SetRoomState(roomID string, state []byte, token string) error {
+	conn := rc.pool().Get()
+	defer conn.Close()
+
+	key := fmt.Sprintf("%s:%s", "room_state", roomID)
+	err := conn.Send("HMSET", key, "state", state, "token", token)
+	if err != nil {
+		return err
+	}
+
+	return conn.Flush()
+}
+
+func (rc *RedisCache) GetRoomState(roomID string) ([]byte, string, error) {
+	conn := rc.pool().Get()
+	defer conn.Close()
+
+	key := fmt.Sprintf("%s:%s", "room_state", roomID)
+	reply, err := redis.Values(rc.SafeDo("hmget", key, "state", "token"))
+
+	if err != nil {
+		return nil, "", err
+	}
+
+	var bytes []byte
+	var token string
+	reply, err = redis.Scan(reply, &bytes, &token)
+	return bytes, token, err
+}
+
 func (rc *RedisCache) GetRoomOffsets(roomNID int64) (map[string]int64, error) {
 	result, err := redis.Values(rc.SafeDo("hgetall", fmt.Sprintf("offsets:%d", roomNID)))
 	if err != nil {
@@ -1034,344 +1116,4 @@ func (rc *RedisCache) DeleteUserInfo(userID string) error {
 	}
 
 	return conn.Flush()
-}
-
-func (rc *RedisCache) GetFakePartition(key string) (int32, error) {
-	p, err := redis.Int(rc.SafeDo("DECR", "fakepartition:"+key))
-	if err != nil {
-		return 0, err
-	}
-	return int32(p), nil
-}
-
-func (rc *RedisCache) AssignFedSendRecPartition(roomID, domain string, partition int32) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	key := "fedpart:" + roomID + ":" + domain
-	reply, err := redis.String(conn.Do("SET", key, partition, "NX", "PX", 30000))
-	if err != nil {
-		return err
-	}
-	if strings.ToLower(reply) != "ok" {
-		return errors.New("set fedpart not ok")
-	}
-
-	return nil
-}
-
-func (rc *RedisCache) UnassignFedSendRecPartition(roomID, domain string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	key := "fedpart:" + roomID + ":" + domain
-	err := conn.Send("DEL", key)
-
-	return err
-}
-
-func (rc *RedisCache) ExpireFedSendRecPartition(roomID, domain string) error {
-	key := "fedpart:" + roomID + ":" + domain
-	reply, err := redis.Values(rc.SafeDo("PEXPIRE", key, 30000))
-	if err != nil {
-		return err
-	}
-	result := 0
-	reply, err = redis.Scan(reply, &result)
-	if err != nil {
-		return err
-	}
-	if result == 0 {
-		return errors.New(key + " not exists or expire failed")
-	}
-
-	return nil
-}
-
-func (rc *RedisCache) AddFedPendingRooms(keys []string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	args := make([]interface{}, len(keys)+1)
-	args[0] = "fedsender:pendding"
-	for i := 0; i < len(keys); i++ {
-		args[i+1] = keys[i]
-	}
-	err := conn.Send("SADD", args...)
-	return err
-}
-
-func (rc *RedisCache) DelFedPendingRooms(keys []string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	args := make([]interface{}, len(keys)+1)
-	args[0] = "fedsender:pendding"
-	for i := 0; i < len(keys); i++ {
-		args[i+1] = keys[i]
-	}
-	err := conn.Send("SREM", args...)
-	return err
-}
-
-func (rc *RedisCache) QryFedPendingRooms() ([]string, error) {
-	reply, err := redis.Values(rc.SafeDo("SMEMBERS", "fedsender:pendding"))
-	if err != nil {
-		return nil, err
-	}
-	var roomIDs []string
-	var roomID string
-	for {
-		reply, err = redis.Scan(reply, &roomID)
-		if err != nil {
-			break
-		}
-		roomIDs = append(roomIDs, roomID)
-	}
-	return roomIDs, nil
-}
-
-func (rc *RedisCache) StoreFedSendRec(roomID, domain, eventID string, sendTimes, pendingSize int32, domainOffset int64) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-	err := conn.Send("HMSET", "fedsend:"+roomID+":"+domain,
-		"eventID", eventID,
-		"sendTimes", sendTimes,
-		"pendingSize", pendingSize,
-		"domainOffset", domainOffset,
-	)
-	return err
-}
-
-func (rc *RedisCache) GetFedSendRec(roomID, domain string) (eventID string, sendTimes, pendingSize int32, domainOffset int64, err error) {
-	reply, err := redis.Values(rc.SafeDo("HMGET", "fedsend:"+roomID+":"+domain,
-		"eventID", "sendTimes", "pendingSize", "domainOffset"))
-	if err != nil {
-		return
-	}
-	if reply == nil {
-		err = errors.New("redis value nil")
-		return
-	}
-	allNil := true
-	for _, v := range reply {
-		if v != nil {
-			allNil = false
-			break
-		}
-	}
-	if allNil {
-		err = errors.New("redis value nil")
-		return
-	}
-
-	reply, err = redis.Scan(reply, &eventID, &sendTimes, &pendingSize, &domainOffset)
-	return
-}
-
-func (rc *RedisCache) IncrFedRoomPending(roomID, domain string, amt int) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	const SCRIPT_INCR = `
-redis.call('SADD', 'fedsender:pendding', ARGV[2])
-if redis.call('EXISTS', KEYS[1]) == 1 then
-	redis.call('HINCRBY', KEYS[1], 'pendingSize', ARGV[1])
-	return 1
-else
-	return 0
-end
-`
-	lua := redis.NewScript(1, SCRIPT_INCR)
-	_, err := lua.Do(conn, "fedsend:"+roomID+":"+domain, amt, roomID+"|"+domain)
-	return err
-}
-
-func (rc *RedisCache) IncrFedRoomDomainOffset(roomID, domain, eventID string, domainOffset int64, penddingDecr int32) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	const SCRIPT_INCR = `
-if redis.call('EXISTS', KEYS[1]) == 1 then
-	redis.call('HMSET', KEYS[1], 'domainOffset', ARGV[1], "eventID", ARGV[2])
-	local pendingSize = redis.call('HINCRBY',KEYS[1], 'pendingSize', ARGV[3])
-	if pendingSize <= 0 then
-		redis.call('SREM', 'fedsender:pendding', ARGV[4])
-	end
-	redis.call('HINCRBY', KEYS[1], 'sendTimes', 1)
-	return 1
-else
-	return 0
-end
-`
-	lua := redis.NewScript(1, SCRIPT_INCR)
-	err := lua.Send(conn, "fedsend:"+roomID+":"+domain, domainOffset, eventID, -penddingDecr, roomID+"|"+domain)
-	return err
-}
-
-func (rc *RedisCache) FreeFedSendRec(roomID, domain string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-	err := conn.Send("DEL", "fedsend:"+roomID+":"+domain)
-	return err
-}
-
-func (rc *RedisCache) AssignFedBackfillRecPartition(roomID string, partition int32) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	key := "fedbackfillpart:" + roomID
-	reply, err := redis.String(conn.Do("SET", key, partition, "NX", "PX", 30000))
-	if err != nil {
-		return err
-	}
-	if strings.ToLower(reply) == "ok" {
-		return errors.New("set fedbackfillpart not ok")
-	}
-
-	return err
-}
-
-func (rc *RedisCache) UnassignFedBackfillRecPartition(roomID string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	key := "fedbackfillpart:" + roomID
-	err := conn.Send("DEL", key)
-
-	return err
-}
-
-func (rc *RedisCache) ExpireFedBackfillRecPartition(roomID string) error {
-	key := "fedbackfillpart:" + roomID
-	reply, err := redis.Values(rc.SafeDo("PEXPIRE", key, 30000))
-	if err != nil {
-		return err
-	}
-	result := 0
-	reply, err = redis.Scan(reply, &result)
-	if err != nil {
-		return err
-	}
-	if result == 0 {
-		return errors.New(key + " not exists or expire failed")
-	}
-
-	return nil
-}
-
-func (rc *RedisCache) AddFedBackfillRooms(keys []string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	args := make([]interface{}, len(keys)+1)
-	args[0] = "fedbackfill:pendding"
-	for i := 0; i < len(keys); i++ {
-		args[i+1] = keys[i]
-	}
-	err := conn.Send("SADD", args...)
-	return err
-}
-
-func (rc *RedisCache) DelFedBackfillRooms(roomIDs []string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	args := make([]interface{}, len(roomIDs)+1)
-	args[0] = "fedbackfill:pendding"
-	for i := 0; i < len(roomIDs); i++ {
-		args[i+1] = roomIDs[i]
-	}
-	err := conn.Send("SREM", args...)
-	return err
-}
-
-func (rc *RedisCache) QryFedBackfillRooms() ([]string, error) {
-	reply, err := redis.Values(rc.SafeDo("SMEMBERS", "fedbackfill:pendding"))
-	if err != nil {
-		return nil, err
-	}
-	var roomIDs []string
-	var roomID string
-	for {
-		reply, err = redis.Scan(reply, &roomID)
-		if err != nil {
-			break
-		}
-		roomIDs = append(roomIDs, roomID)
-	}
-	return roomIDs, nil
-}
-
-func (rc *RedisCache) StoreFedBackfillRec(roomID string, depth int64, finished bool, finishedDomains string, states string) (loaded bool, err error) {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	const SCRIPT_INCR = `
-if redis.call('EXISTS', KEYS[1]) == 0 then
-	redis.call('HMSET', KEYS[1], 'depth', ARGV[1], 'finished', ARGV[2], 'finishedDomains', ARGV[3], 'states': ARGV4)
-	return 1
-else
-	return 0
-end
-`
-	lua := redis.NewScript(1, SCRIPT_INCR)
-	reply, err := redis.Int(lua.Do(conn, "fedbackfill:"+roomID, depth, finished, finishedDomains, states))
-	if err != nil {
-		return false, err
-	}
-	return reply == 0, nil
-}
-
-func (rc *RedisCache) UpdateFedBackfillRec(roomID string, depth int64, finished bool, finishedDomains string, states string) (updated bool, err error) {
-	conn := rc.pool().Get()
-	defer conn.Close()
-
-	const SCRIPT_INCR = `
-if redis.call('EXISTS', KEYS[1]) == 1 then
-	redis.call('HMSET', KEYS[1], 'depth', ARGV[1], 'finished', ARGV[2], 'finishedDomains', ARGV[3], 'states': ARGV4)
-	return 1
-else
-	return 0
-end
-`
-	lua := redis.NewScript(1, SCRIPT_INCR)
-	reply, err := redis.Int(lua.Do(conn, "fedbackfill:"+roomID, depth, finished, finishedDomains, states))
-	if err != nil {
-		return false, err
-	}
-	return reply == 0, nil
-}
-
-func (rc *RedisCache) GetFedBackfillRec(roomID string) (depth int64, finished bool, finishedDomains string, states string, err error) {
-	reply, err := redis.Values(rc.SafeDo("HMGET", "fedbackfill:"+roomID,
-		"depth", "finished", "finishedDomains", "states"))
-	if err != nil {
-		return
-	}
-	if reply == nil {
-		err = errors.New("redis value nil")
-		return
-	}
-	allNil := true
-	for _, v := range reply {
-		if v != nil {
-			allNil = false
-			break
-		}
-	}
-	if allNil {
-		err = errors.New("redis value nil")
-		return
-	}
-
-	reply, err = redis.Scan(reply, &depth, &finished, &finishedDomains, &states)
-	return
-}
-
-func (rc *RedisCache) FreeFedBackfill(roomID string) error {
-	conn := rc.pool().Get()
-	defer conn.Close()
-	err := conn.Send("DEL", "fedbackfill:"+roomID)
-	return err
 }

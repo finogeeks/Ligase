@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const algorithmSchema = `
@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS encrypt_algorithm_user_id ON encrypt_algorithm(user_i
 CREATE INDEX IF NOT EXISTS encrypt_algorithm_device_id ON encrypt_algorithm(device_id);
 `
 const insertAlSQL = `
-INSERT INTO encrypt_algorithm (device_id, user_id, algorithms, identifier)
+INSERT INTO encrypt_algorithm (device_id, user_id, algorithms, identifier) 
 VALUES ($1, $2, $3, $4) on conflict (device_id, user_id) do UPDATE SET algorithms = EXCLUDED.algorithms, identifier = EXCLUDED.identifier
 `
 
@@ -87,18 +87,18 @@ func (s *alStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *alStatements) recoverAls(ctx context.Context) error {
+func (s *alStatements) recoverAls() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverAlsStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverAlsStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func (s *alStatements) recoverAls(ctx context.Context) error {
 	return nil
 }
 
-func (s *alStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *alStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -126,7 +126,7 @@ func (s *alStatements) processRecover(ctx context.Context, rows *sql.Rows) (exis
 		update.IsRecovery = true
 		update.E2EDBEvents.AlInsert = &alsInsert
 		update.SetUid(int64(common.CalcStringHashCode64(alsInsert.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_algorithm")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update algorithm cache error: %v", err2)
 			if err == nil {
@@ -154,7 +154,7 @@ func (s *alStatements) insertAl(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_algorithm")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.insertAlStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID, algorithms, identifier)
@@ -184,7 +184,7 @@ func (s *alStatements) deleteAl(
 			UserID:   userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_algorithm")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteAlStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID)
@@ -215,7 +215,7 @@ func (s *alStatements) deleteMacAl(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_algorithm")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteMacAlStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID, identifier)

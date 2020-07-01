@@ -15,14 +15,13 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/nats-io/go-nats"
 	"net/http"
@@ -34,9 +33,8 @@ type StdRpcConsumer struct {
 	cache            service.Cache
 	syncDB           model.SyncAPIDatabase
 	chanSize         uint32
-	//msgChan          []chan *types.StdContent
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan          []chan *types.StdContent
+	cfg              *config.Dendrite
 }
 
 func NewStdRpcConsumer(
@@ -58,7 +56,7 @@ func NewStdRpcConsumer(
 	return s
 }
 
-func (s *StdRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *StdRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -69,7 +67,7 @@ func (s *StdRpcConsumer) GetTopic() string {
 func (s *StdRpcConsumer) Clean() {
 }
 
-func (s *StdRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *StdRpcConsumer) cb(msg *nats.Msg) {
 	var result types.StdContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc send to device cb error %v", err)
@@ -77,29 +75,28 @@ func (s *StdRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	}
 	result.Reply = msg.Reply
 	idx := common.CalcStringHashCode(result.Sender) % s.chanSize
-	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+	s.msgChan[idx] <- &result
 }
 
-func (s *StdRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.StdContent)
-		s.processStd(msg.Ctx, &data.StdRequest, data.Reply, data.Sender, data.EventType)
+func (s *StdRpcConsumer) startWorker(msgChan chan *types.StdContent) {
+	for data := range msgChan {
+		s.processStd(&data.StdRequest, data.Reply, data.Sender, data.EventType)
 	}
 }
 
 func (s *StdRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.StdContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.StdContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *StdRpcConsumer) processStd(ctx context.Context, stdRq *types.StdRequest, reply, sender, eventType string) {
+func (s *StdRpcConsumer) processStd(stdRq *types.StdRequest, reply, sender, eventType string) {
 	for uid, deviceMap := range stdRq.Sender {
 		if common.IsRelatedRequest(uid, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 			// uid is local domain
@@ -119,7 +116,7 @@ func (s *StdRpcConsumer) processStd(ctx context.Context, stdRq *types.StdRequest
 							continue
 						}
 
-						s.stdEventTimeline.AddSTDEventStream(ctx, &dataStream, uid, val.ID)
+						s.stdEventTimeline.AddSTDEventStream(&dataStream, uid, val.ID)
 					}
 				} else {
 					/*dev := cache.GetDeviceByDeviceID(deviceID, uid)
@@ -135,7 +132,7 @@ func (s *StdRpcConsumer) processStd(ctx context.Context, stdRq *types.StdRequest
 					}*/
 
 					//log.Errorf("add sendToDevice event pos %d sender %s type %s uid %s device %s", pos, device.UserID, eventType, uid, deviceID)
-					s.stdEventTimeline.AddSTDEventStream(ctx, &dataStream, uid, deviceID)
+					s.stdEventTimeline.AddSTDEventStream(&dataStream, uid, deviceID)
 				}
 			}
 		}

@@ -32,10 +32,10 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/common/utils"
-	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/authtypes"
 	"gopkg.in/macaroon.v2"
 )
 
@@ -421,11 +421,6 @@ func PanicTrace(kb int) []byte {
 	}
 	stack = bytes.TrimRight(stack, "\n")
 	return stack
-}
-
-func LogStack() {
-	data := PanicTrace(16)
-	log.Info(string(data))
 }
 
 func GetMsgType(content map[string]interface{}) (string, bool) {

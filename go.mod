@@ -3,7 +3,7 @@ module github.com/finogeeks/ligase
 go 1.14
 
 require (
-	github.com/Shopify/sarama v1.26.3
+	github.com/Shopify/sarama v1.26.4
 	github.com/bsm/sarama-cluster v2.1.15+incompatible
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
@@ -12,31 +12,28 @@ require (
 	github.com/gorilla/mux v1.7.4
 	github.com/irfansharif/cfilter v0.1.1
 	github.com/jolestar/go-commons-pool v2.0.0+incompatible
-	github.com/json-iterator/go v1.1.9
-	github.com/lib/pq v1.5.2
+	github.com/json-iterator/go v1.1.10
+	github.com/lib/pq v1.7.0
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/nats-io/gnatsd v1.4.1 // indirect
 	github.com/nats-io/go-nats v1.7.2
-	github.com/nats-io/nkeys v0.1.4 // indirect
+	github.com/nats-io/nkeys v0.2.0 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
-	github.com/onsi/ginkgo v1.12.2 // indirect
+	github.com/onsi/ginkgo v1.13.0 // indirect
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/philhofer/fwd v1.0.0 // indirect
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.6.0
-	github.com/sirupsen/logrus v1.6.0
+	github.com/prometheus/client_golang v1.7.1
 	github.com/smallnest/gofsm v0.0.0-20190306032117-f5ba1bddca7b
 	github.com/stretchr/testify v1.4.0
 	github.com/tidwall/gjson v1.6.0
 	github.com/tidwall/sjson v1.1.1
 	github.com/tinylib/msgp v1.1.2 // indirect
-	github.com/uber/jaeger-client-go v2.23.1+incompatible
+	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible
 	go.uber.org/atomic v1.6.0
 	go.uber.org/multierr v1.5.0
-	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	google.golang.org/appengine v1.6.6 // indirect
 	gopkg.in/confluentinc/confluent-kafka-go.v1 v1.1.0
 	gopkg.in/macaroon.v2 v2.1.0

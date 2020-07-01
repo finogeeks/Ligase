@@ -30,10 +30,10 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/common/config"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -42,9 +42,8 @@ func init() {
 }
 
 type RoomDBEVConsumer struct {
-	db model.RoomServerDatabase
-	//msgChan     []chan *dbtypes.DBEvent
-	msgChan     []chan common.ContextMsg
+	db          model.RoomServerDatabase
+	msgChan     []chan *dbtypes.DBEvent
 	monState    []*DBMonItem
 	path        string
 	fileName    string
@@ -55,48 +54,46 @@ type RoomDBEVConsumer struct {
 	cfg         *config.Dendrite
 }
 
-func (s *RoomDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *RoomDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
 		data := output.RoomDBEvents
 		switch key {
 		case dbtypes.EventJsonInsertKey:
-			res = s.onEventJsonInsert(ctx, data.EventJsonInsert)
+			res = s.onEventJsonInsert(context.TODO(), data.EventJsonInsert)
 		case dbtypes.EventInsertKey:
-			res = s.onEventInsert(ctx, data.EventInsert)
+			res = s.onEventInsert(context.TODO(), data.EventInsert)
 		case dbtypes.EventRoomInsertKey:
-			res = s.onEventRoomInsert(ctx, data.EventRoomInsert)
+			res = s.onEventRoomInsert(context.TODO(), data.EventRoomInsert)
 		case dbtypes.EventRoomUpdateKey:
-			res = s.onEventRoomUpdate(ctx, data.EventRoomUpdate)
+			res = s.onEventRoomUpdate(context.TODO(), data.EventRoomUpdate)
 		case dbtypes.EventStateSnapInsertKey:
-			res = s.onEventStateSnapInsert(ctx, data.EventStateSnapInsert)
+			res = s.onEventStateSnapInsert(context.TODO(), data.EventStateSnapInsert)
 		case dbtypes.EventInviteInsertKey:
-			res = s.onEventInviteInsert(ctx, data.EventInviteInsert)
+			res = s.onEventInviteInsert(context.TODO(), data.EventInviteInsert)
 		case dbtypes.EventInviteUpdateKey:
-			res = s.onEventInviteUpdate(ctx, data.EventInviteUpdate)
+			res = s.onEventInviteUpdate(context.TODO(), data.EventInviteUpdate)
 		case dbtypes.EventMembershipInsertKey:
-			res = s.onEventMembershipInsert(ctx, data.EventMembershipInsert)
+			res = s.onEventMembershipInsert(context.TODO(), data.EventMembershipInsert)
 		case dbtypes.EventMembershipUpdateKey:
-			res = s.onEventMembershipUpdate(ctx, data.EventMembershipUpdate)
+			res = s.onEventMembershipUpdate(context.TODO(), data.EventMembershipUpdate)
 		case dbtypes.EventMembershipForgetUpdateKey:
-			res = s.onEventMembershipForgetUpdate(ctx, data.EventMembershipForgetUpdate)
+			res = s.onEventMembershipForgetUpdate(context.TODO(), data.EventMembershipForgetUpdate)
 		case dbtypes.AliasInsertKey:
-			res = s.onAliasInsert(ctx, data.AliaseInsert)
+			res = s.onAliasInsert(context.TODO(), data.AliaseInsert)
 		case dbtypes.AliasDeleteKey:
-			res = s.onAliasDelete(ctx, data.AliaseDelete)
+			res = s.onAliasDelete(context.TODO(), data.AliaseDelete)
 		case dbtypes.RoomDomainInsertKey:
-			res = s.onRoomDomainInsert(ctx, data.RoomDomainInsert)
+			res = s.onRoomDomainInsert(context.TODO(), data.RoomDomainInsert)
 		case dbtypes.RoomEventUpdateKey:
-			res = s.onRoomEventUpdate(ctx, data.RoomEventUpdate)
+			res = s.onRoomEventUpdate(context.TODO(), data.RoomEventUpdate)
 		case dbtypes.RoomDepthUpdateKey:
-			res = s.onRoomDepthUpdate(ctx, data.RoomDepthUpdate)
+			res = s.onRoomDepthUpdate(context.TODO(), data.RoomDepthUpdate)
 		case dbtypes.SettingUpsertKey:
-			res = s.onSettingUpdate(ctx, data.SettingsInsert)
+			res = s.onSettingUpdate(context.TODO(), data.SettingsInsert)
 		default:
 			res = nil
 			log.Infow("room server dbevent: ignoring unknown output type", log.KeysAndValues{"key", key})
@@ -146,9 +143,9 @@ func NewRoomDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, 8)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 8)
 	for i := uint64(0); i < 8; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 
 	s.mutex = new(sync.Mutex)
@@ -183,16 +180,12 @@ func (s *RoomDBEVConsumer) startRecover() {
 		select {
 		case <-s.ticker.C:
 			s.ticker.Reset(time.Second * 600) //10分钟一次
-			func() {
-				span, ctx := common.StartSobSomSpan(context.Background(), "RoomDBEVConsumer.startRecover")
-				defer span.Finish()
-				s.recover(ctx)
-			}()
+			s.recover()
 		}
 	}
 }
 
-func (s *RoomDBEVConsumer) OnMessage(ctx context.Context, dbev *dbtypes.DBEvent) error {
+func (s *RoomDBEVConsumer) OnMessage(dbev *dbtypes.DBEvent) error {
 	chanid := 0
 	switch dbev.Key {
 	case dbtypes.EventJsonInsertKey:
@@ -216,7 +209,7 @@ func (s *RoomDBEVConsumer) OnMessage(ctx context.Context, dbev *dbtypes.DBEvent)
 		return nil
 	}
 
-	s.msgChan[chanid] <- common.ContextMsg{Ctx: ctx, Msg: dbev}
+	s.msgChan[chanid] <- dbev
 	return nil
 }
 
@@ -444,7 +437,7 @@ func (s *RoomDBEVConsumer) renameRecoverFile() bool {
 	return false
 }
 
-func (s *RoomDBEVConsumer) recover(ctx context.Context) {
+func (s *RoomDBEVConsumer) recover() {
 	log.Infof("RoomDBEVConsumer start recover")
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
@@ -472,7 +465,7 @@ func (s *RoomDBEVConsumer) recover(ctx context.Context) {
 				continue
 			}
 
-			s.OnMessage(ctx, &dbEv)
+			s.OnMessage(&dbEv)
 		}
 
 		f.Close()

@@ -23,12 +23,12 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -36,7 +36,7 @@ func init() {
 	Register(model.CMD_FED_SENDJOIN, SendJoin)
 }
 
-func MakeJoin(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func MakeJoin(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	retMsg := &model.GobMessage{Body: []byte{}}
 	if msg == nil {
 		return retMsg, errors.New("msg from connector is nil")
@@ -56,7 +56,7 @@ func MakeJoin(ctx context.Context, msg *model.GobMessage, cache service.Cache, r
 	var queryRes roomserverapi.QueryRoomStateResponse
 	var queryReq roomserverapi.QueryRoomStateRequest
 	queryReq.RoomID = reqParam.RoomID
-	err = rpcCli.QueryRoomState(ctx, &queryReq, &queryRes)
+	err = rpcCli.QueryRoomState(context.TODO(), &queryReq, &queryRes)
 	if err != nil {
 		return retMsg, errors.New("MakeJoin query room state error: " + err.Error())
 	}
@@ -94,7 +94,7 @@ func MakeJoin(ctx context.Context, msg *model.GobMessage, cache service.Cache, r
 	return retMsg, nil
 }
 
-func SendJoin(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func SendJoin(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	retMsg := &model.GobMessage{Body: []byte{}}
 	if msg == nil {
 		return retMsg, errors.New("msg from connector is nil")
@@ -114,7 +114,7 @@ func SendJoin(ctx context.Context, msg *model.GobMessage, cache service.Cache, r
 	var queryRes roomserverapi.QueryRoomStateResponse
 	var queryReq roomserverapi.QueryRoomStateRequest
 	queryReq.RoomID = reqParam.RoomID
-	err := rpcCli.QueryRoomState(ctx, &queryReq, &queryRes)
+	err := rpcCli.QueryRoomState(context.TODO(), &queryReq, &queryRes)
 	if err != nil {
 		return retMsg, errors.New("SendJoin query room state error: " + err.Error())
 	}

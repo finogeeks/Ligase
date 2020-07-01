@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/jsonerror"
@@ -60,7 +59,7 @@ func (ReqGetSync) FillRequest(coder core.Coder, req *http.Request, vars map[stri
 	msg.Since = query.Get("since")
 	return nil
 }
-func (ReqGetSync) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetSync) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
@@ -77,5 +76,5 @@ func (ReqGetSync) Process(ctx context.Context, consumer interface{}, msg core.Co
 		TraceId:     fmt.Sprintf("%d", traceId),
 	}
 
-	return c.sm.OnSyncRequest(ctx, &httpReq, device)
+	return c.sm.OnSyncRequest(&httpReq, device)
 }

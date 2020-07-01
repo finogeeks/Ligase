@@ -21,6 +21,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/storage/model"
 	"io"
 	"os"
 	"strings"
@@ -28,13 +32,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/storage/model"
-
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -42,9 +41,8 @@ func init() {
 }
 
 type PresenceDBEVConsumer struct {
-	db model.PresenceDatabase
-	//msgChan     []chan *dbtypes.DBEvent
-	msgChan     []chan common.ContextMsg
+	db          model.PresenceDatabase
+	msgChan     []chan *dbtypes.DBEvent
 	monState    []*DBMonItem
 	path        string
 	fileName    string
@@ -55,18 +53,16 @@ type PresenceDBEVConsumer struct {
 	cfg         *config.Dendrite
 }
 
-func (s *PresenceDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *PresenceDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
 		data := output.PresenceDBEvents
 		switch key {
 		case dbtypes.PresencesInsertKey:
-			res = s.OnInsertPresences(ctx, data.PresencesInsert)
+			res = s.OnInsertPresences(context.TODO(), data.PresencesInsert)
 		default:
 			res = nil
 			log.Infow("presence db event: ignoring unknown output type", log.KeysAndValues{"key", key})
@@ -116,9 +112,9 @@ func NewPresenceDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, 1)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 1)
 	for i := uint64(0); i < 1; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 
 	s.mutex = new(sync.Mutex)
@@ -153,16 +149,12 @@ func (s *PresenceDBEVConsumer) startRecover() {
 		select {
 		case <-s.ticker.C:
 			s.ticker.Reset(time.Second * 600) //10分钟一次
-			func() {
-				span, ctx := common.StartSobSomSpan(context.Background(), "PresenceDBEVConsumer.startRecover")
-				defer span.Finish()
-				s.recover(ctx)
-			}()
+			s.recover()
 		}
 	}
 }
 
-func (s *PresenceDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
+func (s *PresenceDBEVConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
 	chanID := 0
 	switch dbEv.Key {
 	case dbtypes.PresencesInsertKey:
@@ -172,7 +164,7 @@ func (s *PresenceDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEv
 		return nil
 	}
 
-	s.msgChan[chanID] <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+	s.msgChan[chanID] <- dbEv
 	return nil
 }
 
@@ -237,7 +229,7 @@ func (s *PresenceDBEVConsumer) renameRecoverFile() bool {
 	return false
 }
 
-func (s *PresenceDBEVConsumer) recover(ctx context.Context) {
+func (s *PresenceDBEVConsumer) recover() {
 	log.Infof("PresenceDBEVConsumer start recover")
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
@@ -265,7 +257,7 @@ func (s *PresenceDBEVConsumer) recover(ctx context.Context) {
 				continue
 			}
 
-			s.OnMessage(ctx, &dbEv)
+			s.OnMessage(&dbEv)
 		}
 
 		f.Close()

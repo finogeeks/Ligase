@@ -25,13 +25,13 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/proxy/bridge"
 	"github.com/finogeeks/ligase/proxy/consumers"
 	"github.com/finogeeks/ligase/proxy/handler"
 	"github.com/finogeeks/ligase/proxy/routing"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 
 	// "io/ioutil"
@@ -81,14 +81,14 @@ func SetupProxy(
 	)
 }
 
-func loadCert(ctx context.Context, keyDB model.KeyDatabase) error {
+func loadCert(keyDB model.KeyDatabase) error {
 	if config.GetConfig().NotaryService.CliHttpsEnable == false &&
 		config.GetConfig().NotaryService.SrvHttpsEnable == false {
 		log.Infof("--------------notary service is disable")
 		return nil
 	}
 
-	rootCA, serverCert, serverKey, _, _ := keyDB.SelectAllCerts(ctx)
+	rootCA, serverCert, serverKey, _, _ := keyDB.SelectAllCerts(context.TODO())
 
 	// debug
 	/*
@@ -112,7 +112,7 @@ func loadCert(ctx context.Context, keyDB model.KeyDatabase) error {
 
 	if rootCA == "" {
 		reqUrl := config.GetConfig().NotaryService.RootCAUrl
-		resp, err := handler.DownloadFromNotary(ctx, "rootCA", reqUrl, keyDB)
+		resp, err := handler.DownloadFromNotary("rootCA", reqUrl, keyDB)
 		if err != nil {
 			return err
 		}
@@ -121,7 +121,7 @@ func loadCert(ctx context.Context, keyDB model.KeyDatabase) error {
 	if serverCert == "" || serverKey == "" {
 		reqUrl := fmt.Sprintf(config.GetConfig().NotaryService.CertUrl, config.GetConfig().Matrix.ServerName[0])
 		// reqUrl := fmt.Sprintf(config.GetConfig().NotaryService.CertUrl, "dev.finogeeks.club") // debug
-		resp, err := handler.DownloadFromNotary(ctx, "cert", reqUrl, keyDB)
+		resp, err := handler.DownloadFromNotary("cert", reqUrl, keyDB)
 		if err != nil {
 			return err
 		}

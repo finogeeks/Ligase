@@ -15,126 +15,217 @@
 package queue
 
 import (
-	"context"
 	"sync"
-	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/config"
-	fedrepos "github.com/finogeeks/ligase/federation/model/repos"
-	"github.com/finogeeks/ligase/model/repos"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/federation/storage/model"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 )
 
-type PartitionProcessor interface {
-	AssignRoomPartition(ctx context.Context, roomID, domain string, retryTime time.Duration, retryInterval time.Duration) (*fedrepos.RecordItem, bool)
-	TryAssignRoomPartition(ctx context.Context, roomID, domain string) (*fedrepos.RecordItem, bool)
-	UnassignRoomPartition(ctx context.Context, roomID, domain string)
-	OnRoomDomainRelease(ctx context.Context, origin, roomID, domain string)
-	HasAssgined(ctx context.Context, roomID, domain string) (*fedrepos.RecordItem, bool)
+type RecordItem struct {
+	RoomID string
+	Domain string
+
+	EventID     string
+	SendTimes   int32
+	PendingSize int32
 }
 
 // OutgoingQueues is a collection of queues for sending transactions to other
 // matrix servers
 type OutgoingQueues struct {
-	cfg                *config.Fed
-	origin             gomatrixserverlib.ServerName
-	fedClient          *client.FedClientWrap
-	queues             sync.Map
-	rpcCli             roomserverapi.RoomserverRPCAPI
-	feddomains         *common.FedDomains
-	rsRepo             *repos.RoomServerCurStateRepo
-	recRepo            *fedrepos.SendRecRepo
-	partitionProcessor PartitionProcessor
+	cfg         *config.Fed
+	origin      gomatrixserverlib.ServerName
+	sentCounter *int64
+	// client     *gomatrixserverlib.FederationClient
+	fedClient  *client.FedClientWrap
+	queues     sync.Map
+	rpcCli     roomserverapi.RoomserverRPCAPI
+	db         model.FederationDatabase
+	feddomains *common.FedDomains
 }
 
 // NewOutgoingQueues makes a new OutgoingQueues
 func NewOutgoingQueues(
 	origin gomatrixserverlib.ServerName,
+	sentCounter *int64,
 	fedClient *client.FedClientWrap,
 	rpcCli roomserverapi.RoomserverRPCAPI,
+	db model.FederationDatabase,
 	cfg *config.Fed,
 	feddomains *common.FedDomains,
-	rsRepo *repos.RoomServerCurStateRepo,
-	recRepo *fedrepos.SendRecRepo,
-	partitionProcessor PartitionProcessor,
 ) *OutgoingQueues {
 	return &OutgoingQueues{
-		cfg:                cfg,
-		origin:             origin,
-		fedClient:          fedClient,
-		rpcCli:             rpcCli,
-		feddomains:         feddomains,
-		rsRepo:             rsRepo,
-		recRepo:            recRepo,
-		partitionProcessor: partitionProcessor,
+		cfg:         cfg,
+		origin:      origin,
+		sentCounter: sentCounter,
+		fedClient:   fedClient,
+		rpcCli:      rpcCli,
+		db:          db,
+		feddomains:  feddomains,
 	}
-}
-
-func (oqs *OutgoingQueues) getDestinationQueue(roomID, domain string) *destinationQueue {
-	var oq *destinationQueue
-	key := roomID + ":" + domain
-	val, ok := oqs.queues.Load(key)
-	if !ok {
-		val, _ = oqs.queues.LoadOrStore(key, &destinationQueue{
-			origin:             oqs.origin,
-			roomID:             roomID,
-			domain:             domain,
-			feddomains:         oqs.feddomains,
-			fedClient:          oqs.fedClient,
-			rpcCli:             oqs.rpcCli,
-			rsRepo:             oqs.rsRepo,
-			recRepo:            oqs.recRepo,
-			partitionProcessor: oqs.partitionProcessor,
-		})
-	}
-	oq = val.(*destinationQueue)
-	return oq
 }
 
 // SendEvent sends an event to the destinations
 func (oqs *OutgoingQueues) SendEvent(
-	ctx context.Context,
-	partition int32,
 	ev *gomatrixserverlib.Event,
-	domain string,
+	origin gomatrixserverlib.ServerName,
+	destinations []gomatrixserverlib.ServerName,
 	roomID string,
+	recItems map[string]*RecordItem,
 ) error {
 	if ev == nil {
 		return nil
 	}
+	// if origin != oqs.origin {
+	// 	// TODO: Support virtual hosting; gh issue #577.
+	// 	return fmt.Errorf(
+	// 		"sendevent: unexpected server to send as: got %q expected %q",
+	// 		origin, oqs.origin,
+	// 	)
+	// }
 
-	oq := oqs.getDestinationQueue(roomID, domain)
-	oq.SendEvent(ctx, partition, ev)
+	// Remove our own server from the list of destinations.
+	destinations = filterDestinations(oqs.origin, destinations)
+
+	// log.Infof("Sending event destinations: %v, event: %s", destinations, ev.EventID())
+	for _, domain := range destinations {
+		oq := oqs.getDestinationQueue(string(domain), roomID, true, recItems[string(domain)])
+		if oq == nil {
+			log.Warnf("OutgoingQueues.SendEvent connector not in config file, domain: %s", domain)
+			continue
+		}
+		oq.SendEvent(ev)
+	}
 
 	return nil
+}
+
+// SendStates sends init state events to the destinations
+func (oqs *OutgoingQueues) SendStates(
+	evs []*gomatrixserverlib.Event,
+	origin gomatrixserverlib.ServerName,
+	destinations []gomatrixserverlib.ServerName,
+	roomID string,
+	recItems map[string]*RecordItem,
+) error {
+	if len(evs) <= 0 {
+		return nil
+	}
+	// if origin != oqs.origin {
+	// 	// TODO: Support virtual hosting; gh issue #577.
+	// 	return fmt.Errorf(
+	// 		"sendevent: unexpected server to send as: got %q expected %q",
+	// 		origin, oqs.origin,
+	// 	)
+	// }
+
+	// Remove our own server from the list of destinations.
+	destinations = filterDestinations(oqs.origin, destinations)
+
+	// log.Infof("Sending event destinations: %v, event: %s", destinations, ev.EventID())
+	for _, domain := range destinations {
+		oq := oqs.getDestinationQueue(string(domain), roomID, true, recItems[string(domain)])
+		if oq == nil {
+			log.Warnf("OutgoingQueues.SendStates connector not in config file, domain: %s", domain)
+			continue
+		}
+		oq.SendStates(evs)
+	}
+
+	return nil
+}
+
+func (oqs *OutgoingQueues) RetrySendBackfillEvs(recordItem *RecordItem) {
+	oq := oqs.getDestinationQueue(recordItem.Domain, recordItem.RoomID, true, recordItem)
+	if oq == nil {
+		log.Warnf("OutgoingQueues.RetrySendBackfillEvs connector not in config file, domain: %s", recordItem.Domain)
+		return
+	}
+	oq.RetrySendBackfillEvs()
+}
+
+func (oqs *OutgoingQueues) getDestinationQueue(domain, roomID string, create bool, recItem *RecordItem) *destinationQueue {
+	key := domain + ":" + roomID
+	var oq *destinationQueue
+	val, ok := oqs.queues.Load(key)
+	if (!ok || val == nil) && create {
+		//destination, _ := oqs.feddomains.GetDomainHost(domain)
+		oq = &destinationQueue{
+			origin:      oqs.origin,
+			domain:      domain,
+			sentCounter: oqs.sentCounter,
+			feddomains:  oqs.feddomains,
+			fedClient:   oqs.fedClient,
+			rpcCli:      oqs.rpcCli,
+			db:          oqs.db,
+			recItem:     recItem,
+		}
+		val, loaded := oqs.queues.LoadOrStore(key, oq)
+		if loaded {
+			oq = val.(*destinationQueue)
+		}
+	} else if val != nil {
+		oq = val.(*destinationQueue)
+	}
+	return oq
 }
 
 // SendEDU sends an EDU event to the destinations
 func (oqs *OutgoingQueues) SendEDU(
-	ctx context.Context,
-	partition int32,
 	e *gomatrixserverlib.EDU,
-	domain string,
+	origin gomatrixserverlib.ServerName,
+	destinations []gomatrixserverlib.ServerName,
 	roomID string,
+	recItems map[string]*RecordItem,
 ) error {
 	if e == nil {
 		return nil
 	}
+	// if origin != oqs.origin {
+	// 	// TODO: Support virtual hosting; gh issue #577.
+	// 	return fmt.Errorf(
+	// 		"sendevent: unexpected server to send as: got %q expected %q",
+	// 		origin, oqs.origin,
+	// 	)
+	// }
 
-	oq := oqs.getDestinationQueue(roomID, domain)
-	oq.SendEDU(ctx, partition, e)
+	// Remove our own server from the list of destinations.
+	destinations = filterDestinations(oqs.origin, destinations)
+
+	if len(destinations) > 0 {
+		log.Infof("Sending EDU event, destinations: %v, edu_type: %s", destinations, e.Type)
+	}
+
+	for _, domain := range destinations {
+		var recItem *RecordItem
+		if roomID != "" {
+			recItem = recItems[string(domain)]
+		}
+		oq := oqs.getDestinationQueue(string(domain), roomID, true, recItem)
+		if oq == nil {
+			log.Warnf("OutgoingQueues.SendEDU connector not in config file, domain: %s", domain)
+			continue
+		}
+		oq.SendEDU(e)
+	}
 
 	return nil
 }
 
-func (oqs *OutgoingQueues) RetrySend(ctx context.Context, roomID, domain string) {
-	oq := oqs.getDestinationQueue(roomID, domain)
-	oq.RetrySend(ctx)
-}
-
-func (oqs *OutgoingQueues) Release(ctx context.Context, roomID, domain string) {
-	oqs.queues.Delete(roomID + ":" + domain)
+// filterDestinations removes our own server from the list of destinations.
+// Otherwise we could end up trying to talk to ourselves.
+func filterDestinations(origin gomatrixserverlib.ServerName, destinations []gomatrixserverlib.ServerName) []gomatrixserverlib.ServerName {
+	var result []gomatrixserverlib.ServerName
+	for _, destination := range destinations {
+		if destination == origin {
+			continue
+		}
+		result = append(result, destination)
+	}
+	return result
 }

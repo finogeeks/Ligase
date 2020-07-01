@@ -20,12 +20,12 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -33,10 +33,11 @@ func init() {
 	Register(model.CMD_FED_QUERY_AUTH, QueryAuth)
 }
 
-func EventAuth(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func EventAuth(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	var reqParams external.GetEventAuthRequest
 	_ = reqParams.Decode(msg.Body)
 
+	ctx := context.TODO()
 	qryEventAuthReq := roomserverapi.QueryEventAuthRequest{EventID: reqParams.EventID}
 	qryEventAuthResp := roomserverapi.QueryEventAuthResponse{}
 	err := rpcCli.QueryEventAuth(ctx, &qryEventAuthReq, &qryEventAuthResp)
@@ -55,9 +56,11 @@ func EventAuth(ctx context.Context, msg *model.GobMessage, cache service.Cache, 
 	return &model.GobMessage{Body: body}, nil
 }
 
-func QueryAuth(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func QueryAuth(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	var reqParams external.PostQueryAuthRequest
 	_ = reqParams.Decode(msg.Body)
+
+	ctx := context.TODO()
 
 	eventIDs := make([]string, len(reqParams.Missing)+1)
 	eventIDs[0] = reqParams.EventID

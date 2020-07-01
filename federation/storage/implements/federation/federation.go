@@ -20,7 +20,6 @@ package federation
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/storage/model"
@@ -60,9 +59,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if err = result.prepare(); err != nil {
 		return nil, err
 	}
-	result.db.SetMaxOpenConns(30)
-	result.db.SetMaxIdleConns(30)
-	result.db.SetConnMaxLifetime(time.Minute * 3)
 
 	result.AsyncSave = useAsync
 	result.topic = topic
@@ -105,28 +101,20 @@ func (d *Database) InsertJoinedRooms(ctx context.Context, roomID, eventID string
 	return d.insertJoinedRooms(ctx, roomID, eventID)
 }
 
-func (d *Database) SelectAllSendRecord(ctx context.Context) ([]string, []string, []string, []int32, []int32, []int64, int, error) {
+func (d *Database) SelectAllSendRecord(ctx context.Context) ([]string, []string, []string, []int32, []int32, int, error) {
 	return d.selectAllSendRecord(ctx)
 }
 
-func (d *Database) SelectPendingSendRecord(ctx context.Context) ([]string, []string, []string, []int32, []int32, []int64, int, error) {
-	return d.selectPendingSendRecord(ctx)
+func (d *Database) InsertSendRecord(ctx context.Context, roomID, domain string) error {
+	return d.insertSendRecord(ctx, roomID, domain)
 }
 
-func (d *Database) SelectSendRecord(ctx context.Context, roomID, domain string) (eventID string, sendTimes, pendingSize int32, domainOffset int64, err error) {
-	return d.selectSendRecord(ctx, roomID, domain)
+func (d *Database) UpdateSendRecordPendingSize(ctx context.Context, roomID, domain string, size int32) error {
+	return d.updateSendRecordPendingSize(ctx, roomID, domain, size)
 }
 
-func (d *Database) InsertSendRecord(ctx context.Context, roomID, domain string, domainOffset int64) error {
-	return d.insertSendRecord(ctx, roomID, domain, domainOffset)
-}
-
-func (d *Database) UpdateSendRecordPendingSize(ctx context.Context, roomID, domain string, size int32, domainOffset int64) error {
-	return d.updateSendRecordPendingSize(ctx, roomID, domain, size, domainOffset)
-}
-
-func (d *Database) UpdateSendRecordPendingSizeAndEventID(ctx context.Context, roomID, domain string, size int32, eventID string, domainOffset int64) error {
-	return d.updateSendRecordPendingSizeAndEventID(ctx, roomID, domain, size, eventID, domainOffset)
+func (d *Database) UpdateSendRecordPendingSizeAndEventID(ctx context.Context, roomID, domain string, size int32, eventID string) error {
+	return d.updateSendRecordPendingSizeAndEventID(ctx, roomID, domain, size, eventID)
 }
 
 func (d *Database) SelectAllBackfillRecord(ctx context.Context) ([]model.BackfillRecord, error) {

@@ -18,11 +18,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/gomatrix"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrix"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -320,7 +320,6 @@ func (sm *SyncMng) buildRequest(
 }
 
 func (sm *SyncMng) OnSyncRequest(
-	ctx context.Context,
 	req *types.HttpReq,
 	device *authtypes.Device,
 ) (int, *syncapitypes.Response) {
@@ -328,9 +327,9 @@ func (sm *SyncMng) OnSyncRequest(
 	start := time.Now().UnixNano() / 1000000
 	lastPos := sm.onlineRepo.GetLastPos(device.UserID, device.ID)
 	request := sm.buildRequest(req, device, start, lastPos)
-	sm.onlineRepo.Pet(ctx, device.UserID, device.ID, request.marks.utlRecv, request.timeout)
+	sm.onlineRepo.Pet(device.UserID, device.ID, request.marks.utlRecv, request.timeout)
 	sm.userDeviceActiveRepo.UpdateDevActiveTs(device.UserID, device.ID)
-	sm.dispatch(ctx, device.UserID, request)
+	sm.dispatch(device.UserID, request)
 
 	for request.ready == false || request.remoteReady == false {
 		time.Sleep(time.Millisecond * 100)
@@ -365,7 +364,7 @@ func (sm *SyncMng) OnSyncRequest(
 			break
 		}
 
-		if sm.clientDataStreamRepo.ExistsAccountDataUpdate(ctx, request.marks.accRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
+		if sm.clientDataStreamRepo.ExistsAccountDataUpdate(request.marks.accRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
 			log.Infof("SyncMng break has account data traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, start)
 			break
 		}
@@ -388,7 +387,7 @@ func (sm *SyncMng) OnSyncRequest(
 			}
 		}
 
-		if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(ctx, request.marks.stdRecv, device.UserID, device.ID) && now-start > 500 && request.device.IsHuman == true {
+		if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(request.marks.stdRecv, device.UserID, device.ID) && now-start > 500 && request.device.IsHuman == true {
 			log.Infof("SyncMng break has send to device messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
 			break
 		}
@@ -415,7 +414,7 @@ func (sm *SyncMng) OnSyncRequest(
 		}
 	} else {
 		res = syncapitypes.NewResponse(0)
-		ok := sm.buildSyncData(ctx, request, res)
+		ok := sm.buildSyncData(request, res)
 		if !ok {
 			res = syncapitypes.NewResponse(0)
 			res.NextBatch = request.token
@@ -431,27 +430,27 @@ func (sm *SyncMng) OnSyncRequest(
 
 		if request.device.IsHuman == true {
 			if sm.cfg.SendMemberEvent == false {
-				sm.addPresence(ctx, request, res)
+				sm.addPresence(request, res)
 			}
 
-			res = sm.addAccountData(ctx, request, res)
+			res = sm.addAccountData(request, res)
 
 			if sm.cfg.UseEncrypt {
 				if common.IsActualDevice(device.DeviceType) {
-					sm.addKeyChangeInfo(ctx, request, res)
-					sm.addSendToDevice(ctx, request, res)
-					sm.addOneTimeKeyCountInfo(ctx, request, res)
+					sm.addKeyChangeInfo(request, res)
+					sm.addSendToDevice(request, res)
+					sm.addOneTimeKeyCountInfo(request, res)
 				} else {
 					res.SignNum = common.DefaultKeyCount()
 				}
 			} else {
 				if common.IsActualDevice(device.DeviceType) {
-					sm.addSendToDevice(ctx, request, res)
+					sm.addSendToDevice(request, res)
 				}
 				res.SignNum = common.DefaultKeyCount()
 			}
 
-			sm.addTyping(ctx, request, res, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID))
+			sm.addTyping(request, res, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID))
 		}
 
 		if sm.cfg.UseMessageFilter {

@@ -19,8 +19,8 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/model/types"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/tokenrewrite/storage"
 	"github.com/json-iterator/go"
 	"github.com/nats-io/go-nats"
@@ -29,10 +29,9 @@ import (
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type TokenRpcConsumer struct {
-	rpcClient *common.RpcClient
-	chanSize  uint32
-	//msgChan       []chan *types.LoginInfoContent
-	msgChan       []chan common.ContextMsg
+	rpcClient     *common.RpcClient
+	chanSize      uint32
+	msgChan       []chan *types.LoginInfoContent
 	idg           *uid.UidGenerator
 	staffPersist  *storage.TokenRewriteDataBase
 	retailPersist *storage.TokenRewriteDataBase
@@ -67,7 +66,7 @@ func NewTokenRpcConsumer(
 	return s
 }
 
-func (s *TokenRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *TokenRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -78,67 +77,66 @@ func (s *TokenRpcConsumer) GetTopic() string {
 func (s *TokenRpcConsumer) Clean() {
 }
 
-func (s *TokenRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *TokenRpcConsumer) cb(msg *nats.Msg) {
 	var result types.LoginInfoContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc token cb error %v", err)
 		return
 	}
 	idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: msg}
+	s.msgChan[idx] <- &result
 }
 
-func (s *TokenRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.LoginInfoContent)
-		s.process(msg.Ctx, data)
+func (s *TokenRpcConsumer) startWorker(msgChan chan *types.LoginInfoContent) {
+	for data := range msgChan {
+		s.process(data)
 	}
 }
 
 func (s *TokenRpcConsumer) Start() error {
 	log.Infof("TokenRpcConsumer start")
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.LoginInfoContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.LoginInfoContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 	return nil
 }
 
-func (s *TokenRpcConsumer) process(ctx context.Context, data *types.LoginInfoContent) {
+func (s *TokenRpcConsumer) process(data *types.LoginInfoContent) {
 	log.Infof("start process for %s %s %s", data.UserID, data.DeviceID, data.Token)
 	domain, _ := common.DomainFromID(data.UserID)
 	id, _ := s.idg.Next()
 	switch domain {
 	case s.cfg.TokenRewrite.StaffDomain:
-		err := s.staffPersist.UpsertDevice(ctx, data.UserID, data.DeviceID, data.DisplayName)
+		err := s.staffPersist.UpsertDevice(context.TODO(), data.UserID, data.DeviceID, data.DisplayName)
 		if err != nil {
 			log.Errorf("TokenRpcConsumer process for %s %s %s err %v", data.UserID, data.DeviceID, data.Token, err)
 		}
 
-		err = s.staffPersist.UpsertUser(ctx, data.UserID)
+		err = s.staffPersist.UpsertUser(context.TODO(), data.UserID)
 		if err != nil {
 			log.Errorf("TokenRpcConsumer process for %s %s %s err %v", data.UserID, data.DeviceID, data.Token, err)
 		}
 
-		err = s.staffPersist.UpsertToken(ctx, id, data.UserID, data.DeviceID, data.Token)
+		err = s.staffPersist.UpsertToken(context.TODO(), id, data.UserID, data.DeviceID, data.Token)
 		if err != nil {
 			log.Errorf("TokenRpcConsumer process for %s %s %s err %v", data.UserID, data.DeviceID, data.Token, err)
 		}
 	case s.cfg.TokenRewrite.RetailDomain:
-		err := s.staffPersist.UpsertDevice(ctx, data.UserID, data.DeviceID, data.DisplayName)
+		err := s.staffPersist.UpsertDevice(context.TODO(), data.UserID, data.DeviceID, data.DisplayName)
 		if err != nil {
 			log.Errorf("TokenRpcConsumer process for %s %s %s err %v", data.UserID, data.DeviceID, data.Token, err)
 		}
 
-		err = s.staffPersist.UpsertUser(ctx, data.UserID)
+		err = s.staffPersist.UpsertUser(context.TODO(), data.UserID)
 		if err != nil {
 			log.Errorf("TokenRpcConsumer process for %s %s %s err %v", data.UserID, data.DeviceID, data.Token, err)
 		}
 
-		err = s.staffPersist.UpsertToken(ctx, id, data.UserID, data.DeviceID, data.Token)
+		err = s.staffPersist.UpsertToken(context.TODO(), id, data.UserID, data.DeviceID, data.Token)
 		if err != nil {
 			log.Errorf("TokenRpcConsumer process for %s %s %s err %v", data.UserID, data.DeviceID, data.Token, err)
 		}

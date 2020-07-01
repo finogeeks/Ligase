@@ -30,12 +30,12 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -247,7 +247,7 @@ func ClaimOneTimeKeys(
 				alTyp = types.ONETIMEKEYSTRING
 			}
 
-			key := pickOne(ctx, cache, uid, deviceID, encryptionDB)
+			key := pickOne(cache, uid, deviceID, encryptionDB)
 			if key == nil || key.UserID == "" {
 				continue
 			}
@@ -485,7 +485,6 @@ func takeAL(
 }
 
 func pickOne(
-	ctx context.Context,
 	cache service.Cache,
 	uid, device string,
 	encryptionDB model.EncryptorAPIDatabase,
@@ -496,7 +495,7 @@ func pickOne(
 			key, exists := cache.GetOneTimeKey(keyID)
 			if exists {
 				if key.UserID != "" {
-					encryptionDB.OnDeleteOneTimeKey(ctx, key.DeviceID, key.UserID, key.KeyID, key.KeyAlgorithm)
+					encryptionDB.OnDeleteOneTimeKey(context.TODO(), key.DeviceID, key.UserID, key.KeyID, key.KeyAlgorithm)
 					cache.DeleteOneTimeKey(key.DeviceID, key.UserID, key.KeyID, key.KeyAlgorithm)
 					return key
 				}

@@ -27,9 +27,9 @@ import (
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/util/id"
 
 	// "github.com/finogeeks/ligase/skunkworks/log"
@@ -83,8 +83,7 @@ func (b *Bridge) processRequest(gobMsg *model.GobMessage) error {
 	if gobMsg.Key == nil {
 		keys = []byte{}
 	}
-
-	return common.GetTransportMultiplexer().SendWithRetry(
+	return common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		prod.Underlying,
 		prod.Name,
 		&core.TransportPubMsg{
@@ -144,7 +143,7 @@ func (b *Bridge) SetupBridge(cfg *config.Dendrite) {
 	}
 }
 
-func (b *Bridge) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (b *Bridge) OnMessage(topic string, partition int32, data []byte) {
 	//dec := gob.NewDecoder(bytes.NewReader(data))
 	msg := &model.GobMessage{}
 	//err := dec.Decode(msg)

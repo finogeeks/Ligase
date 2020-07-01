@@ -18,8 +18,8 @@ import (
 	"context"
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/storage/model"
 	"sync"
 )
@@ -65,7 +65,7 @@ func (dm *DomainMng) GetDomain() []string {
 		if err != nil {
 			log.Warnf("get domains from cache err:%v", err)
 		}
-		domains, err = dm.servernameDB.SelectServerNames(context.TODO())
+		domains, err = dm.servernameDB.SelectServerNames(context.Background())
 		if err != nil {
 			log.Errorf("get domains from database err:%v", err)
 			//use last domains
@@ -83,7 +83,7 @@ func (dm *DomainMng) GetDomain() []string {
 				if flag {
 					log.Warnf("domain in db is empty")
 					nid, _ := dm.idg.Next()
-					dm.servernameDB.UpsertServerName(context.TODO(), nid, domain)
+					dm.servernameDB.UpsertServerName(context.Background(), nid, domain)
 				}
 			}
 		}

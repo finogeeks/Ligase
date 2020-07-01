@@ -16,10 +16,10 @@ package external
 
 //PUT /_matrix/client/r0/presence/{userId}/status
 type PutPresenceRequest struct {
-	UserID       string  `json:"user_id"`
-	Presence     *string `json:"presence,omitempty"`
-	StatusMsg    *string `json:"status_msg,omitempty"`
-	ExtStatusMsg *string `json:"ext_status_msg,omitempty"`
+	UserID       string `json:"user_id"`
+	Presence     string `json:"presence"`
+	StatusMsg    string `json:"status_msg"`
+	ExtStatusMsg string `json:"ext_status_msg"`
 }
 
 //GET /_matrix/client/r0/presence/{userId}/status

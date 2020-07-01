@@ -43,6 +43,12 @@ func DirectoryRoom(
 	rpcCli roomserverapi.RoomserverRPCAPI,
 	// rpcClient *common.RpcClient,
 ) (int, core.Coder) {
+	/*
+		domain, err := common.DomainFromID(roomAlias)
+		if err != nil {
+			return http.StatusBadRequest, jsonerror.BadJSON("Room alias must be in the form '#localpart:domain'")
+		}
+	*/
 
 	queryReq := roomserverapi.GetAliasRoomIDRequest{Alias: roomAlias}
 	var queryRes roomserverapi.GetAliasRoomIDResponse
@@ -88,6 +94,77 @@ func DirectoryRoom(
 		// If the response doesn't contain a non-empty string, return an error
 		return http.StatusNotFound, jsonerror.NotFound("Room alias " + roomAlias + " not found.")
 	}
+	/*
+		if common.CheckValidDomain(domain, cfg.Matrix.ServerName) {
+			queryReq := roomserverapi.GetAliasRoomIDRequest{Alias: roomAlias}
+			var queryRes roomserverapi.GetAliasRoomIDResponse
+			if err := rpcCli.GetAliasRoomID(ctx, &queryReq, &queryRes); err != nil {
+				return httputil.LogThenErrorCtx(ctx, err)
+			}
+
+			queryJoinedMemberReq := roomserverapi.QueryRoomStateRequest{RoomID: queryRes.RoomID}
+			var queryJoinedMemberRes roomserverapi.QueryRoomStateResponse
+			if err := rpcCli.QueryRoomState(ctx, &queryJoinedMemberReq, &queryJoinedMemberRes); err != nil {
+				return httputil.LogThenErrorCtx(ctx, err)
+			}
+
+			var userServers []string
+
+			for userId := range queryJoinedMemberRes.Join {
+				_, userDomain, _ := gomatrixserverlib.SplitID('@', userId)
+
+				insert := true
+				for _, domain := range userServers {
+					if domain == string(userDomain) {
+						insert = false
+						break
+					}
+				}
+
+				if insert {
+					userServers = append(userServers, string(userDomain))
+				}
+			}
+
+			if len(queryRes.RoomID) > 0 {
+				// TODO: List servers that are aware of this room alias
+				return http.StatusOK, &external.GetDirectoryRoomAliasResponse{
+					RoomID:  queryRes.RoomID,
+					Servers: userServers,
+				}
+			} else {
+				// If the response doesn't contain a non-empty string, return an error
+				return http.StatusNotFound, jsonerror.NotFound("Room alias " + roomAlias + " not found.")
+			}
+		} else {
+			resp, err := federation.LookupRoomAlias(domain, roomAlias)
+			if err != nil {
+				switch x := err.(type) {
+				case gomatrix.HTTPError:
+					if x.Code == http.StatusNotFound {
+						return http.StatusNotFound, jsonerror.NotFound("Room alias not found")
+					}
+				}
+				// TODO: Return 502 if the remote server errored.
+				// TODO: Return 504 if the remote server timed out.
+				return httputil.LogThenErrorCtx(ctx, err)
+			}
+
+			//queryReq := external.GetDirectoryRoomAliasRequest{RoomAlias: roomAlias}
+			//var queryRes external.GetDirectoryRoomAliasResponse
+			//err = rpc.GetAliasRoomID(cfg, rpcClient, domain, &queryReq, &queryRes)
+
+			if len(resp.RoomID) > 0 {
+				// TODO: List servers that are aware of this room alias
+				resp.Servers = nil //userServers
+			} else {
+				// If the response doesn't contain a non-empty string, return an error
+				return http.StatusNotFound, jsonerror.NotFound("Room alias " + roomAlias + " not found.")
+			}
+
+			return http.StatusOK, &resp
+		}
+	*/
 }
 
 // SetLocalAlias implements PUT /directory/room/{roomAlias}

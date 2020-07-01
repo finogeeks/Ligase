@@ -15,14 +15,12 @@
 package fedsender
 
 import (
-	"context"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/config"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/nats-io/go-nats"
 )
 
@@ -32,8 +30,7 @@ type EduSender struct {
 	channel   core.IChannel
 	rpcClient *common.RpcClient
 	chanSize  uint32
-	//msgChan   []chan *gomatrixserverlib.EDU
-	msgChan []chan common.ContextMsg
+	msgChan   []chan *gomatrixserverlib.EDU
 }
 
 func NewEduSender(
@@ -59,13 +56,13 @@ func NewEduSender(
 }
 
 func (e *EduSender) Start() error {
-	e.msgChan = make([]chan common.ContextMsg, e.chanSize)
+	e.msgChan = make([]chan *gomatrixserverlib.EDU, e.chanSize)
 	for i := uint32(0); i < e.chanSize; i++ {
-		e.msgChan[i] = make(chan common.ContextMsg, 512)
+		e.msgChan[i] = make(chan *gomatrixserverlib.EDU, 512)
 		go e.startWorker(e.msgChan[i])
 	}
 
-	e.rpcClient.ReplyWithContext(e.GetTopic(), e.cb)
+	e.rpcClient.Reply(e.GetTopic(), e.cb)
 
 	e.channel.Start()
 	return nil
@@ -75,7 +72,7 @@ func (e *EduSender) SetSender(sender *FederationSender) {
 	e.sender = sender
 }
 
-func (e *EduSender) GetCB() common.MsgHandlerWithContext {
+func (e *EduSender) GetCB() nats.MsgHandler {
 	return e.cb
 }
 
@@ -86,7 +83,7 @@ func (e *EduSender) GetTopic() string {
 func (e *EduSender) Clean() {
 }
 
-func (e *EduSender) cb(ctx context.Context, msg *nats.Msg) {
+func (e *EduSender) cb(msg *nats.Msg) {
 	var result gomatrixserverlib.EDU
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc receipt cb error %v", err)
@@ -94,25 +91,21 @@ func (e *EduSender) cb(ctx context.Context, msg *nats.Msg) {
 	}
 
 	idx := common.CalcStringHashCode(result.Destination) % e.chanSize
-	e.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+	e.msgChan[idx] <- &result
 }
 
-func (e *EduSender) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*gomatrixserverlib.EDU)
-		e.sender.sendEdu(msg.Ctx, data)
+func (e *EduSender) startWorker(msgChan chan *gomatrixserverlib.EDU) {
+	for data := range msgChan {
+		e.sender.sendEdu(data)
 	}
 }
 
-func (e *EduSender) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (e *EduSender) OnMessage(topic string, partition int32, data []byte) {
 	log.Infof("fed-edu-sender received data topic:%s, data:%s", topic, string(data))
 	var output gomatrixserverlib.EDU
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorf("fed-dispatch: message parse failure err:%v", err)
 		return
 	}
-	span := common.StartSpanFromMsgAfterReceived(topic, rawMsg)
-	span.Finish()
-	ctx = common.ContextWithSpan(ctx, span)
-	e.sender.sendEdu(ctx, &output)
+	e.sender.sendEdu(&output)
 }

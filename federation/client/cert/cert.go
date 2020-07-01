@@ -83,17 +83,15 @@ func (c *Cert) GetCerts() *sync.Map {
 }
 
 func (c *Cert) Load() error {
-	span, ctx := common.StartSobSomSpan(context.Background(), "Cert.Load")
-	defer span.Finish()
 	c.Certs.Store("httpsCliEnable", c.notaryEnable)
 	if c.notaryEnable == false {
 		log.Infof("--------------notary service is disable")
 		return nil
 	}
 
-	rootCA, serverCert, serverKey, crl, _ := c.keyDB.SelectAllCerts(ctx)
+	rootCA, serverCert, serverKey, crl, _ := c.keyDB.SelectAllCerts(context.TODO())
 	if rootCA == "" {
-		resp, err := fedutil.DownloadFromNotary(ctx, "rootCA", c.notaryRootCAUrl, c.keyDB)
+		resp, err := fedutil.DownloadFromNotary("rootCA", c.notaryRootCAUrl, c.keyDB)
 		if err != nil {
 			return err
 		}
@@ -101,7 +99,7 @@ func (c *Cert) Load() error {
 	}
 
 	// update CRL whenever reboot
-	resp, err := fedutil.DownloadFromNotary(ctx, "crl", c.notaryCRLUrl, c.keyDB)
+	resp, err := fedutil.DownloadFromNotary("crl", c.notaryCRLUrl, c.keyDB)
 	if err == nil && resp.CRL != "" {
 		crl = resp.CRL
 	}
@@ -116,7 +114,7 @@ func (c *Cert) Load() error {
 	// update then check again
 	if serverCert == "" || serverKey == "" || !ok {
 		reqUrl := fmt.Sprintf(c.notaryCertUrl, c.serverName[0])
-		resp, err := fedutil.DownloadFromNotary(ctx, "cert", reqUrl, c.keyDB)
+		resp, err := fedutil.DownloadFromNotary("cert", reqUrl, c.keyDB)
 		if err != nil {
 			return err
 		}

@@ -24,10 +24,10 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 // ClientEvent is an event which is fit for consumption by clients, in accordance with the specification.
@@ -69,7 +69,7 @@ func (ReqGetEventWithID) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqGetEventWithID) NewResponse(code int) core.Coder {
 	return new(ClientEvent)
 }
-func (ReqGetEventWithID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetEventWithID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
@@ -80,14 +80,14 @@ func (ReqGetEventWithID) Process(ctx context.Context, consumer interface{}, msg 
 	userID := device.UserID
 
 	//TODO 可见性校验
-	event, _, err := c.db.StreamEvents(ctx, []string{eventID})
+	event, _, err := c.db.StreamEvents(context.TODO(), []string{eventID})
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown(err.Error())
 	}
 
 	if len(event) > 0 {
 		roomID := event[0].RoomID
-		joined, err := c.userTimeLine.GetJoinRooms(ctx, userID)
+		joined, err := c.userTimeLine.GetJoinRooms(userID)
 		if err != nil {
 			return http.StatusInternalServerError, jsonerror.NotFound(fmt.Sprintf("Could not find user joined rooms %s", userID))
 		}

@@ -17,16 +17,15 @@ package repos
 import (
 	"context"
 	"fmt"
-	"sync"
-	"time"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
+	"sync"
+	"time"
 )
 
 type KeyChangeStreamRepo struct {
@@ -102,8 +101,7 @@ func (tl *KeyChangeStreamRepo) UpdateOneTimeKeyCount(userID string, deviceID str
 	return nil
 }
 
-func (tl *KeyChangeStreamRepo) AddKeyChangeStream(ctx context.Context,
-	dataStream *types.KeyChangeStream, offset int64, broadCast bool) {
+func (tl *KeyChangeStreamRepo) AddKeyChangeStream(dataStream *types.KeyChangeStream, offset int64, broadCast bool) {
 	keyChangeStream := new(feedstypes.KeyChangeStream)
 	keyChangeStream.DataStream = dataStream
 	keyChangeStream.Offset = offset
@@ -111,7 +109,7 @@ func (tl *KeyChangeStreamRepo) AddKeyChangeStream(ctx context.Context,
 	tl.repo.Store(dataStream.ChangedUserID, keyChangeStream)
 
 	if broadCast {
-		userMap := tl.userTimeLine.GetFriendShip(ctx, dataStream.ChangedUserID, true)
+		userMap := tl.userTimeLine.GetFriendShip(dataStream.ChangedUserID, true)
 		if userMap != nil {
 			userMap.Range(func(key, _ interface{}) bool {
 				if maxPos, ok := tl.maxPosition.Load(key.(string)); ok {
@@ -127,14 +125,14 @@ func (tl *KeyChangeStreamRepo) AddKeyChangeStream(ctx context.Context,
 	}
 }
 
-func (tl *KeyChangeStreamRepo) LoadHistory(ctx context.Context, userID string, sync bool) {
+func (tl *KeyChangeStreamRepo) LoadHistory(userID string, sync bool) {
 	if _, ok := tl.ready.Load(userID); !ok {
 		if _, ok := tl.loading.Load(userID); !ok {
 			tl.loading.Store(userID, true)
 			if sync == false {
-				go tl.loadHistory(ctx, userID)
+				go tl.loadHistory(userID)
 			} else {
-				tl.loadHistory(ctx, userID)
+				tl.loadHistory(userID)
 			}
 
 			tl.queryHitCounter.WithLabelValues("db", "KeyChangeStreamRepo", "LoadHistory").Add(1)
@@ -142,16 +140,16 @@ func (tl *KeyChangeStreamRepo) LoadHistory(ctx context.Context, userID string, s
 			if sync == false {
 				return
 			}
-			tl.CheckLoadReady(ctx, userID, true)
+			tl.CheckLoadReady(userID, true)
 		}
 	} else {
 		tl.queryHitCounter.WithLabelValues("cache", "KeyChangeStreamRepo", "LoadHistory").Add(1)
 	}
 }
 
-func (tl *KeyChangeStreamRepo) loadHistory(ctx context.Context, userID string) {
+func (tl *KeyChangeStreamRepo) loadHistory(userID string) {
 	defer tl.loading.Delete(userID)
-	userMap := tl.userTimeLine.GetFriendShip(ctx, userID, true)
+	userMap := tl.userTimeLine.GetFriendShip(userID, true)
 	if userMap != nil {
 		var users []string
 		maxPos := int64(0)
@@ -167,7 +165,7 @@ func (tl *KeyChangeStreamRepo) loadHistory(ctx context.Context, userID string) {
 		})
 		if len(users) > 0 {
 			bs := time.Now().UnixNano() / 1000000
-			streams, offsets, err := tl.syncDB.GetHistoryKeyChangeStream(ctx, users)
+			streams, offsets, err := tl.syncDB.GetHistoryKeyChangeStream(context.TODO(), users)
 			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {
 				log.Errorf("load db failed KeyChangeStreamRepo history user:%s spend:%d ms err:%v", userID, spend, err)
@@ -179,7 +177,7 @@ func (tl *KeyChangeStreamRepo) loadHistory(ctx context.Context, userID string) {
 				log.Infof("load db succ KeyChangeStreamRepo user:%s spend:%d ms", userID, spend)
 			}
 			for idx := range streams {
-				tl.AddKeyChangeStream(ctx, &streams[idx], offsets[idx], false)
+				tl.AddKeyChangeStream(&streams[idx], offsets[idx], false)
 				if offsets[idx] > maxPos {
 					maxPos = offsets[idx]
 				}
@@ -196,11 +194,11 @@ func (tl *KeyChangeStreamRepo) loadHistory(ctx context.Context, userID string) {
 	tl.ready.Store(userID, true)
 }
 
-func (tl *KeyChangeStreamRepo) CheckLoadReady(ctx context.Context, userID string, sync bool) bool {
+func (tl *KeyChangeStreamRepo) CheckLoadReady(userID string, sync bool) bool {
 	_, ok := tl.ready.Load(userID)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadHistory(ctx, userID, false)
+			tl.LoadHistory(userID, false)
 		}
 		return ok
 	}
@@ -211,7 +209,7 @@ func (tl *KeyChangeStreamRepo) CheckLoadReady(ctx context.Context, userID string
 			break
 		}
 
-		tl.LoadHistory(ctx, userID, false)
+		tl.LoadHistory(userID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {

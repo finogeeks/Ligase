@@ -15,22 +15,20 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/repos"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/repos"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/nats-io/go-nats"
 )
 
 type PresenceRpcConsumer struct {
-	rpcClient *common.RpcClient
-	cfg       *config.Dendrite
-	chanSize  uint32
-	//msgChan      []chan *types.OnlinePresence
-	msgChan      []chan common.ContextMsg
+	rpcClient    *common.RpcClient
+	cfg          *config.Dendrite
+	chanSize     uint32
+	msgChan      []chan *types.OnlinePresence
 	olRepo       *repos.OnlineUserRepo
 	presenceRepo *repos.PresenceDataStreamRepo
 }
@@ -52,7 +50,7 @@ func NewPresenceRpcConsumer(
 	return s
 }
 
-func (s *PresenceRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *PresenceRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -63,7 +61,7 @@ func (s *PresenceRpcConsumer) GetTopic() string {
 func (s *PresenceRpcConsumer) Clean() {
 }
 
-func (s *PresenceRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *PresenceRpcConsumer) cb(msg *nats.Msg) {
 	var result types.OnlinePresence
 
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
@@ -74,18 +72,17 @@ func (s *PresenceRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	if common.IsRelatedRequest(result.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, false) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *PresenceRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.OnlinePresence)
-		s.getOnlinePresence(msg.Ctx, data)
+func (s *PresenceRpcConsumer) startWorker(msgChan chan *types.OnlinePresence) {
+	for data := range msgChan {
+		s.getOnlinePresence(data)
 	}
 }
 
-func (s *PresenceRpcConsumer) getOnlinePresence(ctx context.Context, data *types.OnlinePresence) {
+func (s *PresenceRpcConsumer) getOnlinePresence(data *types.OnlinePresence) {
 	feed := s.presenceRepo.GetHistoryByUserID(data.UserID)
 	if feed == nil {
 		data.Found = false
@@ -104,12 +101,12 @@ func (s *PresenceRpcConsumer) getOnlinePresence(ctx context.Context, data *types
 }
 
 func (s *PresenceRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.OnlinePresence, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.OnlinePresence, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 	return nil
 }

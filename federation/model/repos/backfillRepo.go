@@ -18,10 +18,9 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/finogeeks/ligase/federation/storage/model"
-	"github.com/finogeeks/ligase/model/service"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type BackfillJobFinishItem struct {
@@ -32,146 +31,88 @@ type BackfillJobFinishItem struct {
 }
 
 type BackfillRepo struct {
-	db    model.FederationDatabase
-	cache service.Cache
+	db model.FederationDatabase
+
+	repo sync.Map
 }
 
 func NewBackfillRepo(
 	db model.FederationDatabase,
-	cache service.Cache,
 ) *BackfillRepo {
 	ret := &BackfillRepo{
-		db:    db,
-		cache: cache,
+		db: db,
 	}
 	return ret
 }
 
-func (r *BackfillRepo) LoadHistory() error {
-	records, err := r.db.SelectAllBackfillRecord(context.TODO())
-	if err != nil {
-		return err
-	}
-	for i := 0; i < len(records); i++ {
-		rec := &records[i]
-		if rec.Finished {
-			// 节约内存
-			rec.States = ""
+func (r *BackfillRepo) InitBackfillRec(roomID string, rec *model.BackfillRecord) bool {
+	_, ok := r.repo.LoadOrStore(roomID, rec)
+	return !ok
+}
+
+func (r *BackfillRepo) DeleteBackfillRec(roomID string) {
+	r.repo.Delete(roomID)
+}
+
+func (r *BackfillRepo) GetUnfinishedRecs() []*model.BackfillRecord {
+	ret := []*model.BackfillRecord{}
+	r.repo.Range(func(k, v interface{}) bool {
+		rec := v.(*model.BackfillRecord)
+		if !rec.Finished {
+			ret = append(ret, rec)
 		}
-		r.cache.StoreFedBackfillRec(rec.RoomID, rec.Depth, rec.Finished, rec.FinishedDomains, rec.States)
-	}
-	return nil
+		return true
+	})
+	return ret
 }
 
-func (r *BackfillRepo) GenerateFakePartition(ctx context.Context) int32 {
-	p, err := r.cache.GetFakePartition("fedbackfill")
-	if err != nil {
-		log.Errorf("SendRecRepo generation fake partition error %v", err)
-		return 0
+func (r *BackfillRepo) SetBackfillFinished(roomID string) {
+	v, ok := r.repo.Load(roomID)
+	if !ok {
+		return
 	}
-	return p
+	rec := v.(*model.BackfillRecord)
+	rec.Finished = true
+	// 节约内存
+	rec.States = ""
 }
 
-func (r *BackfillRepo) AssignRoomPartition(ctx context.Context, roomID string, partition int32) (*model.BackfillRecord, bool) {
-	err := r.cache.AssignFedBackfillRecPartition(roomID, partition)
-	if err != nil {
-		return nil, false
-	}
-	recItem := r.getRec(ctx, roomID)
-	if recItem == nil {
-		r.cache.UnassignFedBackfillRecPartition(roomID)
-		return nil, false
-	}
-	return recItem, true
-}
-
-func (r *BackfillRepo) UnassignRoomPartition(ctx context.Context, roomID string) error {
-	err := r.cache.UnassignFedBackfillRecPartition(roomID)
-	return err
-}
-
-func (r *BackfillRepo) ExpireRoomPartition(ctx context.Context, roomID string) error {
-	err := r.cache.ExpireFedBackfillRecPartition(roomID)
-	return err
-}
-
-func (r *BackfillRepo) getRec(ctx context.Context, roomID string) *model.BackfillRecord {
-	depth, finished, finishedDomains, states, err := r.cache.GetFedBackfillRec(roomID)
-	if err != nil {
-		return nil
-	}
-	return &model.BackfillRecord{
-		RoomID:          roomID,
-		Depth:           depth,
-		Finished:        finished,
-		FinishedDomains: finishedDomains,
-		States:          states,
-	}
-}
-
-func (r *BackfillRepo) GetUnfinishedRooms() ([]string, error) {
-	roomIDs, err := r.cache.QryFedBackfillRooms()
-	if err != nil {
-		log.Errorf("get backfill unfinished room error %v", err)
-		return nil, err
-	}
-	return roomIDs, nil
-}
-
-func (r *BackfillRepo) IsBackfillFinished(ctx context.Context, roomID string) (isFinished, hasRec bool, err error) {
-	rec := r.getRec(ctx, roomID)
-	if rec != nil {
+func (r *BackfillRepo) IsBackfillFinished(roomID string) (isFinished, hasRec bool, err error) {
+	v, ok := r.repo.Load(roomID)
+	if !ok {
 		var rec model.BackfillRecord
-		rec, err = r.db.SelectBackfillRecord(ctx, roomID)
+		rec, err = r.db.SelectBackfillRecord(context.TODO(), roomID)
 		if err != nil {
 			hasRec = strings.Contains(err.Error(), "no rows in result set")
 			return
 		}
-		loaded, err := r.cache.StoreFedBackfillRec(roomID, rec.Depth, rec.Finished, rec.FinishedDomains, rec.States)
-		if err != nil {
-			return false, true, err
-		}
-		if loaded {
-			r.cache.AssignFedBackfillRecPartition(roomID, -1) // TODO:
-		}
-
+		v, _ = r.repo.LoadOrStore(roomID, &rec)
 	}
-	return rec.Finished, true, nil
+	return v.(*model.BackfillRecord).Finished, true, nil
 }
 
-func (r *BackfillRepo) InsertBackfillRecord(ctx context.Context, rec model.BackfillRecord) (bool, error) {
-	loaded, err := r.cache.StoreFedBackfillRec(rec.RoomID, rec.Depth, rec.Finished, rec.FinishedDomains, rec.States)
-	if err != nil {
-		return false, err
+func (r *BackfillRepo) SetFinishedDomains(roomID, finished string) {
+	v, ok := r.repo.Load(roomID)
+	if !ok {
+		return
 	}
-	if loaded {
-		return false, nil
-	}
-	err = r.db.InsertBackfillRecord(ctx, rec)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	v.(*model.BackfillRecord).FinishedDomains = finished
 }
 
-func (r *BackfillRepo) UpdateRecord(ctx context.Context, roomID string, depth int64, finished bool, finishedDomains string, states string) error {
-	err := r.db.UpdateBackfillRecordDomainsInfo(ctx, roomID, 0, true, finishedDomains, states)
-	if err != nil {
-		return err
+func (r *BackfillRepo) SetState(roomID, state string) {
+	v, ok := r.repo.Load(roomID)
+	if !ok {
+		return
 	}
-	_, err = r.cache.UpdateFedBackfillRec(roomID, depth, finished, finishedDomains, states)
-	if err != nil {
-		return err
-	}
-	return nil
+	v.(*model.BackfillRecord).States = state
 }
 
-func (r *BackfillRepo) GetFinishedDomains(ctx context.Context, roomID string) (map[string]*BackfillJobFinishItem, bool) {
-	rec := r.getRec(ctx, roomID)
-	if rec == nil {
+func (r *BackfillRepo) GetFinishedDomains(roomID string) (map[string]*BackfillJobFinishItem, bool) {
+	var finished map[string]*BackfillJobFinishItem
+	v, ok := r.repo.Load(roomID)
+	if !ok {
 		return nil, false
 	}
-	var finished map[string]*BackfillJobFinishItem
-	json.Unmarshal([]byte(rec.FinishedDomains), &finished)
+	json.Unmarshal([]byte(v.(*model.BackfillRecord).FinishedDomains), &finished)
 	return finished, true
 }

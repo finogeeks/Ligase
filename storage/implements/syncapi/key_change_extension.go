@@ -17,11 +17,10 @@ package syncapi
 import (
 	"context"
 	"database/sql"
-
 	"github.com/finogeeks/ligase/common"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/types"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -88,7 +87,7 @@ func (s *keyChangeStatements) insertKeyStream(
 			ChangedUserID: changedUserID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(changedUserID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_key_change_stream")
+		s.db.WriteDBEvent(&update)
 		return nil
 	} else {
 		_, err = s.insertKeyStreamStmt.ExecContext(ctx, id, changedUserID)

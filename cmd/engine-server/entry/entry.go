@@ -217,8 +217,8 @@ func checkProcName(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 		StartSyncAggregate(base, cmd)
 	case "db-update-for-fed":
 		StartUpdateDBForFed(base)
-	case "bgmgr-server":
-		StartBgMgr(base, cmd)
+	case "bgmng-server":
+		StartBgMng(base, cmd)
 	case "profile-recover":
 		StartProfileRecover(base, cmd)
 	default:

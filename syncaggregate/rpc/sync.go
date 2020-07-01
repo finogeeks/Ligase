@@ -15,22 +15,20 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/types"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/syncaggregate/sync"
 	"github.com/nats-io/go-nats"
 )
 
 type SyncRpcConsumer struct {
-	rpcClient *common.RpcClient
-	sm        *sync.SyncMng
-	chanSize  uint32
-	//msgChan        []chan *types.SyncContent
-	msgChan        []chan common.ContextMsg
+	rpcClient      *common.RpcClient
+	sm             *sync.SyncMng
+	chanSize       uint32
+	msgChan        []chan *types.SyncContent
 	compressLength int64
 	cfg            *config.Dendrite
 }
@@ -55,7 +53,7 @@ func NewSyncRpcConsumer(
 	return s
 }
 
-func (s *SyncRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *SyncRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -66,7 +64,7 @@ func (s *SyncRpcConsumer) GetTopic() string {
 func (s *SyncRpcConsumer) Clean() {
 }
 
-func (s *SyncRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *SyncRpcConsumer) cb(msg *nats.Msg) {
 	var result types.SyncContent
 
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
@@ -77,20 +75,19 @@ func (s *SyncRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	if common.IsRelatedRequest(result.Device.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, false) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.Device.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *SyncRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.SyncContent)
+func (s *SyncRpcConsumer) startWorker(msgChan chan *types.SyncContent) {
+	for data := range msgChan {
 		//必须异步，否则sync的等待机制会阻塞其他请求
-		go s.callSync(msg.Ctx, data)
+		go s.callSync(data)
 	}
 }
 
-func (s *SyncRpcConsumer) callSync(ctx context.Context, data *types.SyncContent) {
-	code, coder := s.sm.OnSyncRequest(ctx, &data.Request, &data.Device)
+func (s *SyncRpcConsumer) callSync(data *types.SyncContent) {
+	code, coder := s.sm.OnSyncRequest(&data.Request, &data.Device)
 	resp := util.JSONResponse{
 		Code: code,
 		JSON: coder,
@@ -111,12 +108,12 @@ func (s *SyncRpcConsumer) callSync(ctx context.Context, data *types.SyncContent)
 }
 
 func (s *SyncRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.SyncContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.SyncContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 	return nil
 }

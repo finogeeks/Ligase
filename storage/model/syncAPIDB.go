@@ -16,23 +16,20 @@ package model
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type SyncAPIDatabase interface {
 	//NewDatabase(driver, createAddr, address, topic string, useAsync bool) (interface{}, error)
-	GetDB() *sql.DB
-
 	SetIDGenerator(idg *uid.UidGenerator)
 
-	WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error
+	WriteDBEvent(update *dbtypes.DBEvent) error
 
 	Events(ctx context.Context, eventIDs []string) ([]gomatrixserverlib.ClientEvent, error)
 	StreamEvents(ctx context.Context, eventIDs []string) ([]gomatrixserverlib.ClientEvent, []int64, error)
@@ -82,7 +79,6 @@ type SyncAPIDatabase interface {
 		ctx context.Context, event gomatrixserverlib.ClientEvent, eventID string, eventType string,
 		RoomID string,
 	) error
-	OnUpdateEvent(ctx context.Context, eventID, roomID string, eventJson []byte, eventType string) error
 	SelectEventsByDir(
 		ctx context.Context,
 		userID, roomID string, dir string, from int64, limit int,
@@ -198,7 +194,7 @@ type SyncAPIDatabase interface {
 		ctx context.Context, users []string,
 	) ([]types.PresenceStream, []int64, error)
 	SelectTypeEventForward(
-		ctx context.Context, typ []string, roomID string,
+		typ []string, roomID string,
 	) (events []gomatrixserverlib.ClientEvent, offsets []int64, err error)
 	UpdateSyncMemberEvent(
 		ctx context.Context, userID, oldAvatarUrl, newAvatarUrl string,
@@ -264,7 +260,7 @@ type SyncAPIDatabase interface {
 	) ([]string, []int64, error)
 	UpdateSyncEvent(ctx context.Context, domainOffset, originTs int64, domain, roomID, eventID string) error
 	OnUpdateSyncEvent(ctx context.Context, domainOffset, originTs int64, domain, roomID, eventID string) error
-	GetSyncEvents(ctx context.Context, start, end int64, limit, offset int64) ([][]byte, error)
+	GetSyncEvents(start, end int64, limit, offset int64) ([][]byte, error)
 	GetSyncMsgEventsMigration(ctx context.Context, limit, offset int64) ([]int64, []string, [][]byte, error)
 	GetSyncMsgEventsTotalMigration(ctx context.Context) (int, int64, error)
 	UpdateSyncMsgEventMigration(ctx context.Context, id int64, EncryptedEventBytes []byte) error

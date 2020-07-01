@@ -36,7 +36,7 @@ const membershipSchema = `
 CREATE TABLE IF NOT EXISTS roomserver_membership (
 	room_nid BIGINT NOT NULL,
 	-- Numeric state key ID for the user ID this state is for.
-	target_nid BIGINT NOT NULL DEFAULT 0,
+	target_nid BIGINT NOT NULL DEFAULT 0, 
 	-- The numeric ID of the forget event.
 	target_forget_nid BIGINT NOT NULL,
 	-- Numeric state key ID for the user ID who changed the state.
@@ -163,7 +163,7 @@ func (s *membershipStatements) insertMembership(
 			EventNID:      event_nid,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_membership")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 
@@ -207,7 +207,7 @@ func (s *membershipStatements) updateMembership(
 			Version:    version,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_membership")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 
@@ -239,7 +239,7 @@ func (s *membershipStatements) updateMembershipForgetNID(
 			ForgetID: eventNID,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_membership")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 

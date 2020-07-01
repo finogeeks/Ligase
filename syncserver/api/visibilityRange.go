@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"net/http"
 
@@ -77,7 +76,7 @@ func (ReqGetVisibilityRange) FillRequest(coder core.Coder, req *http.Request, va
 func (ReqGetVisibilityRange) NewResponse(code int) core.Coder {
 	return new(RoomVisibilityRange)
 }
-func (ReqGetVisibilityRange) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetVisibilityRange) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomVisibilityRangeRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -87,7 +86,7 @@ func (ReqGetVisibilityRange) Process(ctx context.Context, consumer interface{}, 
 	userID := req.UserID
 	roomID := req.RoomID
 
-	states := c.rsTimeline.GetStateStreams(ctx, roomID)
+	states := c.rsTimeline.GetStateStreams(roomID)
 	if states == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room state")
 	}

@@ -186,12 +186,6 @@ type ProducerConf struct {
 	Underlying string `yaml:"underlying"`
 	Name       string `yaml:"name"`
 	Inst       int    `yaml:"inst"`
-
-	LingerMs *string `yaml:"linger_ms,omitempty"`
-}
-
-func (p *ProducerConf) LingerMsConf() *string {
-	return p.LingerMs
 }
 
 func GetFedConfig() Fed {

@@ -14,12 +14,10 @@
 
 package filter
 
-import "context"
-
 type FilterLoader interface {
-	LoadFilterData(context.Context, string, *Filter) bool
+	LoadFilterData(string, *Filter) bool
 }
 
 type SimpleFilterLoader interface {
-	LoadSimpleFilterData(context.Context, *SimpleFilter) bool
+	LoadSimpleFilterData(*SimpleFilter) bool
 }

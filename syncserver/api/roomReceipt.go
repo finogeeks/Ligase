@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"net/http"
 
@@ -65,7 +64,7 @@ func (ReqPostRoomReceipt) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqPostRoomReceipt) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqPostRoomReceipt) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostRoomReceipt) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostRoomReceiptRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -78,6 +77,6 @@ func (ReqPostRoomReceipt) Process(ctx context.Context, consumer interface{}, msg
 		EventID:     req.EventID,
 		ReceiptType: req.ReceiptType,
 	}
-	c.receiptConsumer.OnReceipt(ctx, data)
+	c.receiptConsumer.OnReceipt(data)
 	return http.StatusOK, nil
 }

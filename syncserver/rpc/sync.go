@@ -15,13 +15,12 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncserver/consumers"
 	"github.com/nats-io/go-nats"
 )
@@ -30,10 +29,9 @@ type SyncServerRpcConsumer struct {
 	roomHistory *repos.RoomHistoryTimeLineRepo
 	rpcClient   *common.RpcClient
 	chanSize    uint32
-	//msgChan     []chan *syncapitypes.SyncServerRequest
-	msgChan    []chan common.ContextMsg
-	syncServer *consumers.SyncServer
-	cfg        *config.Dendrite
+	msgChan     []chan *syncapitypes.SyncServerRequest
+	syncServer  *consumers.SyncServer
+	cfg         *config.Dendrite
 }
 
 func NewSyncServerRpcConsumer(
@@ -56,7 +54,7 @@ func (s *SyncServerRpcConsumer) SetRoomHistory(roomHistory *repos.RoomHistoryTim
 	return s
 }
 
-func (s *SyncServerRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *SyncServerRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -67,7 +65,7 @@ func (s *SyncServerRpcConsumer) GetTopic() string {
 func (s *SyncServerRpcConsumer) Clean() {
 }
 
-func (s *SyncServerRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *SyncServerRpcConsumer) cb(msg *nats.Msg) {
 	var result syncapitypes.SyncServerRequest
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc sync cb error %v", err)
@@ -78,27 +76,26 @@ func (s *SyncServerRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.UserID) % s.chanSize
 		result.RSlot = idx
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	} else {
 		log.Infof("traceid:%s not related sync req instance:%d,server instance:%d,server total:%d userid:%s deviceid:%s", result.TraceID, result.SyncInstance, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, result.UserID, result.DeviceID)
 	}
 }
 
-func (s *SyncServerRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*syncapitypes.SyncServerRequest)
-		go s.syncServer.OnSyncRequest(msg.Ctx, data)
+func (s *SyncServerRpcConsumer) startWorker(msgChan chan *syncapitypes.SyncServerRequest) {
+	for data := range msgChan {
+		go s.syncServer.OnSyncRequest(data)
 	}
 }
 
 func (s *SyncServerRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *syncapitypes.SyncServerRequest, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *syncapitypes.SyncServerRequest, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }

@@ -21,8 +21,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/lib/pq"
 )
 
@@ -93,7 +93,7 @@ func (s *stateSnapshotStatements) insertState(
 			StateBlockNids: stateBlockNIDs,
 		}
 		update.SetUid(id)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_state_snapshots")
+		s.db.WriteDBEvent(&update)
 
 		return id, nil
 	}

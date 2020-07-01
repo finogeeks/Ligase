@@ -24,9 +24,9 @@ import (
 	"math"
 
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
@@ -47,7 +47,7 @@ func (s *RoomQryProcessor) QueryRoomState(
 	log.Debugf("RoomQryProcessor recv QueryRoomState room:%s", request.RoomID)
 	response.RoomID = request.RoomID
 
-	rs := s.Repo.GetRoomState(ctx, request.RoomID)
+	rs := s.Repo.GetRoomState(request.RoomID)
 	if rs == nil {
 		log.Debugf("RoomQryProcessor recv QueryRoomState can't find room:%s", request.RoomID)
 		response.RoomExists = false
@@ -157,16 +157,17 @@ func (s *RoomQryProcessor) QueryJoinRooms(
 	response *roomserverapi.QueryJoinRoomsResponse,
 ) error {
 	response.UserID = request.UserID
-	ums, err := s.UmsRepo.GetJoinMemberShip(ctx, request.UserID)
-	if err != nil {
-		log.Errorf("QueryJoinRooms userID:%s, err:%v", request.UserID, err)
-		return err
+
+	ums := s.UmsRepo.GetUserMemberShip(request.UserID)
+	if ums == nil {
+		return errors.New("ums nil")
 	}
-	if ums == nil || len(ums) <= 0 {
-		log.Errorf("QueryJoinRooms userID:%s ums empty err:%v", request.UserID, err)
-		return errors.New(fmt.Sprintf("QueryJoinRooms userID:%s ums empty", request.UserID))
-	}
-	response.Rooms = append(response.Rooms, ums...)
+
+	ums.GetJoinMap().Range(func(key, value interface{}) bool {
+		response.Rooms = append(response.Rooms, key.(string))
+		return true
+	})
+
 	return nil
 }
 
@@ -175,8 +176,8 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 	request *roomserverapi.QueryBackFillEventsRequest,
 	response *roomserverapi.QueryBackFillEventsResponse,
 ) error {
-	log.Infof("-------RoomQryProcessor QueryBackFillEvents start")
-	rs := s.Repo.GetRoomState(ctx, request.RoomID)
+	log.Infof("-------RoomQryProcessor QueryBackFillEvents start %#v", request)
+	rs := s.Repo.GetRoomState(request.RoomID)
 	if rs == nil {
 		return errors.New("room not exits")
 	}
@@ -192,6 +193,7 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 
 	var eventNIDs []int64
 	var eventNid int64
+	var checkFirstEv = false
 	if eventID != "" {
 		var err error
 		eventNid, err = s.DB.EventNID(ctx, eventID)
@@ -205,13 +207,27 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 		}
 	} else {
 		if request.Dir == "b" {
-			eventNid = math.MaxInt64
+			endEventNID, _ := s.DB.SelectEventNidForBackfill(ctx, rs.RoomNid, request.Origin)
+			log.Infof("-------RoomQryProcessor QueryBackFillEvents rid:%s rnid:%d endEventNID: %d", request.RoomID, rs.RoomNid, endEventNID)
+			if endEventNID == 0 {
+				eventNid = math.MaxInt64
+			} else {
+				checkFirstEv = true
+				eventNid = endEventNID
+			}
 		} else {
 			eventNid = math.MinInt64
 		}
 	}
+
 	// TODO: 验证第一条是否和请求的eventID一致
-	nids, err := s.DB.BackFillNids(ctx, rs.RoomNid, domain, eventNid, request.Limit, request.Dir)
+	var nids []int64
+	var err error
+	if checkFirstEv {
+		nids, err = s.DB.BackFillNids(ctx, rs.RoomNid, domain, eventNid+1, request.Limit, request.Dir)
+	} else {
+		nids, err = s.DB.BackFillNids(ctx, rs.RoomNid, domain, eventNid, request.Limit, request.Dir)
+	}
 	log.Infof("-------RoomQryProcessor QueryBackFillEvents rid:%s domain:%s eventnid:%d backnids:%v", request.RoomID, domain, eventNid, nids)
 	if err != nil {
 		response.Error = err.Error()
@@ -227,25 +243,35 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 	}
 
 	if request.Dir == "b" && eventID == "" {
-		lastID := rs.GetLastMsgID()
-		if lastID != "" {
-			lastNID, err := s.DB.EventNID(ctx, lastID)
+		lastNID := int64(0)
+		if checkFirstEv {
+			lastNID = eventNid
+		} else if rs.GetLastMsgID() != "" {
+			lastID := rs.GetLastMsgID()
+			lastNID, err = s.DB.EventNID(ctx, lastID)
 			if err != nil {
 				log.Errorf("backfill event is not fully store lastID %s roomID: %s", lastID, request.RoomID)
 				response.Error = "backfill event is not fully store"
 				return errors.New("backfill event is not fully store")
 			}
+		}
+		if lastNID != 0 {
 			log.Infof("backfill event nid last %d", lastNID)
 			found := false
-			for _, ev := range evs {
+			ignoreIdx := -1
+			for idx, ev := range evs {
 				log.Infof("backfill event nid ast %d", ev.EventNID())
 				if ev.EventNID() >= lastNID {
+					ignoreIdx = idx
 					found = true
 					break
 				}
 			}
+			if checkFirstEv && ignoreIdx >= 0 {
+				evs = append(evs[:ignoreIdx], evs[ignoreIdx+1:]...)
+			}
 			if !found {
-				log.Errorf("backfill event is not fully store 2 lastID %s roomID: %s", lastID, request.RoomID)
+				log.Errorf("backfill event is not fully store 2 lastNID %d roomID: %s", lastNID, request.RoomID)
 				response.Error = "backfill event is not fully store"
 				return errors.New("backfill event is not fully store")
 			}
@@ -365,51 +391,6 @@ func (s *RoomQryProcessor) QueryEventAuth(
 	}
 
 	response.AuthEvents = authEvents
-
-	return nil
-}
-
-func (s *RoomQryProcessor) QueryEventsByDomainOffset(
-	ctx context.Context,
-	request *roomserverapi.QueryEventsByDomainOffsetRequest,
-	response *roomserverapi.QueryEventsByDomainOffsetResponse,
-) error {
-	log.Infof("-------RoomQryProcessor QueryEventsByDomainOffset start")
-	rs := s.Repo.GetRoomState(ctx, request.RoomID)
-	if rs == nil {
-		return errors.New("room not exits")
-	}
-
-	domainOffset := request.DomainOffset
-	if request.UseEventID {
-		eventNID, err := s.DB.EventNID(ctx, request.EventID)
-		if err != nil {
-			return err
-		}
-		events, _, err := s.DB.Events(ctx, []int64{eventNID})
-		if err != nil {
-			return err
-		}
-		if len(events) < 1 {
-			response.Error = "event not found " + request.EventID
-			return errors.New("event not found " + request.EventID)
-		}
-		domainOffset = events[0].DomainOffset()
-	}
-
-	log.Infof("-------RoomQryProcessor QueryEventsByDomainOffset rid:%s rnid:%d domain:%s domainOffset:%d limit:%d", request.RoomID, rs.RoomNid, request.Domain, domainOffset, request.Limit)
-
-	nids, err := s.DB.SelectRoomEventsByDomainOffset(ctx, rs.RoomNid, request.Domain, domainOffset, request.Limit)
-	if err != nil {
-		response.Error = err.Error()
-		return err
-	}
-
-	evs, _, err := s.DB.Events(ctx, nids)
-	log.Infof("-------RoomQryProcessor QueryEventsByDomainOffset rid:%s rnid:%d domain:%s nids:%v, event:%d", request.RoomID, rs.RoomNid, request.Domain, nids, len(evs))
-	for _, v := range evs {
-		response.PDUs = append(response.PDUs, *v)
-	}
 
 	return nil
 }

@@ -23,12 +23,12 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -36,7 +36,7 @@ func init() {
 	Register(model.CMD_FED_CLIENT_KEYS_CLAIM, ClaimClientKeys)
 }
 
-func QueryClientKeys(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func QueryClientKeys(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	var reqParam external.PostQueryClientKeysRequest
 	reqParam.Decode(msg.Body)
 
@@ -101,7 +101,7 @@ func QueryClientKeys(ctx context.Context, msg *model.GobMessage, cache service.C
 	return &model.GobMessage{Body: body}, nil
 }
 
-func ClaimClientKeys(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func ClaimClientKeys(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	var reqParam external.PostClaimClientKeysRequest
 	reqParam.Decode(msg.Body)
 
@@ -119,7 +119,7 @@ func ClaimClientKeys(ctx context.Context, msg *model.GobMessage, cache service.C
 				alTyp = types.ONETIMEKEYSTRING
 			}
 
-			key := pickOne(ctx, cache, uid, deviceID)
+			key := pickOne(cache, uid, deviceID)
 			if key == nil || key.UserID == "" {
 				continue
 			}
@@ -202,7 +202,6 @@ func presetDeviceKeysQueryMap(
 }
 
 func pickOne(
-	ctx context.Context,
 	cache service.Cache,
 	uid, device string,
 ) *types.KeyHolder {
@@ -212,7 +211,7 @@ func pickOne(
 			key, exists := cache.GetOneTimeKey(keyID)
 			if exists {
 				if key.UserID != "" {
-					encryptionDB.OnDeleteOneTimeKey(ctx, key.DeviceID, key.UserID, key.KeyID, key.KeyAlgorithm)
+					encryptionDB.OnDeleteOneTimeKey(context.TODO(), key.DeviceID, key.UserID, key.KeyID, key.KeyAlgorithm)
 					cache.DeleteOneTimeKey(key.DeviceID, key.UserID, key.KeyID, key.KeyAlgorithm)
 					return key
 				}

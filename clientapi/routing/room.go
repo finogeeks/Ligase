@@ -16,17 +16,22 @@ package routing
 
 import (
 	"context"
+	jsonRaw "encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
+	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/storage/model"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 //handle GET /rooms/{roomId}/joined_members
@@ -65,7 +70,7 @@ func OnRoomJoinedRequest(
 			continue
 		}
 
-		displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, *ev.StateKey())
+		displayName, avatarURL, _ := complexCache.GetProfileByUserID(*ev.StateKey())
 		member.AvatarURL = avatarURL
 		member.DisplayName = displayName
 
@@ -179,5 +184,70 @@ func QueryRoomInfo(ctx context.Context, roomID string, rpcCli roomserverapi.Room
 	}
 	roomInfo.JoinMembers = joinMembers
 
+	if queryRes.Topic != nil {
+		topicContent := common.TopicContent{}
+		if err = json.Unmarshal(queryRes.Topic.Content(), &topicContent); err != nil {
+			log.Errorf("QueryRoomInfo unparsable room topic content roomID:%s error %v", roomID, err)
+		} else {
+			roomInfo.Topic = topicContent.Topic
+		}
+	}
+
+	powerLevels, _ := queryRes.PowerLevels()
+	if powerLevels != nil {
+		roomInfo.PowerLevels = (jsonRaw.RawMessage)(powerLevels.Content())
+	}
+
 	return roomInfo, nil
+}
+
+func DismissRoom(
+	ctx context.Context, req *external.DismissRoomRequest, accountDB model.AccountsDatabase,
+	ownerID, deviceID, roomID string,
+	cfg config.Dendrite,
+	rpcCli roomserverapi.RoomserverRPCAPI,
+	federation *fed.Federation,
+	cache service.Cache,
+	idg *uid.UidGenerator,
+	complexCache *common.ComplexCache,
+) (int, core.Coder) {
+	var queryRes roomserverapi.QueryRoomStateResponse
+	var queryReq roomserverapi.QueryRoomStateRequest
+	queryReq.RoomID = roomID
+	if err := rpcCli.QueryRoomState(ctx, &queryReq, &queryRes); err != nil {
+		return httputil.LogThenErrorCtx(ctx, err)
+	}
+	if plEvent, err := queryRes.PowerLevels(); plEvent != nil {
+		plContent := common.PowerLevelContent{}
+		if err = json.Unmarshal(plEvent.Content(), &plContent); err != nil {
+			log.Errorf("DismissRoom unparsable powerlevel event content user %s roomID:%s error %v", ownerID, roomID, err)
+			return http.StatusForbidden, jsonerror.Forbidden(err.Error())
+		}
+		if power, ok := plContent.Users[ownerID]; !ok || power != 100 {
+			log.Errorf("DismissRoom must be administrator user %s roomID:%s", ownerID, roomID)
+			return http.StatusForbidden, jsonerror.Forbidden("non-administrator is not allowed to dismiss room")
+		}
+	}
+	msg := external.PostRoomsMembershipRequest{}
+	msg.Membership = "dismiss"
+	msg.RoomID = req.RoomID
+	msg.Content = []byte("kick")
+	// sender leaves the room
+	res, _ := SendMembership(ctx, &msg, accountDB, ownerID, ownerID, roomID, "dismiss", cfg, rpcCli, federation, cache, idg, complexCache)
+	if res != http.StatusOK {
+		return res, nil
+	}
+	// other members leave the room
+	req.UserID = ownerID
+	if err := common.GetTransportMultiplexer().SendWithRetry(
+		cfg.Kafka.Producer.DismissRoom.Underlying,
+		cfg.Kafka.Producer.DismissRoom.Name,
+		&core.TransportPubMsg{
+			Keys: []byte(roomID),
+			Obj:  req,
+		}); err != nil {
+		return httputil.LogThenErrorCtx(ctx, err)
+	}
+	return http.StatusOK, &external.DismissRoomResponse{}
+
 }

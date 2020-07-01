@@ -17,13 +17,11 @@ package pushapi
 import (
 	"context"
 	"database/sql"
-	"time"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -51,10 +49,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
-
-	d.db.SetMaxOpenConns(30)
-	d.db.SetMaxIdleConns(30)
-	d.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{d.pushers.getSchema(), d.pushRules.getSchema(), d.pushRulesEnable.getSchema()}
 	for _, sqlStr := range schemas {
@@ -85,48 +79,28 @@ func (d *DataBase) SetGauge(qryDBGauge mon.LabeledGauge) {
 }
 
 // WriteOutputEvents implements OutputRoomEventWriter
-func (d *DataBase) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *DataBase) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *DataBase) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 
 func (d *DataBase) RecoverCache() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "RecoverCache")
-	defer span.Finish()
-	err := d.pushers.recoverPusher(ctx)
+	err := d.pushers.recoverPusher()
 	if err != nil {
 		log.Errorf("pushers.recoverPusher error %v", err)
 	}
 
-	err = d.pushRules.recoverPushRule(ctx)
+	err = d.pushRules.recoverPushRule()
 	if err != nil {
 		log.Errorf("pushRules.recoverPushRule error %v", err)
 	}
 
-	err = d.pushRulesEnable.recoverPushRuleEnable(ctx)
+	err = d.pushRulesEnable.recoverPushRuleEnable()
 	if err != nil {
 		log.Errorf("pushRulesEnable.recoverPushRuleEnable error %v", err)
 	}

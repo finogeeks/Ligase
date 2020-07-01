@@ -22,12 +22,12 @@ import (
 	"database/sql"
 	"time"
 
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"golang.org/x/crypto/bcrypt"
 
 	_ "github.com/lib/pq"
@@ -64,10 +64,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if acc.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
-
-	acc.db.SetMaxOpenConns(30)
-	acc.db.SetMaxIdleConns(30)
-	acc.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{acc.accounts.getSchema(), acc.profiles.getSchema(), acc.accountData.getSchema(), acc.filter.getSchema(), acc.tags.getSchema(), acc.userInfo.getSchema()}
 	for _, sqlStr := range schemas {
@@ -108,29 +104,27 @@ func (d *Database) SetGauge(qryDBGauge mon.LabeledGauge) {
 }
 
 func (d *Database) RecoverCache() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "RecoverCache")
-	defer span.Finish()
-	err := d.profiles.recoverProfile(ctx)
+	err := d.profiles.recoverProfile()
 	if err != nil {
 		log.Errorf("profiles.recoverProfile error %v", err)
 	}
 
-	err = d.accountData.recoverAccountData(ctx)
+	err = d.accountData.recoverAccountData()
 	if err != nil {
 		log.Errorf("accountData.recoverAccountData error %v", err)
 	}
 
-	err = d.filter.recoverFilter(ctx)
+	err = d.filter.recoverFilter()
 	if err != nil {
 		log.Errorf("filter.recoverFilter error %v", err)
 	}
 
-	err = d.tags.recoverRoomTag(ctx)
+	err = d.tags.recoverRoomTag()
 	if err != nil {
 		log.Errorf("tags.recoverRoomTag error %v", err)
 	}
 
-	err = d.userInfo.recoverUserInfo(ctx)
+	err = d.userInfo.recoverUserInfo()
 	if err != nil {
 		log.Errorf("userInfo.recoverUserInfo error %v", err)
 	}
@@ -138,31 +132,13 @@ func (d *Database) RecoverCache() {
 	log.Info("account db load finished")
 }
 
-func (d *Database) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *Database) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 
@@ -184,33 +160,6 @@ func (d *Database) CreateAccount(
 		return nil, err
 	}
 	return d.accounts.insertAccount(ctx, userID, hash, appServiceID)
-}
-
-func (d *Database) CreateAccountWithCheck(
-	ctx context.Context, oldAccount *authtypes.Account, userID, plaintextPassword, appServiceID, displayName string,
-) (*authtypes.Account, error) {
-	// Generate a password hash if this is not a password-less user
-	hash := ""
-	if plaintextPassword != "" {
-		hash, _ = hashPassword(plaintextPassword)
-	}
-	if err := d.profiles.initProfile(ctx, userID, displayName, ""); err != nil {
-		return nil, err
-	}
-	if err := d.userInfo.initUserInfo(ctx, userID, displayName, "", "", "", ""); err != nil {
-		return nil, err
-	}
-	if oldAccount == nil || oldAccount.UserID == "" {
-		return d.accounts.insertAccount(ctx, userID, hash, appServiceID)
-	} else {
-		if oldAccount.AppServiceID != "actual" && appServiceID == "actual" {
-			oldAccount.AppServiceID = appServiceID
-			if err := d.accounts.updateAccount(ctx, userID, appServiceID); err != nil {
-				return oldAccount, err
-			}
-		}
-		return oldAccount, nil
-	}
 }
 
 func (d *Database) GetAccount(ctx context.Context, userID string) (*authtypes.Account, error) {
@@ -296,12 +245,6 @@ func (d *Database) GetAccountsTotal(
 	d.qryDBGauge.WithLabelValues("GetAccountsTotal").Set(duration)
 
 	return res, err
-}
-
-func (d *Database) GetActualTotal(
-	ctx context.Context,
-) (int, error) {
-	return d.accounts.selectActualTotal(ctx)
 }
 
 func (d *Database) GetRoomTagsTotal(

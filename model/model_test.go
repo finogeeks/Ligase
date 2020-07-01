@@ -22,13 +22,14 @@ import (
 func Test_GobMsg(t *testing.T) {
 	gob := GobMessage{}
 	gob.MsgType = REQUEST
-	gob.Body = []byte("abc")
+	gob.Body = "abc"
 
 	fmt.Println(gob)
-	gob.Body = []byte("456")
+	gob.Body = 456
 	fmt.Println(gob)
 
 }
 func Test_Version(t *testing.T) {
-	fmt.Println(Version{})
+	fmt.Println(Version())
+
 }

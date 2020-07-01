@@ -19,21 +19,18 @@ package processors
 
 import (
 	"context"
-
 	"errors"
-	"fmt"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/gomodule/redigo/redis"
 	jsoniter "github.com/json-iterator/go"
-	log "github.com/sirupsen/logrus"
 	//log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
@@ -43,7 +40,7 @@ type AliasProcessor struct {
 	DB            model.RoomServerDatabase
 	Cfg           *config.Dendrite
 	Filter        *filter.Filter
-	Cache         service.Cache
+	Cache         service.LocalCache
 	Repo          *repos.RoomServerCurStateRepo
 	Idg           *uid.UidGenerator
 	InputAPI      roomserverapi.RoomserverInputAPI
@@ -51,39 +48,25 @@ type AliasProcessor struct {
 	//QueryAPI roomserverapi.RoomserverQueryAPI
 }
 
+func (r *AliasProcessor) Init() {
+	r.aliasCacheKey = r.Cache.Register("aliase")
+}
+
 func (r *AliasProcessor) AllocRoomAlias(
 	ctx context.Context,
 	request *roomserverapi.SetRoomAliasRequest,
 	response *roomserverapi.SetRoomAliasResponse,
 ) error {
-	response.AliasExists = false
-	exsit, err := r.Cache.AliasExists(request.Alias)
-	if err != nil {
-		return err
-	}
-	if exsit {
+	if r.Filter.Lookup([]byte(request.Alias)) {
 		response.AliasExists = true
 		return nil
 	}
-	roomID, err := r.DB.GetRoomIDFromAlias(ctx, request.Alias)
-	if err != nil {
+	r.Filter.Insert([]byte(request.Alias))
+	response.AliasExists = false
+
+	// Save the new alias
+	if err := r.DB.SetRoomAlias(ctx, request.Alias, request.RoomID); err != nil {
 		return err
-	}
-	if roomID == "" {
-		if err := r.DB.SetRoomAlias(ctx, request.Alias, request.RoomID); err != nil {
-			return err
-		} else {
-			err := r.Cache.SetAlias(request.Alias, request.RoomID, 0)
-			if err != nil {
-				log.Warnf("AllocRoomAlias set alias:%s room_id:%s to cache err:%v", request.Alias, request.RoomID, err)
-			}
-		}
-	} else {
-		response.AliasExists = true
-		err := r.Cache.SetAlias(request.Alias, request.RoomID, 0)
-		if err != nil {
-			log.Warnf("AllocRoomAlias set db alias:%s room_id:%s to cache err:%v", request.Alias, request.RoomID, err)
-		}
 	}
 	return nil
 }
@@ -97,8 +80,14 @@ func (r *AliasProcessor) SetRoomAlias(
 	if err != nil {
 		return err
 	}
+
+	r.Cache.Put(r.aliasCacheKey, request.Alias, request.RoomID)
+
+	// Send a m.room.aliases event with the updated list of aliases for this room
+	// At this point we've already committed the alias to the database so we
+	// shouldn't cancel this request.
 	// TODO: Ensure that we send unsent events when if server restarts.
-	return r.sendUpdatedAliasesEvent(ctx, request.UserID, request.RoomID)
+	return r.sendUpdatedAliasesEvent(context.TODO(), request.UserID, request.RoomID)
 }
 
 // GetAliasRoomID implements roomserverapi.RoomserverAliasAPI
@@ -107,29 +96,24 @@ func (r *AliasProcessor) GetAliasRoomID(
 	request *roomserverapi.GetAliasRoomIDRequest,
 	response *roomserverapi.GetAliasRoomIDResponse,
 ) error {
-	roomID, err := r.Cache.GetAlias(request.Alias)
-	if err != nil {
-		if err != redis.ErrNil {
-			return err
-		}
-	} else {
-		if roomID != "" {
-			response.RoomID = roomID
-			return nil
-		}
+	if r.Filter.Lookup([]byte(request.Alias)) == false {
+		return nil
 	}
-	// redis not exsit Look up the room ID in the database
-	roomID, err = r.DB.GetRoomIDFromAlias(ctx, request.Alias)
+
+	if val, ok := r.Cache.Get(r.aliasCacheKey, request.Alias); ok {
+		response.RoomID = val.(string)
+		return nil
+	}
+
+	// Look up the room ID in the database
+	roomID, err := r.DB.GetRoomIDFromAlias(ctx, request.Alias)
 	if err != nil {
 		return err
 	}
+
 	response.RoomID = roomID
-	if roomID != "" {
-		err = r.Cache.SetAlias(request.Alias, roomID, 0)
-		if err != nil {
-			log.Warnf("GetAliasRoomID set db alias:%s room_id:%s to cache err:%v", request.Alias, roomID, err)
-		}
-	}
+	r.Cache.Put(r.aliasCacheKey, request.Alias, roomID)
+
 	return nil
 }
 
@@ -140,43 +124,39 @@ func (r *AliasProcessor) RemoveRoomAlias(
 	response *roomserverapi.RemoveRoomAliasResponse,
 ) error {
 	// Look up the room ID in the database
-	roomID, err := r.Cache.GetAlias(request.Alias)
-	if err != nil {
-		if err != redis.ErrNil {
-			return err
-		}
-	}
-	if roomID == "" {
-		roomID, err = r.DB.GetRoomIDFromAlias(ctx, request.Alias)
+	var roomID string
+
+	if val, ok := r.Cache.Get(r.aliasCacheKey, request.Alias); ok {
+		roomID = val.(string)
+	} else {
+		id, err := r.DB.GetRoomIDFromAlias(ctx, request.Alias)
 		if err != nil {
 			return err
 		}
-	}
-	if roomID == "" {
-		return errors.New(fmt.Sprintf("not room alias is %s"))
-	}
-	rs := r.Repo.GetRoomState(ctx, roomID)
-	if rs == nil {
-		return errors.New(fmt.Sprintf("can't find room:%s state", roomID))
-	}
-	aliasEv := rs.Alias
-	if aliasEv.Sender() == "" || aliasEv.Sender() != request.UserID {
-		return errors.New(fmt.Sprintf("user:%s if not room:%s creator", request.UserID, roomID))
+		roomID = id
 	}
 
-	err = r.Cache.DelAlias(request.Alias)
-	if err != nil {
-		return err
+	rs := r.Repo.GetRoomState(roomID)
+	if rs == nil {
+		return errors.New("can't find room state")
+	}
+
+	aliasEv := rs.Alias
+	//log.Errorf("%v ", rs)
+	if aliasEv.Sender() == "" || aliasEv.Sender() != request.UserID {
+		return errors.New("not creator")
 	}
 
 	if err := r.DB.RemoveRoomAlias(ctx, request.Alias); err != nil {
 		return err
 	}
+	r.Filter.Delete([]byte(request.Alias))
+
 	// Send an updated m.room.aliases event
 	// At this point we've already committed the alias to the database so we
 	// shouldn't cancel this request.
 	// TODO: Ensure that we send unsent events when if server restarts.
-	return r.sendUpdatedAliasesEvent(ctx, request.UserID, roomID)
+	return r.sendUpdatedAliasesEvent(context.TODO(), request.UserID, roomID)
 }
 
 type roomAliasesContent struct {
@@ -209,7 +189,7 @@ func (r *AliasProcessor) sendUpdatedAliasesEvent(
 		return err
 	}
 
-	rs := r.Repo.GetRoomState(ctx, roomID)
+	rs := r.Repo.GetRoomState(roomID)
 	if rs == nil {
 		return errors.New("can't find room state")
 	}

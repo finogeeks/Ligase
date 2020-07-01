@@ -19,8 +19,8 @@ import (
 	"log"
 	"sync"
 
-	"github.com/finogeeks/ligase/core"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/storage/model"
 )
 

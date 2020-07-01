@@ -26,9 +26,9 @@ import (
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/model/repos"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
-	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model"
 )
 
 type senderItem struct {
@@ -50,17 +50,18 @@ type BackFillRecord struct {
 }
 
 type FederationBackFill struct {
-	processor     BackfillProcessor
-	cfg           *config.Fed
-	fedRpcCli     *rpc.FederationRpcClient
-	msgChan       chan *BackFillJob
-	fedClient     *client.FedClientWrap
-	backfillRepo  *repos.BackfillRepo
-	fakePartition int32
+	processor    BackfillProcessor
+	cfg          *config.Fed
+	fedRpcCli    *rpc.FederationRpcClient
+	msgChan      chan *BackFillJob
+	db           fedmodel.FederationDatabase
+	fedClient    *client.FedClientWrap
+	backfillRepo *repos.BackfillRepo
 }
 
 func NewFederationBackFill(
 	cfg *config.Fed,
+	db fedmodel.FederationDatabase,
 	fedClient *client.FedClientWrap,
 	feddomains *common.FedDomains,
 	repo *repos.BackfillRepo,
@@ -73,10 +74,12 @@ func NewFederationBackFill(
 		cfg:          cfg,
 		fedRpcCli:    fedRpcCli,
 		fedClient:    fedClient,
+		db:           db,
 		backfillRepo: repo,
 	}
 	sender.processor = BackfillProcessor{
 		cfg:          cfg,
+		db:           db,
 		fedClient:    fedClient,
 		fedRpcCli:    fedRpcCli,
 		feddomains:   feddomains,
@@ -85,6 +88,9 @@ func NewFederationBackFill(
 
 	sender.msgChan = make(chan *BackFillJob, 4096)
 
+	if err := sender.loadRecords(); err != nil {
+		panic(err)
+	}
 	if err := sender.retryBackfill(); err != nil {
 		panic(err)
 	}
@@ -93,17 +99,25 @@ func NewFederationBackFill(
 	return sender
 }
 
-func (c *FederationBackFill) retryBackfill() error {
-	unfinished, err := c.backfillRepo.GetUnfinishedRooms()
+func (c *FederationBackFill) loadRecords() error {
+	records, err := c.db.SelectAllBackfillRecord(context.TODO())
 	if err != nil {
 		return err
 	}
-	ctx := context.TODO()
-	for _, roomID := range unfinished {
-		v, ok := c.backfillRepo.AssignRoomPartition(ctx, roomID, c.fakePartition)
-		if !ok {
-			continue
+	for i := 0; i < len(records); i++ {
+		record := &records[i]
+		if record.Finished {
+			// 节约内存
+			record.States = ""
 		}
+		c.backfillRepo.InitBackfillRec(record.RoomID, record)
+	}
+	return nil
+}
+
+func (c *FederationBackFill) retryBackfill() error {
+	unfinished := c.backfillRepo.GetUnfinishedRecs()
+	for _, v := range unfinished {
 		roomID := v.RoomID
 		record := v
 		job := new(BackFillJob)
@@ -123,11 +137,6 @@ func (c *FederationBackFill) retryBackfill() error {
 }
 
 func (c *FederationBackFill) start() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "FederationBackfill.Start")
-	defer span.Finish()
-
-	c.fakePartition = c.backfillRepo.GenerateFakePartition(ctx)
-	c.processor.fakePartition = c.fakePartition
 	c.fedRpcCli.Start()
 }
 
@@ -135,14 +144,28 @@ func (c *FederationBackFill) processBackfill(job *BackFillJob) {
 	go c.processor.Process(job)
 }
 
-func (c *FederationBackFill) AddRequest(ctx context.Context, evs []gomatrixserverlib.Event, limit bool) error {
+func (c *FederationBackFill) AddRequest(evs []gomatrixserverlib.Event, limit bool) error {
 	if len(evs) == 0 || evs[0].Type() != "m.room.create" {
 		return errors.New("backfill request state invalid")
 	}
 	roomID := evs[0].RoomID()
-	log.Infof("fed-backfill start backfill: %s", roomID)
-
 	rec := fedmodel.BackfillRecord{RoomID: roomID, FinishedDomains: "{}"}
+
+	if ok := c.backfillRepo.InitBackfillRec(roomID, &rec); !ok {
+		isFinished, _, _ := c.backfillRepo.IsBackfillFinished(roomID)
+		if isFinished {
+			return errors.New("backfill finished")
+		} else {
+			log.Infof("Backfill roomID %s already in progress", roomID)
+			return errors.New("backfill already in progress")
+		}
+	}
+	pdus := make([]*gomatrixserverlib.Event, 0, len(evs))
+	for i := 0; i < len(evs); i++ {
+		evs[i].SetDepth(0)
+		pdus = append(pdus, &evs[i])
+	}
+
 	const kLimitSize = 1000
 	states, _ := json.Marshal(evs)
 	rec.States = string(states)
@@ -150,21 +173,13 @@ func (c *FederationBackFill) AddRequest(ctx context.Context, evs []gomatrixserve
 		rec.Limit = kLimitSize
 	}
 
-	ok, err := c.backfillRepo.InsertBackfillRecord(ctx, rec)
+	err := c.db.InsertBackfillRecord(context.TODO(), rec)
 	if err != nil {
+		c.backfillRepo.DeleteBackfillRec(roomID)
 		log.Warnf("Backfill insert record err: %v", err)
 		return errors.New("backfill insert record err " + err.Error())
 	}
-	if !ok {
-		log.Infof("fed-backfill %s already in progress", roomID)
-		return errors.New("backfill already in progress")
-	}
 
-	pdus := make([]*gomatrixserverlib.Event, 0, len(evs))
-	for i := 0; i < len(evs); i++ {
-		evs[i].SetDepth(0)
-		pdus = append(pdus, &evs[i])
-	}
 	job := new(BackFillJob)
 	job.PDUs = pdus
 	if limit {
@@ -174,19 +189,20 @@ func (c *FederationBackFill) AddRequest(ctx context.Context, evs []gomatrixserve
 	return nil
 }
 
-func (c *FederationBackFill) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (c *FederationBackFill) OnMessage(subject string, partition int32, data []byte) {
 	msg := &model.GobMessage{}
 	err := json.Unmarshal(data, msg)
 	if err != nil {
 		log.Errorf("decode error: %v", err)
 		return
 	}
+	log.Infof("fed-backfill recv topic:%s", subject)
 
 	if msg.Cmd == model.CMD_FED_SEND {
 		t := gomatrixserverlib.Transaction{}
 		_ = json.Unmarshal(msg.Body, &t)
 		if len(t.PDUs) > 0 {
-			c.AddRequest(ctx, t.PDUs, false) // backfill 第一次都要全部event吧
+			c.AddRequest(t.PDUs, false) // backfill 第一次都要全部event吧
 		}
 	}
 }

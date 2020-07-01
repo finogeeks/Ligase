@@ -15,12 +15,11 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncaggregate/consumers"
 	"github.com/json-iterator/go"
 	"github.com/nats-io/go-nats"
@@ -32,9 +31,8 @@ type TypingRpcConsumer struct {
 	rpcClient *common.RpcClient
 	consumer  *consumers.TypingConsumer
 	chanSize  uint32
-	//msgChan   []chan *syncapitypes.TypingUpdate
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan   []chan *syncapitypes.TypingUpdate
+	cfg       *config.Dendrite
 }
 
 func NewTypingRpcConsumer(
@@ -56,7 +54,7 @@ func (s *TypingRpcConsumer) GetTopic() string {
 	return types.TypingUpdateTopicDef
 }
 
-func (s *TypingRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *TypingRpcConsumer) cb(msg *nats.Msg) {
 	var result syncapitypes.TypingUpdate
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc typing update cb error %v", err)
@@ -65,32 +63,31 @@ func (s *TypingRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	for _, user := range result.RoomUsers {
 		if common.IsRelatedRequest(user, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 			idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-			s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+			s.msgChan[idx] <- &result
 			break
 		}
 	}
 }
 
-func (s *TypingRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*syncapitypes.TypingUpdate)
-		s.processTypingUpdate(msg.Ctx, data)
+func (s *TypingRpcConsumer) startWorker(msgChan chan *syncapitypes.TypingUpdate) {
+	for data := range msgChan {
+		s.processTypingUpdate(data)
 	}
 }
 
 func (s *TypingRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *syncapitypes.TypingUpdate, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *syncapitypes.TypingUpdate, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *TypingRpcConsumer) processTypingUpdate(ctx context.Context, data *syncapitypes.TypingUpdate) {
+func (s *TypingRpcConsumer) processTypingUpdate(data *syncapitypes.TypingUpdate) {
 	s.consumer.AddRoomJoined(data.RoomID, data.RoomUsers)
 	switch data.Type {
 	case "add":

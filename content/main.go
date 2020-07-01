@@ -26,6 +26,8 @@ import (
 	"syscall"
 	"time"
 
+	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
@@ -39,10 +41,8 @@ import (
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
-	_ "github.com/finogeeks/ligase/plugins"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	_ "github.com/finogeeks/ligase/plugins"
 	_ "github.com/finogeeks/ligase/storage/implements"
 	models "github.com/finogeeks/ligase/storage/model"
 )
@@ -63,7 +63,7 @@ const usageDoc = `Entry point for content-server.
 usage:
         content-server [<flag> ...] <Go file or directory> ...
 Flags
-		--http-address			http listening port, default 8008
+		--http-address			http listening port, default 8008 
 		--log-porf				check log server porformance, default true
 `
 

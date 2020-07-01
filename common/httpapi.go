@@ -22,15 +22,15 @@ import (
 	"strings"
 	"time"
 
+	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"github.com/finogeeks/ligase/model/authtypes"
-	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
+	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/model/service"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 

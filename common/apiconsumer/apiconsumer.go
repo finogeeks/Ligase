@@ -15,7 +15,6 @@
 package apiconsumer
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,9 +24,9 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/json-iterator/go"
 	"github.com/nats-io/go-nats"
 )
@@ -101,7 +100,7 @@ type APIProcessor interface {
 	// GetPath valid: r0 v1 inr0 sys unstable mediaR0 mediaV1 fedV1
 	GetPrefix() []string
 
-	Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder)
+	Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder)
 }
 
 type APIEvent struct {
@@ -115,10 +114,9 @@ type APIConsumer struct {
 	name     string
 	userData interface{}
 	handlers sync.Map
-	//msgChan  chan APIEvent
-	msgChan chan common.ContextMsg
-	Cfg     config.Dendrite
-	RpcCli  *common.RpcClient
+	msgChan  chan APIEvent
+	Cfg      config.Dendrite
+	RpcCli   *common.RpcClient
 }
 
 func (c *APIConsumer) GetCfg() config.Dendrite {
@@ -132,7 +130,7 @@ func (c *APIConsumer) GetRpcCli() *common.RpcClient {
 func (c *APIConsumer) Init(name string, ud interface{}, topic string) {
 	c.name = name
 	c.userData = ud
-	c.msgChan = make(chan common.ContextMsg, 4096)
+	c.msgChan = make(chan APIEvent, 4096)
 	c.setupReply(topic)
 
 	ForeachAPIProcessor(func(p APIProcessor) bool {
@@ -146,7 +144,7 @@ func (c *APIConsumer) Init(name string, ud interface{}, topic string) {
 func (c *APIConsumer) InitGroup(name string, ud interface{}, topic, grp string) {
 	c.name = name
 	c.userData = ud
-	c.msgChan = make(chan common.ContextMsg, 4096)
+	c.msgChan = make(chan APIEvent, 4096)
 	c.setupGroupReply(topic, grp)
 
 	ForeachAPIProcessor(func(p APIProcessor) bool {
@@ -158,7 +156,7 @@ func (c *APIConsumer) InitGroup(name string, ud interface{}, topic, grp string) 
 }
 
 func (c *APIConsumer) Start() {
-	c.startWorker(c.msgChan)
+	c.startWorkder(c.msgChan)
 }
 
 func (c *APIConsumer) SetupTransport() {
@@ -193,30 +191,27 @@ func (c *APIConsumer) RegisterHandler(msgType int32, p APIProcessor) {
 }
 
 func (c *APIConsumer) setupReply(topic string) {
-	c.RpcCli.ReplyWithContext(topic, c.onRpcMsg)
+	c.RpcCli.Reply(topic, c.onRpcMsg)
 }
 
 func (c *APIConsumer) setupGroupReply(topic, grp string) {
-	c.RpcCli.ReplyGrpWithContext(topic, grp, c.onRpcMsg)
+	c.RpcCli.ReplyGrp(topic, grp, c.onRpcMsg)
 }
 
-func (c *APIConsumer) onRpcMsg(ctx context.Context, msg *nats.Msg) {
-	c.msgChan <- common.ContextMsg{
-		Ctx: ctx,
-		Msg: APIEvent{
-			topic:     msg.Subject,
-			partition: -1,
-			data:      msg.Data,
-			reply:     msg.Reply,
-		},
+func (c *APIConsumer) onRpcMsg(msg *nats.Msg) {
+	c.msgChan <- APIEvent{
+		topic:     msg.Subject,
+		partition: -1,
+		data:      msg.Data,
+		reply:     msg.Reply,
 	}
 }
 
-func (c *APIConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (c *APIConsumer) startWorkder(msgChan chan APIEvent) {
 	go func() {
 		for ev := range msgChan {
-			go func(ctx context.Context, ev APIEvent) {
-				data := c.OnMessage(ctx, ev.topic, ev.partition, ev.data)
+			go func(ev APIEvent) {
+				data := c.OnMessage(ev.topic, ev.partition, ev.data)
 				output := &internals.OutputMsg{}
 				err := output.Decode(data)
 				if err != nil {
@@ -235,12 +230,12 @@ func (c *APIConsumer) startWorker(msgChan chan common.ContextMsg) {
 						//do not response to nats
 					}
 				}
-			}(ev.Ctx, ev.Msg.(APIEvent))
+			}(ev)
 		}
 	}()
 }
 
-func (c *APIConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte) []byte {
+func (c *APIConsumer) OnMessage(topic string, partition int32, data []byte) []byte {
 	input := &internals.InputMsg{}
 	err := input.Decode(data)
 	if err != nil {
@@ -252,7 +247,7 @@ func (c *APIConsumer) OnMessage(ctx context.Context, topic string, partition int
 		resp, _ := output.Encode()
 		return resp
 	}
-	output, err := c.process(ctx, input)
+	output, err := c.process(input)
 	if err != nil {
 		log.Errorf("process %s msg err: %s", c.name, err.Error())
 		output := &internals.OutputMsg{
@@ -285,7 +280,7 @@ func (c *APIConsumer) OnMessage(ctx context.Context, topic string, partition int
 	return resp
 }
 
-func (c *APIConsumer) process(ctx context.Context, input *internals.InputMsg) (*internals.OutputMsg, error) {
+func (c *APIConsumer) process(input *internals.InputMsg) (*internals.OutputMsg, error) {
 	if input == nil {
 		return nil, errors.New("input is empty")
 	}
@@ -315,7 +310,7 @@ func (c *APIConsumer) process(ctx context.Context, input *internals.InputMsg) (*
 			LastActiveTs: input.Device.LastActiveTs,
 		}
 	}
-	code, resp := processor.Process(ctx, c.userData, msg, device)
+	code, resp := processor.Process(c.userData, msg, device)
 	output := &internals.OutputMsg{}
 	switch resp.(type) {
 	case *internals.RespMessage:

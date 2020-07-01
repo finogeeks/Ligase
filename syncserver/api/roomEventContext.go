@@ -26,14 +26,14 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncserver/extra"
 )
 
@@ -83,7 +83,7 @@ type GetMessagesSource struct {
 	roomMinStream int64
 }
 
-func (ReqGetEventContext) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetEventContext) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomEventContextRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -96,7 +96,7 @@ func (ReqGetEventContext) Process(ctx context.Context, consumer interface{}, msg
 	limit := req.Limit
 	log.Debugf("get context process, room: %s, event: %s, limit: %d", roomID, eventID, limit)
 
-	c.rsTimeline.LoadStreamStates(ctx, roomID, true)
+	c.rsTimeline.LoadStreamStates(roomID, true)
 	rs := c.rsCurState.GetRoomState(roomID)
 	if rs == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room state")
@@ -108,10 +108,10 @@ func (ReqGetEventContext) Process(ctx context.Context, consumer interface{}, msg
 		return http.StatusForbidden, jsonerror.Forbidden("You aren't a member of the room and weren't previously a member of the room or just forget the room")
 	}
 
-	roomMinStream := c.rmHsTimeline.GetRoomMinStream(ctx, roomID)
+	roomMinStream := c.rmHsTimeline.GetRoomMinStream(roomID)
 
 	// get fromPos and fromTs by eventID
-	baseEvent, offsets, err := c.db.StreamEvents(ctx, []string{eventID})
+	baseEvent, offsets, err := c.db.StreamEvents(context.TODO(), []string{eventID})
 	if err != nil || len(baseEvent) <= 0 || len(offsets) <= 0 {
 		log.Warnf("cannot find event, eventID: %s, ret events: %v, offsets: %v", eventID, baseEvent, offsets)
 		return http.StatusNotFound, jsonerror.NotFound("cannot find event")
@@ -130,7 +130,7 @@ func (ReqGetEventContext) Process(ctx context.Context, consumer interface{}, msg
 	}
 
 	// get feed
-	tl := c.rmHsTimeline.GetHistory(ctx, roomID)
+	tl := c.rmHsTimeline.GetHistory(roomID)
 	if tl == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room history")
 	}
@@ -142,20 +142,20 @@ func (ReqGetEventContext) Process(ctx context.Context, consumer interface{}, msg
 	forwardLimit := limit - backwardLimit
 
 	source := GetMessagesSource{c, rs, tl, createEv, roomMinStream}
-	bwEvents, startPos, startTs, err := source.getMessages(ctx, userID, roomID, "b", fromPos-1, fromTs, backwardLimit)
+	bwEvents, startPos, startTs, err := source.getMessages(userID, roomID, "b", fromPos-1, fromTs, backwardLimit)
 	if err != nil {
 		log.Errorln("get context process, get event before error: ", err.Error())
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to get event before")
 	}
 
-	fwEvents, endPos, endTs, err := source.getMessages(ctx, userID, roomID, "f", fromPos+1, fromTs, forwardLimit)
+	fwEvents, endPos, endTs, err := source.getMessages(userID, roomID, "f", fromPos+1, fromTs, forwardLimit)
 	if err != nil {
 		log.Errorln("get context process, get event after error: ", err.Error())
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to get event after")
 	}
 
 	// get current state events
-	_, stateEvents := source.c.rsTimeline.GetStateEvents(ctx, roomID, endPos)
+	_, stateEvents := source.c.rsTimeline.GetStateEvents(roomID, endPos)
 	// append hint
 	extra.ExpandMessages(&baseEvent[0], userID, c.rsCurState, c.displayNameRepo)
 
@@ -171,7 +171,6 @@ func (ReqGetEventContext) Process(ctx context.Context, consumer interface{}, msg
 }
 
 func (source GetMessagesSource) getMessages(
-	ctx context.Context,
 	userID, roomID, dir string, fromPos, fromTs, limit int64,
 ) ([]gomatrixserverlib.ClientEvent, int64, int64, error) {
 	var endPos, endTs int64
@@ -188,7 +187,7 @@ func (source GetMessagesSource) getMessages(
 		endPos = fromPos
 		endTs = fromTs
 	} else if fromPos < feedLower || fromPos <= source.roomMinStream { // use db
-		outputRoomEvents, endPos, endTs, err = source.getFromDB(ctx, userID, roomID, dir, fromPos, fromTs, int(limit))
+		outputRoomEvents, endPos, endTs, err = source.getFromDB(context.TODO(), userID, roomID, dir, fromPos, fromTs, int(limit))
 		log.Debugf("get context [%s dir] from cache, but out of range, get from db, endPos: %d", dir, endPos)
 	} else { // use cache
 		cacheLoaded := true
@@ -323,7 +322,7 @@ func (source GetMessagesSource) getMessages(
 			})
 		}
 		if !cacheLoaded {
-			outputRoomEvents, endPos, endTs, err = source.getFromDB(ctx, userID, roomID, dir, fromPos, fromTs, int(limit))
+			outputRoomEvents, endPos, endTs, err = source.getFromDB(context.TODO(), userID, roomID, dir, fromPos, fromTs, int(limit))
 			log.Debugf("get context [%s dir], load cache failed , get from db, endPos: %d", dir, endPos)
 		}
 	}
@@ -340,7 +339,7 @@ func (source GetMessagesSource) getFromDB(
 
 	outputRoomEvents := []gomatrixserverlib.ClientEvent{}
 
-	events, offsets, _, err, endPos, endTs := source.c.db.SelectEventsByDir(ctx, userID, roomID, dir, fromTs, limit)
+	events, offsets, _, err, endPos, endTs := source.c.db.SelectEventsByDir(ctx, userID, roomID, dir, fromPos, limit)
 	if err != nil {
 		return outputRoomEvents, fromPos, fromTs, err
 	}

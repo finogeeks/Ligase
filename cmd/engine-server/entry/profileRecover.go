@@ -20,28 +20,18 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
-	"github.com/finogeeks/ligase/model/authtypes"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
 func StartProfileRecover(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
-	span, ctx := common.StartSobSomSpan(context.Background(), "StartProfileRecover")
-	defer span.Finish()
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
 
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
-
-	for _, v := range dbUpdateProducerName {
-		dbUpdates := kafka.Producer.DBUpdates
-		dbUpdates.Topic = dbUpdates.Topic + "_" + v
-		dbUpdates.Name = dbUpdates.Name + "_" + v
-		addProducer(transportMultiplexer, dbUpdates)
-	}
-
 	transportMultiplexer.PreStart()
 	transportMultiplexer.Start()
 
@@ -64,7 +54,7 @@ func StartProfileRecover(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	}
 
 	if len(recoverUsers) > 0 {
-		streams, _, err := syncDB.GetUserPresenceDataStream(ctx, recoverUsers)
+		streams, _, err := syncDB.GetUserPresenceDataStream(context.TODO(), recoverUsers)
 		if err != nil {
 			panic(err)
 		}
@@ -88,7 +78,7 @@ func StartProfileRecover(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 			if (content.AvatarURL != profile.AvatarURL && content.AvatarURL != "") ||
 				(content.DisplayName != profile.DisplayName && content.DisplayName != "") {
-				accountsDB.UpsertProfile(ctx, stream.UserID, content.DisplayName, content.AvatarURL)
+				accountsDB.UpsertProfile(context.TODO(), stream.UserID, content.DisplayName, content.AvatarURL)
 				log.Infof("start recover profile user: %s, DisplayName: %s, AvatarURL: %s", profile.UserID, content.DisplayName, content.AvatarURL)
 			}
 		}
@@ -98,14 +88,14 @@ func StartProfileRecover(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 }
 
-func loadPresence(ctx context.Context, syncDB model.SyncAPIDatabase) {
+func loadPresence(syncDB model.SyncAPIDatabase) {
 	limit := 1000
 	offset := 0
 	exists := true
 
 	for exists {
 		exists = false
-		streams, _, err := syncDB.GetHistoryPresenceDataStream(ctx, limit, offset)
+		streams, _, err := syncDB.GetHistoryPresenceDataStream(context.TODO(), limit, offset)
 		if err != nil {
 			log.Panicf("PresenceDataStreamRepo load history err: %v", err)
 			return

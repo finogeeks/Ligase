@@ -15,7 +15,6 @@
 package federationapi
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/finogeeks/ligase/cache"
@@ -30,13 +29,13 @@ import (
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 	fedrepos "github.com/finogeeks/ligase/federation/model/repos"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/skunkworks/util/id"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/util/id"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -97,13 +96,14 @@ func NewFederationAPIComponent(
 
 func (fed *FederationAPIComponent) SetRepo(repo *repos.RoomServerCurStateRepo) {
 	fed.Repo = repo
+	entry.SetRepo(repo)
 }
 
 func (fed *FederationAPIComponent) Setup() {
 	fed.fedRpcCli.Start()
 }
 
-func (fed *FederationAPIComponent) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (fed *FederationAPIComponent) OnMessage(subject string, partition int32, data []byte) {
 	//dec := gob.NewDecoder(bytes.NewReader(data))
 	msg := &model.GobMessage{}
 	//err := dec.Decode(msg)
@@ -112,7 +112,10 @@ func (fed *FederationAPIComponent) OnMessage(ctx context.Context, topic string, 
 		log.Errorf("decode error: %v", err)
 		return
 	}
-	log.Infof("fed-api recv topic:%s cmd:%d", topic, msg.Cmd)
+	if msg.Key == nil {
+		msg.Key = []byte{}
+	}
+	log.Infof("fed-api recv topic:%s cmd:%d key:%s", subject, msg.Cmd, string(msg.Key))
 
 	// call federation api by commandID
 	var retMsg *model.GobMessage
@@ -121,7 +124,7 @@ func (fed *FederationAPIComponent) OnMessage(ctx context.Context, topic string, 
 		retMsg = &model.GobMessage{}
 		retMsg.ErrStr = fmt.Sprintf("cannot find api entry, msg: %v", msg)
 	} else {
-		retMsg, err = entry.FedApiFunc[msg.Cmd](ctx, msg, fed.cache, fed.fedRpcCli, fed.fedClient, fed.db)
+		retMsg, err = entry.FedApiFunc[msg.Cmd](msg, fed.cache, fed.fedRpcCli, fed.fedClient, fed.db)
 		if err == nil {
 			retMsg.ErrStr = ""
 		} else {
@@ -131,22 +134,17 @@ func (fed *FederationAPIComponent) OnMessage(ctx context.Context, topic string, 
 	retMsg.MsgType = model.REPLY
 	retMsg.MsgSeq = msg.MsgSeq
 	retMsg.NodeId = id.GetNodeId()
-
+	retMsg.Key = msg.Key
 	//nodeID := strings.TrimPrefix(subject, fmt.Sprintf("%s.", fed.cfg.GetMsgBusReqTopic()))
 	//resSubject := fmt.Sprintf("%s.%s", fed.cfg.GetMsgBusResTopic(), nodeID)
-	log.Infof("resSubject: %s, cmd: %d, retMsg: %s", fed.cfg.Kafka.Producer.FedAPIOutput.Topic, msg.Cmd, retMsg.Body)
+	log.Infof("resSubject: %s, cmd: %d, key:%s retMsg: %s", fed.cfg.Kafka.Producer.FedAPIOutput.Topic, msg.Cmd, retMsg.Key, retMsg.Body)
 
-	span, _ := common.StartSpanFromContext(ctx, fed.cfg.Kafka.Producer.FedAPIOutput.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, fed.cfg.Kafka.Producer.FedAPIOutput.Name,
-		fed.cfg.Kafka.Producer.FedAPIOutput.Underlying)
-	common.GetTransportMultiplexer().SendWithRetry(
+	common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		fed.cfg.Kafka.Producer.FedAPIOutput.Underlying,
 		fed.cfg.Kafka.Producer.FedAPIOutput.Name,
 		&core.TransportPubMsg{
 			//Format: core.FORMAT_GOB,
-			Keys:    []byte{},
-			Obj:     retMsg,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: retMsg.Key,
+			Obj:  retMsg,
 		})
 }

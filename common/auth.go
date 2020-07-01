@@ -30,9 +30,9 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/jsonerror"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 func VerifyToken(token string, requestURI string, cache service.Cache, cfg config.Dendrite, devFilter *filter.SimpleFilter) (*authtypes.Device, *util.JSONResponse) {

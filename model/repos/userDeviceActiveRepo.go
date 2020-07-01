@@ -16,7 +16,6 @@ package repos
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"sync"
@@ -64,11 +63,7 @@ func (uda *UserDeviceActiveRepo) startFlush() error {
 		for {
 			select {
 			case <-t.C:
-				func() {
-					span, ctx := common.StartSobSomSpan(context.Background(), "UserDeviceActiveRepo.startFlush")
-					defer span.Finish()
-					uda.flush(ctx)
-				}()
+				uda.flush()
 				t.Reset(time.Millisecond * time.Duration(uda.delay))
 			}
 		}
@@ -99,24 +94,24 @@ func (uda *UserDeviceActiveRepo) UpdateDevActiveTs(uid, devId string) {
 	}
 }
 
-func (uda *UserDeviceActiveRepo) flush(ctx context.Context) {
+func (uda *UserDeviceActiveRepo) flush() {
 	log.Infof("UserDeviceActiveRepo start flush")
 	uda.userDevMap.Range(func(key, value interface{}) bool {
 		userDev := value.(*UserDev)
-		uda.flushToDB(ctx, userDev)
+		uda.flushToDB(userDev)
 		uda.userDevMap.Delete(key)
 		return true
 	})
 	log.Infof("UserDeviceActiveRepo finished flush")
 }
 
-func (uda *UserDeviceActiveRepo) flushToDB(ctx context.Context, userDev *UserDev) {
+func (uda *UserDeviceActiveRepo) flushToDB(userDev *UserDev) {
 	if userDev == nil {
 		return
 	}
 	userDev.devMap.Range(func(key, value interface{}) bool {
 		devInfo := value.(*DeviceInfo)
-		err := uda.persist.UpdateDeviceActiveTs(ctx, devInfo.did, userDev.uid, devInfo.ts)
+		err := uda.persist.UpdateDeviceActiveTs(context.TODO(), devInfo.did, userDev.uid, devInfo.ts)
 		if err != nil {
 			log.Errorw("UserDeviceActiveRepo flushToDB could not update device last_active_ts", log.KeysAndValues{
 				"deviceID", devInfo.did, "userID", userDev.uid, "error", err,

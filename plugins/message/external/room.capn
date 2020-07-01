@@ -1,0 +1,137 @@
+@0x8bb680223078e227;
+using Go = import "/go.capnp";
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct DelDirectoryRoomAliasRequestCapn { 
+   roomAlias  @0:   Text; 
+} 
+
+struct GetDirectoryRoomAliasRequestCapn { 
+   roomAlias  @0:   Text; 
+} 
+
+struct GetDirectoryRoomAliasResponseCapn { 
+   roomID   @0:   Text; 
+   servers  @1:   List(Text); 
+} 
+
+struct GetDirectoryRoomRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct GetDirectoryRoomResponseCapn { 
+   visibility  @0:   Text; 
+} 
+
+struct GetJoinedMemberRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct GetJoinedRoomsResponseCapn { 
+   joinedRooms  @0:   List(Text); 
+} 
+
+struct GetPublicRoomsRequestCapn { 
+   limit   @0:   Int64; 
+   since   @1:   Text; 
+   filter  @2:   FilterCapn; 
+} 
+
+struct FilterCapn {
+   searchTerm @0:   Text; 
+}
+
+struct GetPublicRoomsResponseCapn { 
+   chunk      @0:   List(PublicRoomsChunkCapn); 
+   nextBatch  @1:   Text; 
+   prevBatch  @2:   Text; 
+   total      @3:   Int64; 
+} 
+
+struct PostPublicRoomsResponseCapn { 
+   chunk      @0:   List(PublicRoomsChunkCapn); 
+   nextBatch  @1:   Text; 
+   prevBatch  @2:   Text; 
+   total      @3:   Int64; 
+}
+
+struct Invite3pidCapn { 
+   iDServer  @0:   Text; 
+   medium    @1:   Text; 
+   address   @2:   List(Text); 
+} 
+
+struct PostCreateRoomResponseCapn { 
+   roomID     @0:   Text; 
+   roomAlias  @1:   Text; 
+} 
+
+struct PostPublicRoomsRequestCapn { 
+   limit                 @0:   Int64; 
+   since                 @1:   Text; 
+   filter                @2:   FilterCapn;
+   includeAllNetworks    @3:   Bool; 
+   thirdPartyInstanceID  @4:   Text; 
+   server                @5:   Text; 
+} 
+
+struct PostRoomsBanRequestCapn { 
+   roomID  @0:   Text; 
+   userID  @1:   Text; 
+   reason  @2:   Text; 
+} 
+
+struct PostRoomsForgetRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct PostRoomsInviteRequestCapn { 
+   roomID  @0:   Text; 
+   userID  @1:   Text; 
+} 
+
+struct PostRoomsKickRequestCapn { 
+   roomID  @0:   Text; 
+   userID  @1:   Text; 
+   reason  @2:   Text; 
+} 
+
+struct PostRoomsLeaveRequestCapn { 
+   roomID  @0:   Text; 
+} 
+
+struct PostRoomsUnbanRequestCapn { 
+   roomID  @0:   Text; 
+   userID  @1:   Text; 
+} 
+
+struct PublicRoomsChunkCapn { 
+   aliases           @0:   List(Text);  
+   canonicalAlias    @1:   Text; 
+   name              @2:   Text; 
+   numJoinedMembers  @3:   Int64; 
+   roomID            @4:   Text; 
+   topic             @5:   Text; 
+   worldReadable     @6:   Bool; 
+   guestCanJoin      @7:   Bool; 
+   avatarURL         @8:   Text; 
+} 
+
+struct PutDirectoryRoomAliasRequestCapn { 
+   roomAlias  @0:   Text; 
+   roomID     @1:   Text; 
+} 
+
+struct PutDirectoryRoomRequestCapn { 
+   roomID      @0:   Text; 
+   visibility  @1:   Text; 
+} 
+
+struct PostRoomsJoinResponseCapn {
+   roomID   @0:   Text;
+}
+
+struct PostRoomsJoinByAliasResponseCapn {
+   roomID   @0:   Text;
+} 

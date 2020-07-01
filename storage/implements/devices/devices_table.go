@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const devicesSchema = `
@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS device_devices (
 
 -- Device IDs must be unique for a given user.
 CREATE UNIQUE INDEX IF NOT EXISTS device_user_id_idx ON device_devices(user_id, identifier);
+CREATE INDEX IF NOT EXISTS device_ts_idx ON device_devices(created_ts);
 `
 
 const upsertDeviceSQL = "" +
@@ -124,18 +125,18 @@ func (s *devicesStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *devicesStatements) recoverDevice(ctx context.Context) error {
+func (s *devicesStatements) recoverDevice() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverDeviceStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverDeviceStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -144,7 +145,7 @@ func (s *devicesStatements) recoverDevice(ctx context.Context) error {
 	return nil
 }
 
-func (s *devicesStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *devicesStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -163,7 +164,7 @@ func (s *devicesStatements) processRecover(ctx context.Context, rows *sql.Rows) 
 		update.IsRecovery = true
 		update.DeviceDBEvents.DeviceInsert = &deviceInsert
 		update.SetUid(int64(common.CalcStringHashCode64(deviceInsert.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "device_devices")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update device cache error: %v", err2)
 			if err == nil {
@@ -204,7 +205,7 @@ func (s *devicesStatements) upsertDevice(
 			LastActiveTs: createdTimeMS,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "device_devices")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		_, err := s.upsertDeviceStmt.ExecContext(ctx, deviceID, userID, createdTimeMS, displayName, deviceType, identifier, createdTimeMS)
 		return err
@@ -236,7 +237,7 @@ func (s *devicesStatements) deleteDevice(
 			CreateTs: createTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "device_devices")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		_, err := s.deleteDeviceStmt.ExecContext(ctx, deviceID, userID, createTs)
 		return err
@@ -298,7 +299,7 @@ func (s *devicesStatements) updateDeviceActiveTs(
 			LastActiveTs: lastActiveTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "device_devices")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		_, err := s.updateDeviceTsStmt.ExecContext(ctx, deviceID, userID, lastActiveTs)
 		return err

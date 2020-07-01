@@ -18,9 +18,8 @@ import (
 	"context"
 	"errors"
 	"math/rand"
-	"strings"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/domain"
@@ -30,102 +29,161 @@ import (
 	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/fedsender/queue"
-	fedrepos "github.com/finogeeks/ligase/federation/model/repos"
+	"github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
-)
-
-const (
-	kGetPendingCount = 10
 )
 
 type ServerName = gomatrixserverlib.ServerName
 
 type FedSendMsg struct {
-	partition int32
-	domain    string
-	roomID    string
-	ev        *gomatrixserverlib.Event
-	edu       *gomatrixserverlib.EDU
+	domain string
+	roomID string
+	ev     *gomatrixserverlib.Event
+	edu    *gomatrixserverlib.EDU
 }
 
 type FederationSender struct {
-	cfg        *config.Fed
-	rsRepo     *repos.RoomServerCurStateRepo
-	recRepo    *fedrepos.SendRecRepo
-	queuesMap  sync.Map
-	domainMap  sync.Map
-	fedRpcCli  roomserverapi.RoomserverRPCAPI
-	feddomains *common.FedDomains
-	chanSize   uint32
-	msgChan    []chan common.ContextMsg
-
-	fakePartition int32
-
-	assignedRoomDomain sync.Map
+	cfg         *config.Fed
+	Repo        *repos.RoomServerCurStateRepo
+	queuesMap   sync.Map
+	domainMap   sync.Map
+	syncedMap   sync.Map
+	offset      uint32
+	fedRpcCli   roomserverapi.RoomserverRPCAPI
+	db          model.FederationDatabase
+	feddomains  *common.FedDomains
+	recMap      sync.Map
+	chanSize    uint32
+	msgChan     []chan FedSendMsg
+	sentCounter int64
 }
 
-func NewFederationSender(cfg *config.Fed, rpcClient *common.RpcClient, feddomains *common.FedDomains) *FederationSender {
+func NewFederationSender(cfg *config.Fed, rpcClient *common.RpcClient, feddomains *common.FedDomains, db model.FederationDatabase) *FederationSender {
 	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, nil, nil, nil)
 	sender := &FederationSender{
 		cfg:        cfg,
+		offset:     0,
 		fedRpcCli:  fedRpcCli,
+		db:         db,
 		feddomains: feddomains,
 		chanSize:   16,
 	}
 
-	sender.msgChan = make([]chan common.ContextMsg, sender.chanSize)
+	sender.msgChan = make([]chan FedSendMsg, sender.chanSize)
 	for i := 0; i < len(sender.msgChan); i++ {
-		sender.msgChan[i] = make(chan common.ContextMsg, 32)
+		sender.msgChan[i] = make(chan FedSendMsg, 32)
 		go sender.startWorker(sender.msgChan[i])
+	}
+	for _, domain := range cfg.Homeserver.ServerName {
+		fedClient, _ := client.GetFedClient(domain)
+		queues := queue.NewOutgoingQueues(ServerName(domain), &sender.sentCounter, fedClient, fedRpcCli, db, cfg, feddomains)
+		sender.queuesMap.Store(domain, queues)
 	}
 	return sender
 }
 
-func (c *FederationSender) SetRsRepo(repo *repos.RoomServerCurStateRepo) {
-	c.rsRepo = repo
-}
-
-func (c *FederationSender) SetRecRepo(repo *fedrepos.SendRecRepo) {
-	c.recRepo = repo
+func (c *FederationSender) Init() error {
+	roomIDs, domains, eventIDs, sendTimeses, pendingSizes, total, err := c.db.SelectAllSendRecord(context.TODO())
+	if err != nil {
+		log.Errorf("FederationSender.Init error %v", err)
+		return err
+	}
+	for i := 0; i < total; i++ {
+		if _, ok := c.feddomains.GetDomainHost(domains[i]); !ok {
+			continue
+		}
+		key := domains[i] + ":" + roomIDs[i]
+		c.recMap.Store(key, &queue.RecordItem{
+			RoomID:      roomIDs[i],
+			Domain:      domains[i],
+			EventID:     eventIDs[i],
+			SendTimes:   sendTimeses[i],
+			PendingSize: pendingSizes[i],
+		})
+		c.syncedMap.Store(key, true)
+	}
+	return nil
 }
 
 func (c *FederationSender) Start() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "FederationSender.Start")
-	defer span.Finish()
+	v, _ := c.queuesMap.Load(domain.FirstDomain)
+	queues := v.(*queue.OutgoingQueues)
+	c.recMap.Range(func(k, v interface{}) bool {
+		recordItem := v.(*queue.RecordItem)
+		if recordItem.SendTimes == 0 {
+			// 第一次，必须特殊处理，发送state列表即可，由remote自主backfill
+			// go c.sendStateEvs(recordItem, "")
+		} else if recordItem.PendingSize > 0 {
+			// 本域通过向roomserver发起backfill的rpc请求，拿到后续的event，主动发送给remote
+			// 不能通过remote自主backfill，因为backfill的处理，会忽略state事件的处理
+			queues.RetrySendBackfillEvs(recordItem)
+		}
+		return true
+	})
+}
 
-	c.fakePartition = c.recRepo.GenerateFakePartition(ctx)
-	if c.fakePartition == 0 {
-		panic("fedsender get fake partition error")
-	}
-
-	oqs := c.getQueue(domain.FirstDomain) // TODO: cjw
-	pendingRoomIDs, pendingDomains := c.recRepo.GetPenddingRooms(ctx, c.fakePartition, kGetPendingCount)
-	if len(pendingRoomIDs) > 0 && len(pendingDomains) > 0 {
-		for i := 0; i < len(pendingRoomIDs); i++ {
-			oqs.RetrySend(ctx, pendingRoomIDs[i], pendingDomains[i])
+func (c *FederationSender) sendStateEvs(recItem *queue.RecordItem, eventID string) {
+	domain := recItem.Domain
+	rs := c.Repo.GetRoomStateNoCache(recItem.RoomID)
+	pdus := []*gomatrixserverlib.Event{}
+	states := rs.GetAllState()
+	var sender string
+	for i := 0; i < len(states); i++ {
+		state := &states[i]
+		stateDomain, _ := utils.DomainFromID(state.Sender())
+		bytes, _ := json.Marshal(state)
+		log.Infof("room:%s type:%s state-domain:%s target-domain:%s ev:%v", state.RoomID(), state.Type(), stateDomain, domain, string(bytes))
+		if stateDomain != domain && state.EventID() != eventID {
+			pdus = append(pdus, state)
+		}
+		if state.Type() == "m.room.create" {
+			sender = state.Sender()
 		}
 	}
 
-	go func() {
-		for {
-			time.Sleep(time.Second * 10)
-			ctx := context.TODO()
-			c.assignedRoomDomain.Range(func(k, v interface{}) bool {
-				key := k.(string)
-				ss := strings.Split(key, "|")
-				if len(ss) != 2 {
-					log.Errorf("invalid assign room domain %s", key)
-					return true
-				}
-				c.recRepo.ExpireRoomPartition(ctx, ss[0], ss[1])
-				return true
-			})
+	senderDomain, _ := utils.DomainFromID(sender)
+	origin := ServerName(senderDomain)
+
+	if senderDomain == domain {
+		log.Infof("fed-send target domain is sender domain, ignore sending state %s", domain)
+		return
+	}
+
+	destinations := []ServerName{ServerName(domain)}
+
+	var queues *queue.OutgoingQueues
+	if val, ok := c.queuesMap.Load(senderDomain); !ok {
+		domain := (c.cfg.GetServerName())[0]
+		log.Infof("fed-send state evs send by %s instead of %s", domain, senderDomain)
+		val, _ = c.queuesMap.Load(domain)
+		queues = val.(*queue.OutgoingQueues)
+	} else {
+		queues = val.(*queue.OutgoingQueues)
+	}
+
+	size := int32(len(pdus))
+	var diff int32
+	for {
+		pendingSize := recItem.PendingSize
+		diff = size - pendingSize
+		if pendingSize == recItem.PendingSize {
+			break
 		}
-	}()
+	}
+	if diff != 0 {
+		atomic.AddInt32(&recItem.PendingSize, diff)
+		c.db.UpdateSendRecordPendingSize(context.TODO(), recItem.RoomID, domain, diff)
+	}
+
+	queues.SendStates(pdus, origin, destinations, recItem.RoomID, map[string]*queue.RecordItem{domain: recItem})
+}
+
+func (c *FederationSender) SetRepo(repo *repos.RoomServerCurStateRepo) {
+	c.Repo = repo
 }
 
 func (c *FederationSender) AddConsumer(domain string) error {
@@ -139,7 +197,7 @@ func (c *FederationSender) AddConsumer(domain string) error {
 		_, ok := common.GetTransportMultiplexer().GetChannel(underlying, name)
 		if !ok {
 			c.domainMap.Store(topic, domain)
-			tran.AddChannel(core.CHANNEL_SUB, name, topic, c.cfg.Kafka.Consumer.SenderInput.Group, &c.cfg.Kafka.Consumer.SenderInput)
+			tran.AddChannel(core.CHANNEL_SUB, name, topic, "name", &c.cfg.Kafka.Consumer.SenderInput)
 			val, ok := common.GetTransportMultiplexer().GetChannel(underlying, name)
 			if ok {
 				log.Infof("fed-send add channel name:%s topic:%s", name, topic)
@@ -158,50 +216,7 @@ func (c *FederationSender) AddConsumer(domain string) error {
 	return errors.New("addConsumer can't find transport " + underlying)
 }
 
-func (c *FederationSender) getQueue(domain string) *queue.OutgoingQueues {
-	v, ok := c.queuesMap.Load(domain)
-	if !ok {
-		if !common.CheckValidDomain(domain, c.cfg.GetServerName()) {
-			return nil
-		}
-		fedClient, _ := client.GetFedClient(domain)
-		queues := queue.NewOutgoingQueues(
-			ServerName(domain),
-			fedClient,
-			c.fedRpcCli,
-			c.cfg,
-			c.feddomains,
-			c.rsRepo,
-			c.recRepo,
-			c,
-		)
-		v, _ = c.queuesMap.LoadOrStore(domain, queues)
-	}
-	return v.(*queue.OutgoingQueues)
-}
-
-func (c *FederationSender) getDomainByTopic(topic string) (string, bool) {
-	v, ok := c.domainMap.Load(topic)
-	if !ok {
-		return "", false
-	}
-	return v.(string), true
-}
-
-func (c *FederationSender) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		data := msg.Msg.(FedSendMsg)
-		if data.ev != nil {
-			c.processEvent(ctx, data.partition, data.domain, data.roomID, data.ev)
-		}
-		if data.edu != nil {
-			c.processEdu(ctx, data.partition, data.domain, data.roomID, data.edu)
-		}
-	}
-}
-
-func (c *FederationSender) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (c *FederationSender) OnMessage(topic string, partition int32, data []byte) {
 	ev := new(gomatrixserverlib.Event)
 	if err := json.Unmarshal(data, ev); err != nil {
 		log.Errorf("fed-sender: message parse failure err:%v", err)
@@ -210,37 +225,18 @@ func (c *FederationSender) OnMessage(ctx context.Context, topic string, partitio
 
 	log.Infof("fed-sender received data type:%s topic:%s", ev.Type(), topic)
 
-	targetDomain, _ := c.getDomainByTopic(topic)
+	val, _ := c.domainMap.Load(topic)
+	targetDomain := val.(string)
 
 	index := common.CalcStringHashCode(ev.RoomID()) % c.chanSize
-	c.msgChan[index] <- common.ContextMsg{
-		Ctx: ctx,
-		Msg: FedSendMsg{
-			partition: partition,
-			domain:    targetDomain,
-			roomID:    ev.RoomID(),
-			ev:        ev,
-		},
+	c.msgChan[index] <- FedSendMsg{
+		domain: targetDomain,
+		roomID: ev.RoomID(),
+		ev:     ev,
 	}
 }
 
-func (c *FederationSender) processEvent(ctx context.Context, partition int32, targetDomain, roomID string, ev *gomatrixserverlib.Event) {
-	c.recRepo.IncrPendingSize(ctx, roomID, targetDomain, 1, ev.DomainOffset())
-
-	senderDomain, _ := utils.DomainFromID(ev.Sender())
-
-	log.Infof("fed-sender received data sender:%s sender-domain:%s key:%s", ev.Sender(), senderDomain, targetDomain+":"+roomID)
-
-	oqs := c.getQueue(senderDomain)
-	oqs.SendEvent(ctx, partition, ev, targetDomain, roomID)
-}
-
-func (c *FederationSender) processEdu(ctx context.Context, partition int32, targetDomain, roomID string, edu *gomatrixserverlib.EDU) {
-	oqs := c.getQueue(edu.Origin)
-	oqs.SendEDU(ctx, partition, edu, targetDomain, roomID)
-}
-
-func (c *FederationSender) sendEdu(ctx context.Context, edu *gomatrixserverlib.EDU) {
+func (c *FederationSender) sendEdu(edu *gomatrixserverlib.EDU) {
 	var idx uint32
 	roomID := ""
 	switch edu.Type {
@@ -264,61 +260,73 @@ func (c *FederationSender) sendEdu(ctx context.Context, edu *gomatrixserverlib.E
 		idx = common.CalcStringHashCode(content.RoomID) % uint32(c.chanSize)
 	}
 
-	c.msgChan[idx] <- common.ContextMsg{
-		Ctx: ctx,
-		Msg: FedSendMsg{
-			partition: 0,
-			domain:    edu.Destination,
-			roomID:    roomID,
-			edu:       edu,
-		},
+	c.msgChan[idx] <- FedSendMsg{
+		domain: edu.Destination,
+		roomID: roomID,
+		edu:    edu,
 	}
 }
 
-func (c *FederationSender) AssignRoomPartition(ctx context.Context, roomID, domain string, retryTime time.Duration, retryInterval time.Duration) (*fedrepos.RecordItem, bool) {
-	beginTime := time.Now()
-	if retryInterval < time.Millisecond*50 {
-		retryInterval = time.Millisecond * 50
-	}
-	recItem, ok := c.recRepo.AssignRoomPartition(ctx, roomID, domain, c.fakePartition)
-	for !ok {
-		if beginTime.Add(retryTime).Before(time.Now()) {
-			break
+func (c *FederationSender) startWorker(msgChan chan FedSendMsg) {
+	for msg := range msgChan {
+		if msg.ev != nil {
+			c.processEvent(msg.domain, msg.roomID, msg.ev)
 		}
-		time.Sleep(retryInterval)
-		recItem, ok = c.recRepo.AssignRoomPartition(ctx, roomID, domain, c.fakePartition)
+		if msg.edu != nil {
+			c.processEdu(msg.domain, msg.roomID, msg.edu)
+		}
 	}
-	if ok {
-		c.assignedRoomDomain.Store(roomID+"|"+domain, 1)
-	}
-	return recItem, ok
 }
 
-func (c *FederationSender) TryAssignRoomPartition(ctx context.Context, roomID, domain string) (*fedrepos.RecordItem, bool) {
-	recItem, ok := c.recRepo.AssignRoomPartition(ctx, roomID, domain, c.fakePartition)
-	if ok {
-		c.assignedRoomDomain.Store(roomID+"|"+domain, 1)
+func (c *FederationSender) processEvent(targetDomain, roomID string, ev *gomatrixserverlib.Event) {
+	senderDomain, _ := utils.DomainFromID(ev.Sender())
+	origin := ServerName(senderDomain)
+
+	val, _ := c.queuesMap.Load(senderDomain)
+	queues := val.(*queue.OutgoingQueues)
+
+	// log.Infof("fed-sender received data sender:%s sender-domain:%s item:%v", ev.Sender(), senderDomain, val)
+
+	key := targetDomain + ":" + roomID
+	log.Infof("fed-sender received data sender:%s sender-domain:%s key:%s", ev.Sender(), senderDomain, key)
+
+	var recItem *queue.RecordItem
+	destinations := []ServerName{ServerName(targetDomain)}
+	_, loaded := c.syncedMap.LoadOrStore(key, true)
+	if !loaded {
+		if err := c.db.InsertSendRecord(context.TODO(), roomID, targetDomain); err != nil {
+			log.Errorf("fed-sender insert sending record key: %s error: %v", key, err)
+		}
+		recItem = &queue.RecordItem{
+			RoomID: roomID,
+			Domain: targetDomain,
+		}
+		c.recMap.Store(key, recItem)
+
+		//c.sendStateEvs(recItem, ev.EventID())
+		//atomic.AddInt32(&recItem.PendingSize, 1)
+		c.db.UpdateSendRecordPendingSize(context.TODO(), roomID, targetDomain, 1)
+		queues.SendEvent(ev, origin, destinations, roomID, map[string]*queue.RecordItem{targetDomain: recItem})
+	} else {
+		v, _ := c.recMap.Load(key)
+		recItem = v.(*queue.RecordItem)
+		atomic.AddInt32(&recItem.PendingSize, 1)
+		c.db.UpdateSendRecordPendingSize(context.TODO(), roomID, targetDomain, 1)
+		queues.SendEvent(ev, origin, destinations, roomID, map[string]*queue.RecordItem{targetDomain: recItem})
 	}
-	return recItem, ok
 }
 
-func (c *FederationSender) UnassignRoomPartition(ctx context.Context, roomID, domain string) {
-	c.assignedRoomDomain.Delete(roomID + "|" + domain)
-	c.recRepo.UnassignRoomPartition(ctx, roomID, domain)
-}
-
-func (c *FederationSender) OnRoomDomainRelease(ctx context.Context, origin, roomID, domain string) {
-	oqs := c.getQueue(origin)
-	oqs.Release(ctx, roomID, domain)
-	c.recRepo.UnassignRoomPartition(ctx, roomID, domain)
-	c.assignedRoomDomain.Delete(roomID + "|" + domain)
-}
-
-func (c *FederationSender) HasAssgined(ctx context.Context, roomID, domain string) (*fedrepos.RecordItem, bool) {
-	_, ok := c.assignedRoomDomain.Load(roomID + "|" + domain)
-	if !ok {
-		return nil, ok
+func (c *FederationSender) processEdu(targetDomain, roomID string, edu *gomatrixserverlib.EDU) {
+	if val, ok := c.queuesMap.Load(edu.Origin); ok {
+		item := val.(*queue.OutgoingQueues)
+		if roomID == "" {
+			item.SendEDU(edu, ServerName(edu.Origin), []ServerName{ServerName(targetDomain)}, roomID, nil)
+		} else {
+			key := targetDomain + ":" + roomID
+			if val, ok := c.recMap.Load(key); ok {
+				recItem := val.(*queue.RecordItem)
+				item.SendEDU(edu, ServerName(edu.Origin), []ServerName{ServerName(targetDomain)}, roomID, map[string]*queue.RecordItem{targetDomain: recItem})
+			}
+		}
 	}
-	recItem := c.recRepo.GetRec(ctx, roomID, domain)
-	return recItem, ok
 }

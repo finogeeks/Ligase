@@ -19,12 +19,12 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -32,9 +32,10 @@ func init() {
 	Register(model.CMD_FED_POST_PUBLIC_ROOMS, PostPublicRooms)
 }
 
-func GetPublicRooms(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func GetPublicRooms(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	reqParams := external.GetFedPublicRoomsRequest{}
 	reqParams.Decode(msg.Body)
+	ctx := context.TODO()
 
 	log.Infof("fed GetPublicRooms params, limit: %d, since: %s, include_all_networks: %t, third_party_instance_id: %s", reqParams.Limit, reqParams.Since, reqParams.IncludeAllNetworks, reqParams.ThirdPartyInstanceID)
 	if reqParams.Limit == 0 || reqParams.Limit > 30 {
@@ -62,9 +63,10 @@ func GetPublicRooms(ctx context.Context, msg *model.GobMessage, cache service.Ca
 	return &model.GobMessage{Body: body}, nil
 }
 
-func PostPublicRooms(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func PostPublicRooms(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	reqParams := external.PostFedPublicRoomsRequest{}
 	reqParams.Decode(msg.Body)
+	ctx := context.TODO()
 
 	log.Infof("fed PostPublicRooms params, limit: %d, since: %s, filter: %s, include_all_networks: %t, third_party_instance_id: %s", reqParams.Limit, reqParams.Since, reqParams.Filter, reqParams.IncludeAllNetworks, reqParams.ThirdPartyInstanceID)
 	if reqParams.Limit == 0 || reqParams.Limit > 30 {

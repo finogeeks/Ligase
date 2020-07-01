@@ -28,11 +28,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -41,9 +41,8 @@ func init() {
 }
 
 type SyncDBEVConsumer struct {
-	db model.SyncAPIDatabase
-	//msgChan     []chan *dbtypes.DBEvent
-	msgChan     []chan common.ContextMsg
+	db          model.SyncAPIDatabase
+	msgChan     []chan *dbtypes.DBEvent
 	monState    []*DBMonItem
 	path        string
 	fileName    string
@@ -54,11 +53,9 @@ type SyncDBEVConsumer struct {
 	cfg         *config.Dendrite
 }
 
-func (s *SyncDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *SyncDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
@@ -66,59 +63,59 @@ func (s *SyncDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
 		switch key {
 		case dbtypes.SyncEventInsertKey:
 			if data.SyncEventInsert != nil {
-				res = s.onSyncEventInsert(ctx, data.SyncEventInsert)
+				res = s.onSyncEventInsert(context.TODO(), data.SyncEventInsert)
 			}
 		case dbtypes.SyncRoomStateUpdateKey:
 			if data.SyncRoomStateUpdate != nil {
-				res = s.onSyncRoomStateUpdate(ctx, data.SyncRoomStateUpdate)
+				res = s.onSyncRoomStateUpdate(context.TODO(), data.SyncRoomStateUpdate)
 			}
 		case dbtypes.SyncClientDataInsertKey:
 			if data.SyncClientDataInsert != nil {
-				res = s.onSyncClientDataInsert(ctx, data.SyncClientDataInsert)
+				res = s.onSyncClientDataInsert(context.TODO(), data.SyncClientDataInsert)
 			}
 		case dbtypes.SyncKeyStreamInsertKey:
 			if data.SyncKeyStreamInsert != nil {
-				res = s.onSyncKeyStreamInsert(ctx, data.SyncKeyStreamInsert)
+				res = s.onSyncKeyStreamInsert(context.TODO(), data.SyncKeyStreamInsert)
 			}
 		case dbtypes.SyncReceiptInsertKey:
 			if data.SyncReceiptInsert != nil {
-				res = s.onSyncReceiptInsert(ctx, data.SyncReceiptInsert)
+				res = s.onSyncReceiptInsert(context.TODO(), data.SyncReceiptInsert)
 			}
 		case dbtypes.SyncStdEventInertKey:
 			if data.SyncStdEventInsert != nil {
-				res = s.onSyncStdEventInsert(ctx, data.SyncStdEventInsert)
+				res = s.onSyncStdEventInsert(context.TODO(), data.SyncStdEventInsert)
 			}
 		case dbtypes.SyncStdEventDeleteKey:
 			if data.SyncStdEventDelete != nil {
-				res = s.onSyncStdEventDelete(ctx, data.SyncStdEventDelete)
+				res = s.onSyncStdEventDelete(context.TODO(), data.SyncStdEventDelete)
 			}
 		case dbtypes.SyncMacStdEventDeleteKey:
 			if data.SyncMacStdEventDelete != nil {
-				res = s.onSyncMacStdEventDelete(ctx, data.SyncMacStdEventDelete)
+				res = s.onSyncMacStdEventDelete(context.TODO(), data.SyncMacStdEventDelete)
 			}
 		case dbtypes.SyncDeviceStdEventDeleteKey:
 			if data.SyncStdEventDelete != nil {
-				res = s.onSyncDeviceStdEventDelete(ctx, data.SyncStdEventDelete)
+				res = s.onSyncDeviceStdEventDelete(context.TODO(), data.SyncStdEventDelete)
 			}
 		case dbtypes.SyncPresenceInsertKey:
 			if data.SyncPresenceInsert != nil {
-				res = s.onSyncPresenceInsert(ctx, data.SyncPresenceInsert)
+				res = s.onSyncPresenceInsert(context.TODO(), data.SyncPresenceInsert)
 			}
 		case dbtypes.SyncUserReceiptInsertKey:
 			if data.SyncUserReceiptInsert != nil {
-				res = s.onSyncUserReceiptInsert(ctx, data.SyncUserReceiptInsert)
+				res = s.onSyncUserReceiptInsert(context.TODO(), data.SyncUserReceiptInsert)
 			}
 		case dbtypes.SyncUserTimeLineInsertKey:
 			if data.SyncUserTimeLineInsert != nil {
-				res = s.onSyncUserTimeLineInsert(ctx, data.SyncUserTimeLineInsert)
+				res = s.onSyncUserTimeLineInsert(context.TODO(), data.SyncUserTimeLineInsert)
 			}
 		case dbtypes.SyncOutputMinStreamInsertKey:
 			if data.SyncOutputMinStreamInsert != nil {
-				res = s.onSyncOutputMinStreamInsert(ctx, data.SyncOutputMinStreamInsert)
+				res = s.onSyncOutputMinStreamInsert(context.TODO(), data.SyncOutputMinStreamInsert)
 			}
 		case dbtypes.SyncEventUpdateKey:
 			if data.SyncEventUpdate != nil {
-				res = s.onSyncOutputEventUpdate(ctx, data.SyncEventUpdate)
+				res = s.onSyncOutputEventUpdate(context.TODO(), data.SyncEventUpdate)
 			}
 		default:
 			res = nil
@@ -169,9 +166,9 @@ func NewSyncDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, 10)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 10)
 	for i := uint64(0); i < 10; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 
 	s.mutex = new(sync.Mutex)
@@ -206,16 +203,12 @@ func (s *SyncDBEVConsumer) startRecover() {
 		select {
 		case <-s.ticker.C:
 			s.ticker.Reset(time.Second * 600) //10分钟一次
-			func() {
-				span, ctx := common.StartSobSomSpan(context.Background(), "SyncDBEVConsumer.startRecover")
-				defer span.Finish()
-				s.recover(ctx)
-			}()
+			s.recover()
 		}
 	}
 }
 
-func (s *SyncDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
+func (s *SyncDBEVConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
 	chanID := 0
 	switch dbEv.Key {
 	case dbtypes.SyncEventInsertKey, dbtypes.SyncEventUpdateKey:
@@ -243,7 +236,7 @@ func (s *SyncDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent)
 		return nil
 	}
 
-	s.msgChan[chanID] <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+	s.msgChan[chanID] <- dbEv
 	return nil
 }
 
@@ -392,7 +385,7 @@ func (s *SyncDBEVConsumer) renameRecoverFile() bool {
 	return false
 }
 
-func (s *SyncDBEVConsumer) recover(ctx context.Context) {
+func (s *SyncDBEVConsumer) recover() {
 	log.Infof("SyncDBEVConsumer start recover")
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
@@ -420,7 +413,7 @@ func (s *SyncDBEVConsumer) recover(ctx context.Context) {
 				continue
 			}
 
-			s.OnMessage(ctx, &dbEv)
+			s.OnMessage(&dbEv)
 		}
 
 		f.Close()

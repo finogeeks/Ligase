@@ -4,7 +4,7 @@ PROJDIR=`cd $(dirname $0); pwd -P`
 cd $PROJDIR
 echo `pwd`
 
-export GOPROXY=https://goproxy.io
+#export GOPROXY=https://goproxy.io
 
 cd $PROJDIR/cmd/engine-server
 go build -v -o $PROJDIR/bin/engine-server

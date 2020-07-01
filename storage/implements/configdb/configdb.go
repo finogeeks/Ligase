@@ -17,10 +17,8 @@ package configdb
 import (
 	"context"
 	"database/sql"
-	"time"
-
-	"github.com/finogeeks/ligase/common"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/common"
 )
 
 func init() {
@@ -28,12 +26,11 @@ func init() {
 }
 
 type Database struct {
-	db                 *sql.DB
-	topic              string
-	underlying         string
-	statements         configDbStatements
-	instanceStatements serverInstanceStatements
-	AsyncSave          bool
+	db         *sql.DB
+	topic      string
+	underlying string
+	statements configDbStatements
+	AsyncSave  bool
 
 	qryDBGauge mon.LabeledGauge
 }
@@ -49,11 +46,7 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 		return nil, err
 	}
 
-	dataBase.db.SetMaxOpenConns(30)
-	dataBase.db.SetMaxIdleConns(30)
-	dataBase.db.SetConnMaxLifetime(time.Minute * 3)
-
-	schemas := []string{dataBase.statements.getSchema(), dataBase.instanceStatements.getSchema()}
+	schemas := []string{dataBase.statements.getSchema()}
 	for _, sqlStr := range schemas {
 		_, err := dataBase.db.Exec(sqlStr)
 		if err != nil {
@@ -62,10 +55,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	}
 
 	if err = dataBase.statements.prepare(dataBase); err != nil {
-		return nil, err
-	}
-
-	if err = dataBase.instanceStatements.prepare(dataBase); err != nil {
 		return nil, err
 	}
 
@@ -92,19 +81,4 @@ func (d *Database) SelectServerNames(
 	ctx context.Context,
 ) (results []string, err error) {
 	return d.statements.selectServerNames(ctx)
-}
-
-func (d *Database) UpsertServerInstance(
-	ctx context.Context,
-	nid int64,
-	serverName string,
-) error {
-	return d.instanceStatements.upsertServerInstance(ctx, nid, serverName)
-}
-
-func (d *Database) SelectServerInstance(
-	ctx context.Context,
-	serverName string,
-) (instance int64, err error) {
-	return d.instanceStatements.selectServerInstance(ctx, serverName)
 }

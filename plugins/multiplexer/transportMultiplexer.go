@@ -123,7 +123,7 @@ func (m *TransportMultiplexer) SendRecvNode(nodeName, serviceID string, obj inte
 		return nil, err
 	}
 	if channnel != nil {
-		return channnel.SendRecv(msg.Topic, value, msg.Timeout, msg.Headers)
+		return channnel.SendRecv(msg.Topic, value, msg.Timeout)
 	}
 
 	return nil, errors.New("can't find channel")
@@ -160,7 +160,7 @@ func (m *TransportMultiplexer) Send(nodeName, serviceID string, obj interface{})
 		log.Errorf("TransportMultiplexer Failed to encodemsg:%v, err:%v", obj, err)
 		return err
 	}
-	return channnel.Send(msg.Topic, msg.Partition, msg.Keys, value, msg.Headers)
+	return channnel.Send(msg.Topic, msg.Partition, msg.Keys, value)
 }
 
 func (m *TransportMultiplexer) SendAndRecv(nodeName, serviceID string, obj interface{}) error {
@@ -175,7 +175,7 @@ func (m *TransportMultiplexer) SendAndRecv(nodeName, serviceID string, obj inter
 		log.Errorf("TransportMultiplexer Failed to encodemsg:%v, err:%v", obj, err)
 		return err
 	}
-	return channnel.SendAndRecv(msg.Topic, msg.Partition, msg.Keys, value, msg.Headers)
+	return channnel.SendAndRecv(msg.Topic, msg.Partition, msg.Keys, value)
 }
 
 func (m *TransportMultiplexer) SendWithRetry(nodeName, serviceID string, obj interface{}) error {
@@ -190,7 +190,7 @@ func (m *TransportMultiplexer) SendWithRetry(nodeName, serviceID string, obj int
 		log.Errorf("TransportMultiplexer Failed to encodemsg:%v, err:%v", obj, err)
 		return err
 	}
-	return channnel.SendWithRetry(msg.Topic, msg.Partition, msg.Keys, value, msg.Headers)
+	return channnel.SendWithRetry(msg.Topic, msg.Partition, msg.Keys, value)
 }
 
 func (m *TransportMultiplexer) SendAndRecvWithRetry(nodeName, serviceID string, obj interface{}) error {
@@ -205,7 +205,7 @@ func (m *TransportMultiplexer) SendAndRecvWithRetry(nodeName, serviceID string, 
 		log.Errorf("TransportMultiplexer Failed to encodemsg:%v, err:%v", obj, err)
 		return err
 	}
-	return channnel.SendAndRecvWithRetry(msg.Topic, msg.Partition, msg.Keys, value, msg.Headers)
+	return channnel.SendAndRecvWithRetry(msg.Topic, msg.Partition, msg.Keys, value)
 }
 
 func (m *TransportMultiplexer) PreStart() {

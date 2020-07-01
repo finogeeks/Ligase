@@ -25,15 +25,14 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
 // Logout handles POST /logout
 func Logout(
-	ctx context.Context,
 	deviceDB model.DeviceDatabase,
 	userID, deviceID string,
 	cache service.Cache,
@@ -42,12 +41,16 @@ func Logout(
 	tokenFilter *filter.Filter,
 	rpcClient *common.RpcClient,
 ) (int, core.Coder) {
-	LogoutDevice(ctx, userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+	// if req.Method != http.MethodPost {
+	// 	return http.StatusMethodNotAllowed, jsonerror.NotFound("Bad method")
+	// }
+
+	LogoutDevice(userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+
 	return http.StatusOK, nil
 }
 
 func LogoutDevice(
-	ctx context.Context,
 	userID,
 	deviceID string,
 	deviceDB model.DeviceDatabase,
@@ -60,11 +63,12 @@ func LogoutDevice(
 	createdTimeMS := time.Now().UnixNano() / 1000000
 	log.Infof("logout user %s device %s", userID, deviceID)
 
-	if err := deviceDB.RemoveDevice(ctx, deviceID, userID, createdTimeMS); err != nil {
+	cache.DeleteLocalDevice(deviceID, userID)
+	if err := deviceDB.RemoveDevice(context.TODO(), deviceID, userID, createdTimeMS); err != nil {
 		log.Errorf("Log out remove device error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
 
-	err := encryptDB.DeleteDeviceKeys(ctx, deviceID, userID)
+	err := encryptDB.DeleteDeviceKeys(context.TODO(), deviceID, userID)
 	if err != nil {
 		log.Errorf("Log out remove device keys error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
@@ -73,7 +77,7 @@ func LogoutDevice(
 
 	cache.DeleteDeviceKey(userID, deviceID)
 
-	err = syncDB.DeleteDeviceStdMessage(ctx, userID, deviceID)
+	err = syncDB.DeleteDeviceStdMessage(context.TODO(), userID, deviceID)
 	if err != nil {
 		log.Errorf("Log out remove device std message, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
@@ -111,7 +115,6 @@ func pubLogoutToken(userID string, deviceID string, rpcClient *common.RpcClient)
 
 // LogoutAll handles POST /logout/all
 func LogoutAll(
-	ctx context.Context,
 	deviceDB model.DeviceDatabase,
 	userID, deviceID string,
 	cache service.Cache,
@@ -124,7 +127,7 @@ func LogoutAll(
 
 	devs := cache.GetDevicesByUserID(userID)
 	for _, dev := range *devs {
-		LogoutDevice(ctx, dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+		LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
 	}
 
 	return http.StatusOK, nil

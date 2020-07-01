@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
@@ -60,7 +59,7 @@ func (ReqPostMediaUpload) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqPostMediaUpload) NewResponse(code int) core.Coder {
 	return new(external.PostMediaUploadResponse)
 }
-func (ReqPostMediaUpload) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostMediaUpload) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return 200, nil
 }
 
@@ -89,7 +88,7 @@ func (ReqGetMediaDownload) FillRequest(coder core.Coder, req *http.Request, vars
 func (ReqGetMediaDownload) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqGetMediaDownload) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetMediaDownload) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return 200, nil
 }
 
@@ -118,6 +117,6 @@ func (ReqGetMediaThumbnail) FillRequest(coder core.Coder, req *http.Request, var
 func (ReqGetMediaThumbnail) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqGetMediaThumbnail) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetMediaThumbnail) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return 200, nil
 }

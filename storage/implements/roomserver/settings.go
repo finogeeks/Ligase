@@ -21,12 +21,12 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const settingsSchema = `
-CREATE TABLE IF NOT EXISTS public.roomserver_settings
+CREATE TABLE IF NOT EXISTS public.roomserver_settings 
 (
   setting_key TEXT NOT NULL,
   val TEXT NOT NULL,
@@ -45,15 +45,11 @@ const selectSettingsSQL = "" +
 const recoverSettingsSQL = "" +
 	"SELECT setting_key, val FROM roomserver_settings"
 
-const selectSettingKeySQL = "" +
-	"SELECT val FROM roomserver_settings where setting_key = $1 limit 1"
-
 type settingsStatements struct {
-	db                   *Database
-	usertSettingStmt     *sql.Stmt
-	selectSettingsStmt   *sql.Stmt
-	recoverSettingsStmt  *sql.Stmt
-	selectSettingKeyStmt *sql.Stmt
+	db                  *Database
+	usertSettingStmt    *sql.Stmt
+	selectSettingsStmt  *sql.Stmt
+	recoverSettingsStmt *sql.Stmt
 }
 
 func (s *settingsStatements) getSchema() string {
@@ -73,7 +69,6 @@ func (s *settingsStatements) prepare(db *sql.DB, d *Database) (err error) {
 		{&s.usertSettingStmt, upsertSettingsSQL},
 		{&s.selectSettingsStmt, selectSettingsSQL},
 		{&s.recoverSettingsStmt, recoverSettingsSQL},
-		{&s.selectSettingKeyStmt, selectSettingKeySQL},
 	}.prepare(db)
 }
 
@@ -88,8 +83,7 @@ func (s *settingsStatements) insertSetting(
 			SettingKey: settingKey,
 			Val:        val,
 		}
-		update.SetUid(0)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_settings")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 
@@ -125,31 +119,15 @@ func (s *settingsStatements) selectSettings(
 	return settingKeys, vals, err
 }
 
-func (s *settingsStatements) selectSettingKey(
-	ctx context.Context,
-	settingKey string,
-) (string, error) {
-	var settingVal string
-	err := s.selectSettingKeyStmt.QueryRowContext(ctx, settingKey).Scan(&settingVal)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return "", err
-		} else {
-			return "", nil
-		}
-	}
-	return settingVal, nil
-}
-
-func (s *settingsStatements) recoverSettings(ctx context.Context) error {
+func (s *settingsStatements) recoverSettings() error {
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverSettingsStmt.QueryContext(ctx)
+		rows, err := s.recoverSettingsStmt.QueryContext(context.TODO())
 		if err != nil {
 			return err
 		}
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -159,7 +137,7 @@ func (s *settingsStatements) recoverSettings(ctx context.Context) error {
 	return nil
 }
 
-func (s *settingsStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *settingsStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -176,8 +154,7 @@ func (s *settingsStatements) processRecover(ctx context.Context, rows *sql.Rows)
 		update.Key = dbtypes.SettingUpsertKey
 		update.IsRecovery = true
 		update.RoomDBEvents.SettingsInsert = &settingsInsert
-		update.SetUid(0)
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_settings")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update setting cache error: %v", err2)
 			if err == nil {

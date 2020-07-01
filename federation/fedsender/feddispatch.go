@@ -21,9 +21,9 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/config"
-	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/repos"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -67,7 +67,7 @@ func (c *FederationDispatch) SetRepo(repo *repos.RoomServerCurStateRepo) {
 	c.Repo = repo
 }
 
-func (c *FederationDispatch) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (c *FederationDispatch) OnMessage(topic string, partition int32, data []byte) {
 	log.Infof("fed-dispatch received data topic:%s, data:%s", topic, string(data))
 	var output gomatrixserverlib.Event
 	if err := json.Unmarshal(data, &output); err != nil {
@@ -77,13 +77,13 @@ func (c *FederationDispatch) OnMessage(ctx context.Context, topic string, partit
 
 	log.Infof("fed-dispatch received data type:%s topic:%s", output.Type(), topic)
 
-	c.onRoomEvent(ctx, output)
+	c.onRoomEvent(context.TODO(), output)
 }
 
 func (c *FederationDispatch) onRoomEvent(
 	ctx context.Context, ev gomatrixserverlib.Event,
 ) error {
-	rs := c.Repo.OnEventRecover(ctx, &ev, ev.EventNID())
+	rs := c.Repo.OnEventNoCache(&ev, ev.EventNID())
 	domains := rs.GetDomainTlMap()
 	hasAddConsumer := false
 	domains.Range(func(key, value interface{}) bool {
@@ -116,7 +116,7 @@ func (c *FederationDispatch) onRoomEvent(
 	domains.Range(func(key, value interface{}) bool {
 		domain := key.(string)
 		if common.CheckValidDomain(domain, c.cfg.GetServerName()) == false {
-			c.writeFedEvents(ctx, ev.RoomID(), domain, &ev)
+			c.writeFedEvents(ev.RoomID(), domain, &ev)
 		}
 		return true
 	})
@@ -124,20 +124,15 @@ func (c *FederationDispatch) onRoomEvent(
 	return nil
 }
 
-func (c *FederationDispatch) writeFedEvents(ctx context.Context, roomID, domain string, update *gomatrixserverlib.Event) error {
+func (c *FederationDispatch) writeFedEvents(roomID, domain string, update *gomatrixserverlib.Event) error {
 	bytes, _ := json.Marshal(*update)
 	log.Infof("fed-dispatch writeFedEvents room:%s, domain:%s ev:%v", roomID, domain, string(bytes))
-	span, _ := common.StartSpanFromContext(ctx, c.cfg.Kafka.Producer.DispatchOutput.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, c.cfg.Kafka.Producer.DispatchOutput.Name,
-		c.cfg.Kafka.Producer.DispatchOutput.Underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
+	return common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		c.cfg.Kafka.Producer.DispatchOutput.Underlying,
 		c.cfg.Kafka.Producer.DispatchOutput.Name,
 		&core.TransportPubMsg{
-			Topic:   c.cfg.Kafka.Producer.DispatchOutput.Topic + "." + domain,
-			Keys:    []byte(roomID),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Topic: c.cfg.Kafka.Producer.DispatchOutput.Topic + "." + domain,
+			Keys:  []byte(roomID),
+			Obj:   update,
 		})
 }

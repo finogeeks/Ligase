@@ -20,20 +20,19 @@ package syncapi
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	jsoniter "github.com/json-iterator/go"
 	_ "github.com/lib/pq"
 )
@@ -73,31 +72,13 @@ type Database struct {
 }
 
 // WriteOutputEvents implements OutputRoomEventWriter
-func (d *Database) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *Database) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 
@@ -117,11 +98,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
-
-	d.db.SetMaxOpenConns(30)
-	d.db.SetMaxIdleConns(30)
-	d.db.SetConnMaxLifetime(time.Minute * 3)
-
 	d.topic = topic
 	d.underlying = underlying
 	d.AsyncSave = useAsync
@@ -183,10 +159,6 @@ func (d *Database) SetGauge(qryDBGauge mon.LabeledGauge) {
 
 func (d *Database) SetIDGenerator(idg *uid.UidGenerator) {
 	d.idg = idg
-}
-
-func (d *Database) GetDB() *sql.DB {
-	return d.db
 }
 
 // Events lookups a list of event by their event ID.
@@ -307,10 +279,6 @@ func (d *Database) UpdateEvent(
 		return err
 	}
 	return d.events.updateEvent(ctx, eventJSON, eventID, RoomID, eventType)
-}
-
-func (d *Database) OnUpdateEvent(ctx context.Context, eventID, roomID string, eventJson []byte, eventType string) error {
-	return d.events.updateEventRaw(ctx, eventJson, eventID, roomID, eventType)
 }
 
 func (d *Database) SelectEventsByDir(
@@ -576,10 +544,9 @@ func (d *Database) GetUserPresenceDataStream(
 }
 
 func (d *Database) SelectTypeEventForward(
-	ctx context.Context,
 	typ []string, roomID string,
 ) (events []gomatrixserverlib.ClientEvent, offsets []int64, err error) {
-	return d.events.selectTypeEventForward(ctx, typ, roomID)
+	return d.events.selectTypeEventForward(context.Background(), typ, roomID)
 }
 
 func (d *Database) UpdateSyncMemberEvent(
@@ -692,8 +659,8 @@ func (d *Database) OnUpdateSyncEvent(ctx context.Context, domainOffset, originTs
 	return d.events.onUpdateSyncEvent(ctx, domainOffset, originTs, domain, roomID, eventID)
 }
 
-func (d *Database) GetSyncEvents(ctx context.Context, start, end int64, limit, offset int64) ([][]byte, error) {
-	return d.events.selectSyncEvents(ctx, start, end, limit, offset)
+func (d *Database) GetSyncEvents(start, end int64, limit, offset int64) ([][]byte, error) {
+	return d.events.selectSyncEvents(start, end, limit, offset)
 }
 
 func (d *Database) GetSyncMsgEventsMigration(ctx context.Context, limit, offset int64) ([]int64, []string, [][]byte, error) {

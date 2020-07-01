@@ -19,8 +19,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const roomTagsSchema = `
@@ -79,18 +79,18 @@ func (s *roomTagsStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *roomTagsStatements) recoverRoomTag(ctx context.Context) error {
+func (s *roomTagsStatements) recoverRoomTag() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverRoomTagsStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverRoomTagsStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func (s *roomTagsStatements) recoverRoomTag(ctx context.Context) error {
 	return nil
 }
 
-func (s *roomTagsStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *roomTagsStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -118,7 +118,7 @@ func (s *roomTagsStatements) processRecover(ctx context.Context, rows *sql.Rows)
 		update.IsRecovery = true
 		update.AccountDBEvents.RoomTagInsert = &roomTagInsert
 		update.SetUid(int64(common.CalcStringHashCode64(roomTagInsert.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "room_tags")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update tag cache error: %v", err2)
 			if err == nil {
@@ -145,7 +145,7 @@ func (s *roomTagsStatements) insertRoomTag(
 			Content: content,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userId)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "room_tags")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		_, err = stmt.ExecContext(ctx, userId, roomID, tag, content)
 		return
@@ -174,7 +174,7 @@ func (s *roomTagsStatements) deleteRoomTag(
 			Tag:    tag,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userId)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "room_tags")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		_, err = stmt.ExecContext(ctx, userId, roomID, tag)
 		return

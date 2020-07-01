@@ -22,7 +22,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"math"
 	"net/http"
 	"time"
@@ -65,8 +64,7 @@ func SetupTransactionWorkers(
 // it is given.
 func worker(db model.AppServiceDatabase, ws types.ApplicationServiceWorkerState) {
 	log.Infow("starting application service", log.KeysAndValues{"appservice", ws.AppService.ID})
-	span, ctx := common.StartSobSomSpan(context.Background(), "transaction_scheduler.worker")
-	defer span.Finish()
+	ctx := context.Background()
 
 	// Create a HTTP client for sending requests to app services
 	client := &http.Client{

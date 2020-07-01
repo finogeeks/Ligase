@@ -15,10 +15,10 @@
 package extra
 
 import (
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 func ExpandSyncData(repo *repos.RoomCurStateRepo, device *authtypes.Device, displayNameRepo *repos.DisplayNameRepo, res *syncapitypes.SyncServerResponse) {

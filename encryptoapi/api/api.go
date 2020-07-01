@@ -24,12 +24,12 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/encryptoapi/routing"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -70,7 +70,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.InitGroup("encryptoapi", c, c.Cfg.Rpc.ProxyEncryptoApiTopic, types.ENCRY_API_GROUP)
+	c.APIConsumer.Init("encryptoapi", c, c.Cfg.Rpc.ProxyEncryptoApiTopic)
 	c.APIConsumer.Start()
 }
 
@@ -112,11 +112,11 @@ func (ReqPostUploadKeyByDeviceID) FillRequest(coder core.Coder, req *http.Reques
 func (ReqPostUploadKeyByDeviceID) NewResponse(code int) core.Coder {
 	return new(external.PostUploadKeysResponse)
 }
-func (ReqPostUploadKeyByDeviceID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostUploadKeyByDeviceID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*types.UploadEncrypt)
 	return routing.UploadPKeys(
-		ctx, req, c.encryptionDB, device, c.cache,
+		context.Background(), req, c.encryptionDB, device, c.cache,
 		c.RpcCli, c.syncDB, c.idg,
 	)
 }
@@ -144,11 +144,11 @@ func (ReqPostUploadKey) FillRequest(coder core.Coder, req *http.Request, vars ma
 func (ReqPostUploadKey) NewResponse(code int) core.Coder {
 	return new(external.PostUploadKeysResponse)
 }
-func (ReqPostUploadKey) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostUploadKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*types.UploadEncrypt)
 	return routing.UploadPKeys(
-		ctx, req, c.encryptionDB, device, c.cache,
+		context.Background(), req, c.encryptionDB, device, c.cache,
 		c.RpcCli, c.syncDB, c.idg,
 	)
 }
@@ -176,11 +176,11 @@ func (ReqPostQueryKey) FillRequest(coder core.Coder, req *http.Request, vars map
 func (ReqPostQueryKey) NewResponse(code int) core.Coder {
 	return new(external.PostQueryKeysResponse)
 }
-func (ReqPostQueryKey) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostQueryKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostQueryKeysRequest)
 	return routing.QueryPKeys(
-		ctx, req, device.ID, c.cache, c.federation, c.serverName,
+		context.Background(), req, device.ID, c.cache, c.federation, c.serverName,
 	)
 }
 
@@ -207,10 +207,10 @@ func (ReqPostClaimKey) FillRequest(coder core.Coder, req *http.Request, vars map
 func (ReqPostClaimKey) NewResponse(code int) core.Coder {
 	return new(external.PostClaimKeysResponse)
 }
-func (ReqPostClaimKey) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostClaimKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostClaimKeysRequest)
 	return routing.ClaimOneTimeKeys(
-		ctx, req, c.cache, c.encryptionDB, c.RpcCli,
+		context.Background(), req, c.cache, c.encryptionDB, c.RpcCli,
 	)
 }

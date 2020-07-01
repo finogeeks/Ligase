@@ -16,14 +16,13 @@ package repos
 
 import (
 	"context"
-	"sync"
-	"time"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
+	"sync"
+	"time"
 )
 
 type ClientDataStreamRepo struct {
@@ -54,8 +53,8 @@ func (tl *ClientDataStreamRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
 	tl.queryHitCounter = queryHitCounter
 }
 
-func (tl *ClientDataStreamRepo) AddClientDataStream(ctx context.Context, dataStream *types.ActDataStreamUpdate, offset int64) {
-	tl.LoadHistory(ctx, dataStream.UserID, true)
+func (tl *ClientDataStreamRepo) AddClientDataStream(dataStream *types.ActDataStreamUpdate, offset int64) {
+	tl.LoadHistory(dataStream.UserID, true)
 	tl.addClientDataStream(dataStream, offset)
 }
 
@@ -67,14 +66,14 @@ func (tl *ClientDataStreamRepo) addClientDataStream(dataStream *types.ActDataStr
 	tl.repo.add(dataStream.UserID, clientDataStream)
 }
 
-func (tl *ClientDataStreamRepo) LoadHistory(ctx context.Context, userID string, sync bool) {
+func (tl *ClientDataStreamRepo) LoadHistory(userID string, sync bool) {
 	if _, ok := tl.ready.Load(userID); !ok {
 		if _, ok := tl.loading.Load(userID); !ok {
 			tl.loading.Store(userID, true)
 			if sync == false {
-				go tl.loadHistory(ctx, userID)
+				go tl.loadHistory(userID)
 			} else {
-				tl.loadHistory(ctx, userID)
+				tl.loadHistory(userID)
 			}
 
 			tl.queryHitCounter.WithLabelValues("db", "ClientDataStreamRepo", "LoadHistory").Add(1)
@@ -82,24 +81,24 @@ func (tl *ClientDataStreamRepo) LoadHistory(ctx context.Context, userID string, 
 			if sync == false {
 				return
 			}
-			tl.CheckLoadReady(ctx, userID, true)
+			tl.CheckLoadReady(userID, true)
 		}
 	} else {
 		res := tl.repo.getTimeLine(userID)
 		if res == nil {
 			tl.ready.Delete(userID)
-			tl.LoadHistory(ctx, userID, sync)
+			tl.LoadHistory(userID, sync)
 		} else {
 			tl.queryHitCounter.WithLabelValues("cache", "ClientDataStreamRepo", "LoadHistory").Add(1)
 		}
 	}
 }
 
-func (tl *ClientDataStreamRepo) CheckLoadReady(ctx context.Context, userID string, sync bool) bool {
+func (tl *ClientDataStreamRepo) CheckLoadReady(userID string, sync bool) bool {
 	_, ok := tl.ready.Load(userID)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadHistory(ctx, userID, false)
+			tl.LoadHistory(userID, false)
 		}
 		return ok
 	}
@@ -109,7 +108,7 @@ func (tl *ClientDataStreamRepo) CheckLoadReady(ctx context.Context, userID strin
 		if _, ok := tl.ready.Load(userID); ok {
 			break
 		}
-		tl.LoadHistory(ctx, userID, false)
+		tl.LoadHistory(userID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -124,10 +123,10 @@ func (tl *ClientDataStreamRepo) CheckLoadReady(ctx context.Context, userID strin
 	return ok
 }
 
-func (tl *ClientDataStreamRepo) loadHistory(ctx context.Context, userID string) {
+func (tl *ClientDataStreamRepo) loadHistory(userID string) {
 	defer tl.loading.Delete(userID)
 	bs := time.Now().UnixNano() / 1000000
-	streams, offsets, err := tl.persist.GetHistoryClientDataStream(ctx, userID, 100)
+	streams, offsets, err := tl.persist.GetHistoryClientDataStream(context.TODO(), userID, 100)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed ClientDataStreamRepo load user:%s history spend:%d ms err: %v", userID, spend, err)
@@ -164,13 +163,13 @@ func (tl *ClientDataStreamRepo) loadHistory(ctx context.Context, userID string) 
 	tl.ready.Store(userID, true)
 }
 
-func (tl *ClientDataStreamRepo) GetHistory(ctx context.Context, user string) *feedstypes.TimeLines {
-	tl.LoadHistory(ctx, user, true)
+func (tl *ClientDataStreamRepo) GetHistory(user string) *feedstypes.TimeLines {
+	tl.LoadHistory(user, true)
 	return tl.repo.getTimeLine(user)
 }
 
-func (tl *ClientDataStreamRepo) ExistsAccountDataUpdate(ctx context.Context, position int64, userID string) bool {
-	cdsTimeLine := tl.GetHistory(ctx, userID)
+func (tl *ClientDataStreamRepo) ExistsAccountDataUpdate(position int64, userID string) bool {
+	cdsTimeLine := tl.GetHistory(userID)
 
 	if cdsTimeLine == nil {
 		tl.repo.setDefault(userID)

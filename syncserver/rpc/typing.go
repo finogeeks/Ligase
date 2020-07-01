@@ -15,14 +15,13 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/json-iterator/go"
 	"github.com/nats-io/go-nats"
 )
@@ -33,9 +32,8 @@ type TypingRpcConsumer struct {
 	roomCurState *repos.RoomCurStateRepo
 	rpcClient    *common.RpcClient
 	chanSize     uint32
-	//msgChan      []chan *types.TypingContent
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan      []chan *types.TypingContent
+	cfg          *config.Dendrite
 }
 
 func NewTypingRpcConsumer(
@@ -53,7 +51,7 @@ func NewTypingRpcConsumer(
 	return s
 }
 
-func (s *TypingRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *TypingRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -64,7 +62,7 @@ func (s *TypingRpcConsumer) GetTopic() string {
 func (s *TypingRpcConsumer) Clean() {
 }
 
-func (s *TypingRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *TypingRpcConsumer) cb(msg *nats.Msg) {
 	var result types.TypingContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc typing cb error %v", err)
@@ -72,13 +70,12 @@ func (s *TypingRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	}
 	if common.IsRelatedRequest(result.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		idx := common.CalcStringHashCode(result.RoomID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *TypingRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.TypingContent)
+func (s *TypingRpcConsumer) startWorker(msgChan chan *types.TypingContent) {
+	for data := range msgChan {
 		state := s.roomCurState.GetRoomState(data.RoomID)
 		if state != nil {
 			update := syncapitypes.TypingUpdate{
@@ -126,13 +123,13 @@ func (s *TypingRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
 }
 
 func (s *TypingRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.TypingContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.TypingContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }

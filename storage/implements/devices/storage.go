@@ -20,15 +20,14 @@ package devices
 import (
 	"context"
 	"database/sql"
-	"time"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 )
 
 func init() {
@@ -58,10 +57,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 		return nil, err
 	}
 
-	dataBase.db.SetMaxOpenConns(30)
-	dataBase.db.SetMaxIdleConns(30)
-	dataBase.db.SetConnMaxLifetime(time.Minute * 3)
-
 	schemas := []string{dataBase.devices.getSchema(), dataBase.migDevices.getSchema()}
 	for _, sqlStr := range schemas {
 		_, err := dataBase.db.Exec(sqlStr)
@@ -90,43 +85,23 @@ func (d *Database) SetGauge(qryDBGauge mon.LabeledGauge) {
 }
 
 // WriteOutputEvents implements OutputRoomEventWriter
-func (d *Database) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *Database) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 
 func (d *Database) RecoverCache() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "RecoverCache")
-	defer span.Finish()
-	err := d.devices.recoverDevice(ctx)
+	err := d.devices.recoverDevice()
 	if err != nil {
 		log.Errorf("devices.recoverDevice error %v", err)
 	}
 
-	err = d.migDevices.recoverMigDevice(ctx)
+	err = d.migDevices.recoverMigDevice()
 	if err != nil {
 		log.Errorf("devices.recoverMigDevice error %v", err)
 	}
@@ -250,10 +225,11 @@ func (d *Database) CheckDevice(
 	return d.devices.checkDevice(ctx, identifier, userID)
 }
 
-func (d *Database) LoadSimpleFilterData(ctx context.Context, f *filter.SimpleFilter) bool {
+func (d *Database) LoadSimpleFilterData(f *filter.SimpleFilter) bool {
 	offset := 0
 	finish := false
-	limit := 500
+	limit := 1000
+	ctx := context.Background()
 	for {
 		if finish {
 			return true
@@ -265,7 +241,6 @@ func (d *Database) LoadSimpleFilterData(ctx context.Context, f *filter.SimpleFil
 			return false
 		}
 		for idx := range devids {
-			//key := uids[idx] + ":" + devids[idx]
 			f.Insert(uids[idx], devids[idx])
 		}
 		if total < limit {
@@ -277,7 +252,7 @@ func (d *Database) LoadSimpleFilterData(ctx context.Context, f *filter.SimpleFil
 	return true
 }
 
-func (d *Database) LoadFilterData(ctx context.Context, key string, f *filter.Filter) bool {
+func (d *Database) LoadFilterData(key string, f *filter.Filter) bool {
 	/*offset := 0
 	finish := false
 	limit := 500

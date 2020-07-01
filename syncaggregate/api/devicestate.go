@@ -15,16 +15,15 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"net/http"
 )
 
@@ -57,13 +56,13 @@ func (ReqPostReportDeviceState) FillRequest(coder core.Coder, req *http.Request,
 func (ReqPostReportDeviceState) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqPostReportDeviceState) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostReportDeviceState) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 	req := msg.(*external.PostReportDeviceState)
-	c.sm.GetOnlineRepo().UpdateState(ctx, device.UserID, device.ID, req.State)
+	c.sm.GetOnlineRepo().UpdateState(device.UserID, device.ID, req.State)
 	log.Infof("report device state:%d,user:%s,device:%s", req.State, device.UserID, device.ID)
 	return http.StatusOK, nil
 }

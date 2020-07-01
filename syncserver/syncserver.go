@@ -18,16 +18,14 @@
 package syncserver
 
 import (
-	"context"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncserver/api"
 	"github.com/finogeeks/ligase/syncserver/consumers"
@@ -176,8 +174,6 @@ func FixSyncCorruptRooms(
 	base *basecomponent.BaseDendrite,
 	typ, fixRoom string,
 ) {
-	span, ctx := common.StartSobSomSpan(context.Background(), "FixSyncCorruptRooms")
-	defer span.Finish()
 	syncDB := base.CreateSyncDB()
 	types := []string{
 		"m.room.create",
@@ -204,30 +200,29 @@ func FixSyncCorruptRooms(
 		}
 		for _, roomID := range rooms {
 			if typ == "*" {
-				fixSyncRoom(ctx, types, roomID, syncDB)
+				fixSyncRoom(types, roomID, syncDB)
 			} else {
-				fixSyncRoom(ctx, []string{typ}, roomID, syncDB)
+				fixSyncRoom([]string{typ}, roomID, syncDB)
 			}
 		}
 	} else {
 		if typ == "*" {
-			fixSyncRoom(ctx, types, fixRoom, syncDB)
+			fixSyncRoom(types, fixRoom, syncDB)
 		} else {
-			fixSyncRoom(ctx, []string{typ}, fixRoom, syncDB)
+			fixSyncRoom([]string{typ}, fixRoom, syncDB)
 		}
 	}
 	log.Infof("FixSyncCorruptRooms end")
 }
 
 func fixSyncRoom(
-	ctx context.Context,
 	fixType []string,
 	roomID string,
 	syncDB model.SyncAPIDatabase,
 ) {
 	log.Infof("start fix sync room %s type %s", roomID, fixType)
 
-	evs, ids, err := syncDB.SelectTypeEventForward(ctx, fixType, roomID)
+	evs, ids, err := syncDB.SelectTypeEventForward(fixType, roomID)
 	if err != nil {
 		log.Errorf("fixSyncRoom fail roomID %s type %s err:%v", roomID, fixType, err)
 		return

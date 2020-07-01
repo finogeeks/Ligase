@@ -23,12 +23,11 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/publicroomsapi/directory"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -52,7 +51,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.InitGroup("publicroomapi", c, c.Cfg.Rpc.ProxyPublicRoomApiTopic, types.PUBLICROOM_API_GROUP)
+	c.APIConsumer.Init("publicroomapi", c, c.Cfg.Rpc.ProxyPublicRoomApiTopic)
 	c.APIConsumer.Start()
 }
 
@@ -96,11 +95,11 @@ func (ReqGetPublicRooms) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqGetPublicRooms) NewResponse(code int) core.Coder {
 	return new(external.GetPublicRoomsResponse)
 }
-func (ReqGetPublicRooms) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPublicRooms) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetPublicRoomsRequest)
 	return directory.GetPublicRooms(
-		ctx, req, c.publicRoomsDB,
+		context.Background(), req, c.publicRoomsDB,
 	)
 }
 
@@ -109,7 +108,7 @@ type ReqPostPublicRooms struct{}
 func (ReqPostPublicRooms) GetRoute() string       { return "/publicRooms" }
 func (ReqPostPublicRooms) GetMetricsName() string { return "public_rooms" }
 func (ReqPostPublicRooms) GetMsgType() int32      { return internals.MSG_POST_PUBLIC_ROOMS }
-func (ReqPostPublicRooms) GetAPIType() int8       { return apiconsumer.APITypeAuth }
+func (ReqPostPublicRooms) GetAPIType() int8       { return apiconsumer.APITypeExternal }
 func (ReqPostPublicRooms) GetMethod() []string {
 	return []string{http.MethodPost, http.MethodOptions}
 }
@@ -129,10 +128,10 @@ func (ReqPostPublicRooms) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqPostPublicRooms) NewResponse(code int) core.Coder {
 	return new(external.PostPublicRoomsResponse)
 }
-func (ReqPostPublicRooms) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostPublicRooms) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostPublicRoomsRequest)
 	return directory.PostPublicRooms(
-		ctx, req, c.publicRoomsDB,
+		context.Background(), req, c.publicRoomsDB,
 	)
 }

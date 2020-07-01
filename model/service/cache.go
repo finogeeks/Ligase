@@ -31,6 +31,10 @@ type Cache interface {
 
 	GetDevicesByUserID(userID string) *[]authtypes.Device
 
+	UpdateLocalDevice(deviceID string, userID string, displayName string)
+
+	DeleteLocalDevice(deviceID string, userID string)
+
 	GetPushRuleEnabled(userID, ruleID string) (string, bool)
 
 	GetUserPusherIds(userID string) ([]string, bool)
@@ -95,6 +99,8 @@ type Cache interface {
 
 	SetAccountData(userID, roomID, acctType, content string) error
 
+	SetRoomState(roomID string, state []byte, token string) error
+	GetRoomState(roomID string) ([]byte, string, error)
 	GetRoomOffsets(roomNID int64) (map[string]int64, error)
 
 	SetRoomUnreadCount(userID, roomID string, notifyCount, hlCount int64) error
@@ -123,61 +129,6 @@ type Cache interface {
 	GetUserInfoByUserID(userID string) (result *authtypes.UserInfo)
 	SetUserInfo(userID, userName, jobNumber, mobile, landline, email string) error
 	DeleteUserInfo(userID string) error
-
-	//direct call base
-	HScan(key, match string, cursor uint64, count int) (result map[string]interface{}, next uint64, err error)
-	HDelMulti(key string, fields []interface{}) error
-
-	//alias
-	AliasExists(key string) (bool, error)
-	SetAlias(key, val string, expire int64) error
-	GetAlias(key string) (string, error)
-	DelAlias(key string) error
-
-	//txn
-	GetTxnID(roomID, msgID string) (string, bool)
-	PutTxnID(roomID, txnID, eventID string) error
-	ScanTxnID(cursor uint64, count int) ([]string, uint64, error)
-
-	//roomusermembership
-	SetUserRoomMemberShip(roomID, userID string, mType int64) error
-	GetUserRoomMemberShip(userID string) (map[string]int64, error)
-	CheckUserRoomMemberShipExists(userID string) (bool, error)
-	SetUserRoomMemberShipMulti(userID string, memberships map[string]int64) error
-
-	//roomstate
-	SetRoomState(roomID string, state []byte, token string) error
-	GetRoomState(roomID string) ([]byte, string, error)
-	GetRoomStateExt(roomID string) (*types.RoomStateExt, error)
-	UpdateRoomStateExt(roomID string, ext map[string]interface{}) error
-	SetRoomStateExt(roomID string, roomstateExt *types.RoomStateExt) error
-
-	//distlock
-	Lock(lockKey string, expire, wait int) (lockToken string, err error)
-	UnLock(lockKey, token string, force bool) (err error)
-
-	//fed
-	GetFakePartition(key string) (int32, error)
-	AssignFedSendRecPartition(roomID, domain string, partition int32) error
-	UnassignFedSendRecPartition(roomID, domain string) error
-	ExpireFedSendRecPartition(roomID, domain string) error
-	AddFedPendingRooms(roomIDs []string) error
-	DelFedPendingRooms(roomIDs []string) error
-	QryFedPendingRooms() ([]string, error)
-
-	IncrFedRoomPending(roomID, domain string, amt int) error
-	StoreFedSendRec(roomID, domain, eventID string, sendTimes, pendingSize int32, domainOffset int64) error
-	GetFedSendRec(roomID, domain string) (eventID string, sendTimes, pendingSize int32, domainOffset int64, err error)
-	IncrFedRoomDomainOffset(roomID, domain, eventID string, domainOffset int64, penddingDecr int32) error
-	FreeFedSendRec(roomID, domain string) error
-
-	AssignFedBackfillRecPartition(roomID string, partition int32) error
-	UnassignFedBackfillRecPartition(roomID string) error
-	ExpireFedBackfillRecPartition(roomID string) error
-	QryFedBackfillRooms() ([]string, error)
-	StoreFedBackfillRec(roomID string, depth int64, finished bool, finishedDomains string, states string) (loaded bool, err error)
-	UpdateFedBackfillRec(roomID string, depth int64, finished bool, finishedDomains string, states string) (updated bool, err error)
-	GetFedBackfillRec(roomID string) (depth int64, finished bool, finishedDomains string, states string, err error)
 }
 
 type CacheItem struct {

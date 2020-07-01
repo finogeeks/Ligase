@@ -20,11 +20,11 @@ package publicroomsapi
 import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/publicroomsapi/api"
 	"github.com/finogeeks/ligase/publicroomsapi/consumers"
 	"github.com/finogeeks/ligase/publicroomsapi/rpc"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	// "github.com/finogeeks/ligase/publicroomsapi/routing"
 )

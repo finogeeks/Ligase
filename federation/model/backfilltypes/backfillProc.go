@@ -14,11 +14,8 @@
 
 package backfilltypes
 
-import (
-	"context"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-)
+import "github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 type BackFillProcessor interface {
-	AddRequest(ctx context.Context, evs []gomatrixserverlib.Event, limit bool) error
+	AddRequest(evs []gomatrixserverlib.Event, limit bool) error
 }

@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const pushersSchema = `
@@ -97,18 +97,18 @@ func (s *pushersStatements) prepare(d *DataBase) (err error) {
 	return
 }
 
-func (s *pushersStatements) recoverPusher(ctx context.Context) error {
+func (s *pushersStatements) recoverPusher() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverPusherStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverPusherStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -117,7 +117,7 @@ func (s *pushersStatements) recoverPusher(ctx context.Context) error {
 	return nil
 }
 
-func (s *pushersStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *pushersStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -136,7 +136,7 @@ func (s *pushersStatements) processRecover(ctx context.Context, rows *sql.Rows) 
 		update.IsRecovery = true
 		update.PushDBEvents.PusherInsert = &pusherInsert
 		update.SetUid(int64(common.CalcStringHashCode64(pusherInsert.PushKey)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "pushers")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update pushers cache error: %v", err2)
 			if err == nil {
@@ -161,7 +161,7 @@ func (s *pushersStatements) deletePushers(
 			PushKey: pushKey,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "pushers")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onDeletePushers(ctx, userID, appID, pushKey)
@@ -187,7 +187,7 @@ func (s *pushersStatements) deletePushersByKey(
 			PushKey: pushKey,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "pushers")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onDeletePushersByKey(ctx, appID, pushKey)
@@ -212,7 +212,7 @@ func (s *pushersStatements) deletePushersByKeyOnly(
 			PushKey: pushKey,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "pushers")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onDeletePushersByKeyOnly(ctx, pushKey)
@@ -248,7 +248,7 @@ func (s *pushersStatements) insertPusher(
 			DeviceID:          deviceID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "pushers")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onInsertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang, data, deviceID)

@@ -114,7 +114,7 @@ func (s *roomStatements) insertRoomNID(
 			RoomId:  roomID,
 		}
 		update.SetUid(id)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_rooms")
+		s.db.WriteDBEvent(&update)
 		return id, nil
 	}
 
@@ -158,7 +158,7 @@ func (s *roomStatements) updateLatestEventNIDs(
 			Depth:            depth,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_rooms")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 
@@ -236,7 +236,7 @@ func (s *roomStatements) updateRoomDepth(ctx context.Context, depth, roomNid int
 			Depth:   depth,
 		}
 		update.SetUid(roomNid)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_rooms")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 	return s.onUpdateRoomDepth(ctx, depth, roomNid)

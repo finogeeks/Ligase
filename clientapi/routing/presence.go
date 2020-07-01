@@ -23,51 +23,19 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
-
-func getPresence(userID string, cache service.Cache, rpcCli *common.RpcClient) (presence, statusMsg, extStatusMsg string) {
-	if presences, ok := cache.GetPresences(userID); ok && presences.UserID == userID {
-		presence = presences.Status
-		statusMsg = presences.StatusMsg
-		extStatusMsg = presences.ExtStatusMsg
-	}
-	if presence == "" {
-		req := types.OnlinePresence{UserID: userID}
-		data, _ := json.Marshal(&req)
-		respData, err := rpcCli.Request(types.PresenceTopicDef, data, 30000)
-		if err != nil {
-			return
-		}
-		var resp types.OnlinePresence
-		err = json.Unmarshal(respData, &resp)
-		if err != nil {
-			return
-		}
-
-		if resp.Found {
-			presence = resp.Presence
-			statusMsg = resp.StatusMsg
-			extStatusMsg = resp.ExtStatusMsg
-		}
-	}
-	if presence == "" {
-		presence = "offline"
-	}
-	return
-}
 
 func UpdatePresenceByID(
 	ctx context.Context,
 	reqContent *external.PutPresenceRequest,
 	presenceDB model.PresenceDatabase,
 	cfg *config.Dendrite,
-	rpcCli *common.RpcClient,
 	cache service.Cache,
 	userID, deviceID string,
 	complexCache *common.ComplexCache,
@@ -76,38 +44,24 @@ func UpdatePresenceByID(
 		return http.StatusForbidden, jsonerror.Forbidden("Can't set presence for others")
 	}
 
-	var presence, statusMsg, extStatusMsg string
-	if reqContent.Presence == nil || reqContent.StatusMsg == nil || reqContent.ExtStatusMsg == nil {
-		presence, statusMsg, extStatusMsg = getPresence(userID, cache, rpcCli)
-	}
-	if reqContent.Presence != nil {
-		presence = *reqContent.Presence
-	}
-	if reqContent.StatusMsg != nil {
-		statusMsg = *reqContent.StatusMsg
-	}
-	if reqContent.ExtStatusMsg != nil {
-		extStatusMsg = *reqContent.ExtStatusMsg
-	}
-
-	err := presenceDB.UpsertPresences(ctx, reqContent.UserID, presence, statusMsg, extStatusMsg)
+	err := presenceDB.UpsertPresences(ctx, reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
-	cache.SetPresences(reqContent.UserID, presence, statusMsg, extStatusMsg)
-	log.Infof("Set Presences success %s %s %s %s", reqContent.UserID, presence, statusMsg, extStatusMsg)
+	cache.SetPresences(reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
+	log.Infof("Set Presences success %s %s %s %s", reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
 
-	displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, reqContent.UserID)
+	displayName, avatarURL, _ := complexCache.GetProfileByUserID(reqContent.UserID)
 	user_info := cache.GetUserInfoByUserID(reqContent.UserID)
 
 	currentlyActive := false
-	if presence == "online" {
+	if reqContent.Presence == "online" {
 		currentlyActive = true
 	}
 	content := types.PresenceJSON{
-		Presence:        presence,
-		StatusMsg:       statusMsg,
-		ExtStatusMsg:    extStatusMsg,
+		Presence:        reqContent.Presence,
+		StatusMsg:       reqContent.StatusMsg,
+		ExtStatusMsg:    reqContent.ExtStatusMsg,
 		CurrentlyActive: currentlyActive,
 		UserID:          reqContent.UserID,
 		LastActiveAgo:   0,
@@ -130,18 +84,12 @@ func UpdatePresenceByID(
 	data.Presence = content
 	data.IsUpdateStauts = true
 	data.DeviceID = deviceID
-
-	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputProfileData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputProfileData.Name,
-		cfg.Kafka.Producer.OutputProfileData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(reqContent.UserID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(reqContent.UserID),
+			Obj:  data,
 		})
 
 	return http.StatusOK, nil

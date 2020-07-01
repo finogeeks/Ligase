@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/json-iterator/go"
 )
 

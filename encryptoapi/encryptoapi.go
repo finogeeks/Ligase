@@ -22,8 +22,8 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/encryptoapi/api"
-	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/storage/model"
 )
 

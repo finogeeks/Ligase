@@ -16,15 +16,15 @@ package consumers
 
 import (
 	"context"
-
 	"github.com/finogeeks/ligase/appservice/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/storage/model"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/storage/model"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -74,7 +74,7 @@ func (c *OutputRoomEventConsumer) Start() error {
 // onMessage is called when the sync server receives a new event from the room server output log.
 // It is not safe for this function to be called from multiple goroutines, or else the
 // sync stream position may race and be incorrectly calculated.
-func (c *OutputRoomEventConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (c *OutputRoomEventConsumer) OnMessage(topic string, partition int32, data []byte) {
 	// Parse out the event JSON
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
@@ -97,7 +97,7 @@ func (c *OutputRoomEventConsumer) OnMessage(ctx context.Context, topic string, p
 	events := append(missingEvents, *ev)
 
 	// Send event to any relevant application services
-	c.filterRoomserverEvents(ctx, events)
+	c.filterRoomserverEvents(context.TODO(), events)
 
 	//c.AsHandler.NotifyInterestedAppServices(context.Background(), ev)
 }

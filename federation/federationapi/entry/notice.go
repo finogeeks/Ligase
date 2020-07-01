@@ -22,12 +22,12 @@ import (
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/fedutil"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/noticetypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
 	"github.com/pkg/errors"
 )
@@ -36,7 +36,7 @@ func init() {
 	Register(model.CMD_FED_NOTARY_NOTICE, NotaryNotice)
 }
 
-func NotaryNotice(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func NotaryNotice(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	retMsg := &model.GobMessage{
 		Body: []byte{},
 	}
@@ -47,23 +47,23 @@ func NotaryNotice(ctx context.Context, msg *model.GobMessage, cache service.Cach
 	req := &external.ReqPostNotaryNoticeRequest{}
 	req.Decode(msg.Body)
 
-	err := noticeHandler(ctx, req.Action, req.TargetDomain, keyDB)
+	err := noticeHandler(req.Action, req.TargetDomain, keyDB)
 	log.Infof("NotaryNotice, err: %v", err)
 
 	return retMsg, nil
 }
 
-func noticeHandler(ctx context.Context, action, targetDomain string, keyDB dbmodel.KeyDatabase) (err error) {
+func noticeHandler(action, targetDomain string, keyDB dbmodel.KeyDatabase) (err error) {
 	log.Infof("noticeHandler, action: %s, targetDomain: %s, servername: %#v", action, targetDomain, cfg.Homeserver.ServerName)
 
 	var reqUrl string
 	if action == "add" {
 		reqUrl = fmt.Sprintf(cfg.NotaryService.CertUrl, cfg.Homeserver.ServerName[0])
-		_, err = fedutil.DownloadFromNotary(ctx, "cert", reqUrl, keyDB)
+		_, err = fedutil.DownloadFromNotary("cert", reqUrl, keyDB)
 	} else if action == "update" || action == "delete" {
 		// update crl
 		reqUrl = cfg.NotaryService.CRLUrl
-		respCRL, err := fedutil.DownloadFromNotary(ctx, "crl", reqUrl, keyDB)
+		respCRL, err := fedutil.DownloadFromNotary("crl", reqUrl, keyDB)
 		if err == nil {
 			certInfo.GetCerts().Store("crl", respCRL.CRL)
 		}
@@ -73,13 +73,13 @@ func noticeHandler(ctx context.Context, action, targetDomain string, keyDB dbmod
 			var resp noticetypes.GetCertsResponse
 			if action == "update" {
 				reqUrl = fmt.Sprintf(cfg.NotaryService.CertUrl, cfg.Homeserver.ServerName[0])
-				resp, err = fedutil.DownloadFromNotary(ctx, "cert", reqUrl, keyDB)
+				resp, err = fedutil.DownloadFromNotary("cert", reqUrl, keyDB)
 				if err == nil {
 					certInfo.GetCerts().Store("serverCert", resp.ServerCert)
 					certInfo.GetCerts().Store("serverKey", resp.ServerKey)
 				}
 			} else {
-				keyDB.UpsertCert(ctx, "", "")
+				keyDB.UpsertCert(context.TODO(), "", "")
 				certInfo.GetCerts().Store("serverCert", "")
 				certInfo.GetCerts().Store("serverKey", "")
 			}

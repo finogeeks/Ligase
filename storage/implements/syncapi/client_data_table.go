@@ -17,11 +17,10 @@ package syncapi
 import (
 	"context"
 	"database/sql"
-
 	"github.com/finogeeks/ligase/common"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/types"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const clientDataStreamSchema = `
@@ -35,12 +34,12 @@ CREATE TABLE IF NOT EXISTS syncapi_client_data_stream (
 	-- id BIGINT PRIMARY KEY DEFAULT nextval('syncapi_stream_id'),
 	id BIGINT PRIMARY KEY,
     -- ID of the user the data belongs to
-    user_id TEXT NOT NULL,
+    user_id TEXT NOT NULL, 
     room_id TEXT,
     -- Type of the data
     data_type TEXT,
 	stream_type TEXT NOT NULL,
-
+ 
     CONSTRAINT syncapi_client_data_stream_unique UNIQUE (user_id, room_id, data_type, stream_type)
 );
 
@@ -96,7 +95,7 @@ func (s *clientDataStreamStatements) insertClientDataStream(
 			StreamType: streamType,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_client_data_stream")
+		s.db.WriteDBEvent(&update)
 		return id, nil
 	} else {
 		err = s.insertClientDataStreamStmt.QueryRowContext(ctx, id, userID, roomID, dataType, streamType).Scan(&pos)

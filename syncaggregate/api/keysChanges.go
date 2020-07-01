@@ -63,7 +63,7 @@ func (ReqGetKeysChanges) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqGetKeysChanges) NewResponse(code int) core.Coder {
 	return new(syncapitypes.KeyChanged)
 }
-func (r ReqGetKeysChanges) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (r ReqGetKeysChanges) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
@@ -78,6 +78,7 @@ func (r ReqGetKeysChanges) Process(ctx context.Context, consumer interface{}, ms
 
 	fromStr := req.From
 	toStr := req.To
+	ctx := context.Background()
 
 	if fromStr == "" || toStr == "" {
 		return http.StatusBadRequest, jsonerror.BadJSON("'from' and 'to' must be set in query parameters")
@@ -106,7 +107,7 @@ func (r ReqGetKeysChanges) Process(ctx context.Context, consumer interface{}, ms
 
 	kcMap := c.keyChangeRepo.GetHistory()
 	if kcMap != nil {
-		friendShipMap := c.userTimeLine.GetFriendShip(ctx, userID, true)
+		friendShipMap := c.userTimeLine.GetFriendShip(userID, true)
 		if friendShipMap != nil {
 			friendShipMap.Range(func(key, _ interface{}) bool {
 				if val, ok := kcMap.Load(key.(string)); ok {

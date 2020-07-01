@@ -30,9 +30,9 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	_ "github.com/lib/pq"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
@@ -69,9 +69,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
-	d.db.SetMaxOpenConns(30)
-	d.db.SetMaxIdleConns(30)
-	d.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{
 		d.statements.roomStatements.getSchema(),
@@ -102,9 +99,7 @@ func (d *Database) SetGauge(qryDBGauge mon.LabeledGauge) {
 }
 
 func (d *Database) RecoverCache() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "Database.RecoverCache")
-	defer span.Finish()
-	err := d.statements.settingsStatements.recoverSettings(ctx)
+	err := d.statements.settingsStatements.recoverSettings()
 	if err != nil {
 		log.Errorf("roomserver.recoverSetting error %v", err)
 	}
@@ -116,36 +111,14 @@ func (d *Database) SetIDGenerator(idg *uid.UidGenerator) {
 	d.idg = idg
 }
 
-func (d *Database) GetDB() *sql.DB {
-	return d.db
-}
-
 // WriteOutputEvents implements OutputRoomEventWriter
-func (d *Database) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *Database) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 
@@ -236,8 +209,8 @@ func (d *Database) BackFillNids(
 	return eventNID, nil
 }
 
-func (d Database) SelectRoomEventsByDomainOffset(ctx context.Context, roomNID int64, domain string, domainOffset int64, limit int) ([]int64, error) {
-	return d.statements.selectRoomEventsByDomainOffset(ctx, roomNID, domain, domainOffset, limit)
+func (d *Database) SelectEventNidForBackfill(ctx context.Context, roomNID int64, domain string) (int64, error) {
+	return d.statements.selectEventNidForBackfill(ctx, roomNID, domain)
 }
 
 func (d *Database) SelectRoomMaxDomainOffsets(ctx context.Context, roomNID int64) (domains, eventIDs []string, offsets []int64, err error) {
@@ -445,8 +418,7 @@ func (d *Database) EventsCount(ctx context.Context) (count int, err error) {
 }
 
 func (d *Database) FixCorruptRooms() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "Database.FixCorruptRooms")
-	defer span.Finish()
+	ctx := context.Background()
 	rooms, err := d.statements.eventStatements.getCorruptRooms(ctx)
 
 	version, _ := d.idg.Next()
@@ -593,16 +565,16 @@ func (d *Database) EventCountAll(
 }
 
 func (d *Database) SetLatestEvents(
-	ctx context.Context,
 	roomNID int64, lastEventNIDSent, currentStateSnapshotNID, depth int64,
 ) error {
-	return d.statements.updateLatestEventNIDs(ctx, roomNID, lastEventNIDSent, currentStateSnapshotNID, depth)
+	return d.statements.updateLatestEventNIDs(context.Background(), roomNID, lastEventNIDSent, currentStateSnapshotNID, depth)
 }
 
-func (d *Database) LoadFilterData(ctx context.Context, key string, f *filter.Filter) bool {
+func (d *Database) LoadFilterData(key string, f *filter.Filter) bool {
 	offset := 0
 	finish := false
 	limit := 500
+	ctx := context.Background()
 
 	if key == "alias" {
 		for {
@@ -741,10 +713,6 @@ func (d *Database) SettingsInsertRaw(ctx context.Context, settingKey string, val
 
 func (d *Database) SaveSettings(ctx context.Context, settingKey string, val string) error {
 	return d.statements.insertSetting(ctx, settingKey, val)
-}
-
-func (d *Database) SelectSettingKey(ctx context.Context, settingKey string) (string, error) {
-	return d.statements.selectSettingKey(ctx, settingKey)
 }
 
 func (d *Database) GetMsgEventsMigration(ctx context.Context, limit, offset int64) ([]int64, [][]byte, error) {

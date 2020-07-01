@@ -15,16 +15,11 @@
 package channel
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"github.com/finogeeks/ligase/common"
-	"github.com/opentracing/opentracing-go"
-	"time"
-
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/go-nats"
+	"time"
 )
 
 type NatsChannel struct {
@@ -106,9 +101,9 @@ func (c *NatsChannel) Start() {
 		c.start = true
 		if c.dir == core.CHANNEL_SUB {
 			if c.grp != "" {
-				c.sub, _ = c.conn.QueueSubscribe(c.topic, c.grp, common.NatsWrapHandler(c.cb))
+				c.sub, _ = c.conn.QueueSubscribe(c.topic, c.grp, c.cb)
 			} else {
-				c.sub, _ = c.conn.Subscribe(c.topic, common.NatsWrapHandler(c.cb))
+				c.sub, _ = c.conn.Subscribe(c.topic, c.cb)
 			}
 		}
 	}
@@ -126,11 +121,7 @@ func (c *NatsChannel) Close() {
 	c.conn.Close()
 }
 
-func (c *NatsChannel) Commit(rawMsg []interface{}) error {
-	return nil
-}
-
-func (c *NatsChannel) Send(topic string, partition int32, keys, bytes []byte, headers map[string]string) error {
+func (c *NatsChannel) Send(topic string, partition int32, keys, bytes []byte) error {
 	if topic == "" {
 		topic = c.topic
 	}
@@ -142,7 +133,7 @@ func (c *NatsChannel) Send(topic string, partition int32, keys, bytes []byte, he
 	return err
 }
 
-func (c *NatsChannel) SendRecv(topic string, bytes []byte, timeout int, headers map[string]string) ([]byte, error) {
+func (c *NatsChannel) SendRecv(topic string, bytes []byte, timeout int) ([]byte, error) {
 	if topic == "" {
 		topic = c.topic
 	}
@@ -157,21 +148,15 @@ func (c *NatsChannel) SendRecv(topic string, bytes []byte, timeout int, headers 
 }
 
 func (c *NatsChannel) cb(msg *nats.Msg) {
-	nowStr := fmt.Sprintf("%d", time.Now().UnixNano()/1e6)
-	span := opentracing.StartSpan(msg.Subject)
-	defer span.Finish()
-	span.SetBaggageItem("sob", nowStr)
-	span.SetBaggageItem("som", nowStr)
-	ctx := common.ContextWithSpan(context.Background(), span)
-	c.handler.OnMessage(ctx, msg.Subject, -1, msg.Data, msg)
+	c.handler.OnMessage(msg.Subject, -1, msg.Data)
 }
 
-func (c *NatsChannel) SendAndRecv(topic string, partition int32, keys, bytes []byte, headers map[string]string) error {
+func (c *NatsChannel) SendAndRecv(topic string, partition int32, keys, bytes []byte) error {
 	return errors.New("unsupported commond SendAndRecv")
 }
-func (c *NatsChannel) SendWithRetry(topic string, partition int32, keys, bytes []byte, headers map[string]string) error {
+func (c *NatsChannel) SendWithRetry(topic string, partition int32, keys, bytes []byte) error {
 	return errors.New("unsupported commond SendWithRetry")
 }
-func (c *NatsChannel) SendAndRecvWithRetry(topic string, partition int32, keys, bytes []byte, headers map[string]string) error {
+func (c *NatsChannel) SendAndRecvWithRetry(topic string, partition int32, keys, bytes []byte) error {
 	return errors.New("unsupported commond SendAndRecvWithRetry")
 }

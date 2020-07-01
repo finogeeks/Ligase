@@ -93,7 +93,7 @@ type StateEvent struct {
 	OriginServerTS int64        `json:"origin_server_ts,omitempty"`
 	Unsigned       UnsignedData `json:"unsigned,omitempty"`
 	PrevContent    EventContent `json:"prev_content,omitempty"`
-	RoomID         string       `json:"room_id,omitempty"`
+	RoomID         string       `json:"unsigned,omitempty"`
 }
 
 type Timeline struct {
@@ -109,7 +109,7 @@ type RoomEvent struct {
 	Sender         string       `json:"sender,omitempty"`
 	OriginServerTS int64        `json:"origin_server_ts,omitempty"`
 	Unsigned       UnsignedData `json:"unsigned,omitempty"`
-	RoomID         string       `json:"room_id,omitempty"`
+	RoomID         string       `json:"unsigned,omitempty"`
 }
 
 type UnsignedData struct {

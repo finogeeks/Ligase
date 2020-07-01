@@ -913,7 +913,33 @@ func (externalReq *DelDeviceRequest) Decode(input []byte) error {
 }
 
 func (externalReq *PutPresenceRequest) Decode(input []byte) error {
-	return json.Unmarshal(input, externalReq)
+	msg, err := capn.Unmarshal(input)
+	if err != nil {
+		return err
+	}
+
+	reqCapn, err := ReadRootPutPresenceRequestCapn(msg)
+	if err != nil {
+		return err
+	}
+
+	externalReq.UserID, err = reqCapn.UserID()
+	if err != nil {
+		return err
+	}
+	externalReq.Presence, err = reqCapn.Presence()
+	if err != nil {
+		return err
+	}
+	externalReq.StatusMsg, err = reqCapn.StatusMsg()
+	if err != nil {
+		return err
+	}
+	externalReq.ExtStatusMsg, err = reqCapn.ExtStatusMsg()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (externalReq *GetPresenceRequest) Decode(input []byte) error {
@@ -1994,5 +2020,9 @@ func (externalReq *PostQueryClientKeysRequest) Decode(data []byte) error {
 }
 
 func (externalReq *PostClaimClientKeysRequest) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}
+
+func (externalReq *DismissRoomRequest) Decode(data []byte) error {
 	return json.Unmarshal(data, externalReq)
 }

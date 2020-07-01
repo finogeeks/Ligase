@@ -21,16 +21,15 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	jsoniter "github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func Download(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination, domain string,
@@ -71,7 +70,7 @@ func Download(
 		return nil
 	}
 	go func() {
-		err := fedClient.Download(ctx,
+		err := fedClient.Download(context.TODO(),
 			destination, domain, req.MediaID, req.Width, req.Method, req.FileType, cb,
 		)
 		if err != nil {

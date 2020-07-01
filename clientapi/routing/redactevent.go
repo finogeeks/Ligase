@@ -25,11 +25,11 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -42,7 +42,7 @@ func RedactEvent(
 	roomID string,
 	txnID, stateKey *string,
 	cfg config.Dendrite,
-	cache service.Cache,
+	localCache service.LocalCache,
 	rsRpcCli roomserverapi.RoomserverRPCAPI,
 	redacts string,
 	eventType string,
@@ -64,18 +64,18 @@ func RedactEvent(
 			DeviceID:      deviceID,
 		}
 		key := roomID + eventType + (*txnID)
-		eventIDRef, ok := cache.GetTxnID(roomID, key)
+		eventIDRef, ok := localCache.Get(0, key)
 		if ok == true {
 			return 200, &external.PutRedactEventResponse{
-				EventID: eventIDRef,
+				EventID: eventIDRef.(string),
 			}
 		}
 	} else {
 		key := roomID + eventType + redacts
-		eventIDRef, ok := cache.GetTxnID(roomID, key)
+		eventIDRef, ok := localCache.Get(0, key)
 		if ok == true {
 			return 200, &external.PutRedactEventResponse{
-				EventID: eventIDRef,
+				EventID: eventIDRef.(string),
 			}
 		}
 	}
@@ -154,15 +154,15 @@ func RedactEvent(
 		Query: []string{"redact", ""},
 	}
 	//write event to kafka
-	_, err = rsRpcCli.InputRoomEvents(ctx, &rawEvent)
+	_, err = rsRpcCli.InputRoomEvents(context.Background(), &rawEvent)
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
 	if txnID != nil {
-		cache.PutTxnID(roomID, roomID+eventType+(*txnID), e.EventID())
+		localCache.Put(0, roomID+eventType+(*txnID), e.EventID())
 	} else {
-		cache.PutTxnID(roomID, roomID+eventType+e.EventID(), e.EventID())
+		localCache.Put(0, roomID+eventType+e.EventID(), e.EventID())
 	}
 
 	log.Debugf("------------------------RedactEvent send-event-to-server %v", (time.Now().UnixNano()-last)/1000)

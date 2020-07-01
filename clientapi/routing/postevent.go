@@ -25,11 +25,11 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -46,11 +46,17 @@ func PostEvent(
 	txnID, stateKey *string,
 	cfg config.Dendrite,
 	rpcCli roomserverapi.RoomserverRPCAPI,
-	cache service.Cache,
+	localCache service.LocalCache,
 	idg *uid.UidGenerator,
 ) (int, core.Coder) {
 	start := time.Now().UnixNano()
 	last := start
+	// var r map[string]interface{} //request body
+	// resErr := httputil.UnmarshalJSONRequest(req, &r)
+	// if resErr != nil {
+	// 	return 0, *resErr
+	// }
+
 	var r map[string]interface{}
 	json.Unmarshal(req.Content, &r)
 	if val, ok := r["membership"]; ok {
@@ -58,6 +64,7 @@ func PostEvent(
 			r["membership"] = "leave"
 		}
 	}
+
 	var txnAndDeviceID *roomservertypes.TransactionID
 	if txnID != nil {
 		txnAndDeviceID = &roomservertypes.TransactionID{
@@ -66,13 +73,20 @@ func PostEvent(
 			IP:            IP,
 		}
 		key := roomID + eventType + (*txnID)
-		eventIDRef, ok := cache.GetTxnID(roomID, key)
+		eventIDRef, ok := localCache.Get(0, key)
 		if ok == true {
 			return http.StatusOK, &external.PutRoomStateByTypeWithTxnIDResponse{
-				EventID: eventIDRef,
+				EventID: eventIDRef.(string),
 			}
 		}
+	} else {
+		txnAndDeviceID = &roomservertypes.TransactionID{
+			TransactionID: "",
+			DeviceID:      deviceID,
+			IP:            IP,
+		}
 	}
+	log.Infof("PostEvent txnid:%s userID %s roomID %s", txnAndDeviceID.TransactionID, userID, roomID)
 
 	builder := gomatrixserverlib.EventBuilder{
 		Sender:   userID,
@@ -82,7 +96,7 @@ func PostEvent(
 	}
 	err := builder.SetContent(r)
 	if err != nil {
-		log.Errorf("PostEvent error, userID %s roomID %s eventType %s stateKey %s err %v", userID, roomID, eventType, stateKey, err)
+		log.Errorf("PostEvent SetContent error, txnid:%s userID %s roomID %s eventType %s stateKey %s err %v", txnAndDeviceID.TransactionID, userID, roomID, eventType, stateKey, err)
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
@@ -91,14 +105,16 @@ func PostEvent(
 	queryReq.RoomID = roomID
 	err = rpcCli.QueryRoomState(ctx, &queryReq, &queryRes)
 	if err != nil {
+		log.Errorf("PostEvent QueryRoomState error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID, err)
 		return http.StatusNotFound, jsonerror.NotFound(err.Error()) //err
 	}
 
 	domainID, _ := common.DomainFromID(userID)
 	e, err := common.BuildEvent(&builder, domainID, cfg, idg)
-	log.Debugf("------------------------PostEvent build-event %v", (time.Now().UnixNano()-last)/1000)
+	log.Infof("------------------------PostEvent txnId:%s build-event %v", txnAndDeviceID.TransactionID, (time.Now().UnixNano()-last)/1000)
 	last = time.Now().UnixNano()
 	if err != nil {
+		log.Errorf("PostEvent BuildEvent error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID, err)
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
@@ -107,6 +123,7 @@ func PostEvent(
 		log.Infof("------------------------PostEvent %v", *e)
 	}
 	if err = gomatrixserverlib.Allowed(*e, &queryRes); err != nil {
+		log.Errorf("PostEvent Allowed error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID, err)
 		return http.StatusForbidden, jsonerror.Forbidden(err.Error()) // TODO: Is this error string comprehensible to the client?
 	}
 
@@ -126,19 +143,19 @@ func PostEvent(
 		Query: []string{"post_event", eventType},
 	}
 	//write event to kafka
-	_, err = rpcCli.InputRoomEvents(ctx, &rawEvent)
+	_, err = rpcCli.InputRoomEvents(context.Background(), &rawEvent)
 
 	if err != nil {
-		log.Errorf("PostEvent error, userID %s roomID %s eventType %s stateKey %s err %v", userID, roomID, eventType, stateKey, err)
+		log.Errorf("PostEvent error, userID %s roomID %s txnId:%s err %v", userID, roomID, txnAndDeviceID.TransactionID, err)
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
 	if txnID != nil {
-		cache.PutTxnID(roomID, roomID+eventType+(*txnID), e.EventID())
+		localCache.Put(0, roomID+eventType+(*txnID), e.EventID())
 	}
 
 	log.Debugf("------------------------PostEvent send-event-to-server %v", (time.Now().UnixNano()-last)/1000)
-	log.Infof("------------------------PostEvent all %d us remote:%s dev:%s", (time.Now().UnixNano()-start)/1000, IP, deviceID)
+	log.Infof("------------------------PostEvent all %v remote:%s dev:%s eventId:%s txnId:%s", (time.Now().UnixNano()-start)/1000, IP, deviceID, e.EventID(), txnAndDeviceID.TransactionID)
 
 	return http.StatusOK, &external.PutRoomStateByTypeWithTxnIDResponse{
 		EventID: e.EventID(),

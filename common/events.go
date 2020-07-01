@@ -80,8 +80,6 @@ func IsStateEv(ev *gomatrixserverlib.Event) bool {
 		return true
 	case "m.room.encryption":
 		return true
-	case "m.room.third_party_invite", "m.room.guest_access":
-		return true
 	default:
 		return false
 	}
@@ -98,8 +96,6 @@ func IsStateClientEv(ev *gomatrixserverlib.ClientEvent) bool {
 	case "m.room.aliases", "m.room.canonical_alias", "m.room.avatar":
 		return true
 	case "m.room.encryption":
-		return true
-	case "m.room.third_party_invite", "m.room.guest_access":
 		return true
 	default:
 		return false

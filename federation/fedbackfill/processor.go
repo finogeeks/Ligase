@@ -28,9 +28,10 @@ import (
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/fedutil"
 	"github.com/finogeeks/ligase/federation/model/repos"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 )
 
 type BackFillJob struct {
@@ -48,43 +49,22 @@ type BackfillItem struct {
 }
 
 type BackfillProcessor struct {
-	cfg           *config.Fed
-	fedClient     *client.FedClientWrap
-	fedRpcCli     *rpc.FederationRpcClient
-	feddomains    *common.FedDomains
-	clientMap     sync.Map
-	backfillRepo  *repos.BackfillRepo
-	fakePartition int32
-	assignedRoom  sync.Map
-}
-
-func (p *BackfillProcessor) Start() {
-	go func() {
-		for {
-			time.Sleep(time.Second * 10)
-			ctx := context.TODO()
-			p.assignedRoom.Range(func(k, v interface{}) bool {
-				p.backfillRepo.ExpireRoomPartition(ctx, k.(string))
-				return true
-			})
-		}
-	}()
+	cfg          *config.Fed
+	db           fedmodel.FederationDatabase
+	fedClient    *client.FedClientWrap
+	fedRpcCli    *rpc.FederationRpcClient
+	feddomains   *common.FedDomains
+	clientMap    sync.Map
+	backfillRepo *repos.BackfillRepo
 }
 
 func (p *BackfillProcessor) Process(job *BackFillJob) {
-	span, ctx := common.StartSobSomSpan(context.Background(), "BackfillProcessor.Process")
-	defer span.Finish()
 	defer func() {
 		if e := recover(); e != nil {
 			log.Errorf("Process Backfill panic: %#v", e)
 		}
 	}()
 	roomID := job.PDUs[0].RoomID()
-	// _, ok := p.backfillRepo.AssignRoomPartition(ctx, roomID, p.fakePartition)
-	// if !ok {
-	// 	return
-	// }
-	// p.assignedRoom.Store(roomID, 1)
 	log.Infof("Backfill start roomID: %s", roomID)
 	idMap := map[string]*BackfillJobFinishItem{}
 	states := map[string]*gomatrixserverlib.Event{}
@@ -126,18 +106,16 @@ func (p *BackfillProcessor) Process(job *BackFillJob) {
 
 				sitem := new(senderItem)
 				sitem.domain = domain
-				sitem.fedClient, _ = client.GetFedClient(domain)
+				sitem.fedClient, _ = client.GetFedClient(p.cfg.GetServerName()[0])
 				val, _ = p.clientMap.LoadOrStore(domain, sitem)
 			}
 			item := val.(*senderItem)
 			log.Infof("Backfill try to back from domain %s roomid: %s eventID: %s", domain, roomID, eventID)
 			failedTimes := 0
-			span, ctx := common.StartSobSomSpan(context.Background(), domain)
-			defer span.Finish()
 			for {
 				id := []string{eventID}
 				host, _ := p.feddomains.GetDomainHost(domain)
-				resp, err := item.fedClient.Backfill(ctx, gomatrixserverlib.ServerName(host), domain, roomID, kBatchSize, id, "b")
+				resp, err := item.fedClient.Backfill(context.TODO(), gomatrixserverlib.ServerName(host), domain, roomID, kBatchSize, id, "b")
 				if err != nil || resp.Error != "" {
 					errStr := ""
 					if err != nil {
@@ -184,11 +162,9 @@ func (p *BackfillProcessor) Process(job *BackFillJob) {
 					}
 				}
 				go p.downloadMedia(resp.PDUs)
-				p.inputRoomEvents(ctx, roomID, resp.PDUs, roomserverapi.KindBackfill)
+				p.inputRoomEvents(roomID, resp.PDUs, roomserverapi.KindBackfill)
 
 				failedTimes = 0
-
-				//p.backfillRepo.UpdateRecord(ctx, roomID, 0, false, finishedDomains, states)
 			}
 		}(domain, item.EventID)
 	}
@@ -199,16 +175,18 @@ func (p *BackfillProcessor) Process(job *BackFillJob) {
 		stateEvents = append(stateEvents, v)
 	}
 	statesJSON, _ := json.Marshal(stateEvents)
-	p.backfillRepo.UpdateRecord(ctx, roomID, 0, true, string(finishedDomains), string(statesJSON))
-	// p.backfillRepo.UnassignRoomPartition(ctx, roomID)
+	p.db.UpdateBackfillRecordDomainsInfo(context.TODO(), roomID, 0, true, string(finishedDomains), string(statesJSON))
+	p.backfillRepo.SetFinishedDomains(roomID, string(finishedDomains))
+	p.backfillRepo.SetState(roomID, string(statesJSON))
+	p.backfillRepo.SetBackfillFinished(roomID)
 	log.Infof("Backfill count: %d, roomID: %s", 0, roomID)
 }
 
-func (c *BackfillProcessor) inputRoomEvents(ctx context.Context, roomID string, pdus []gomatrixserverlib.Event, kind int) (int, error) {
+func (c *BackfillProcessor) inputRoomEvents(roomID string, pdus []gomatrixserverlib.Event, kind int) (int, error) {
 	if len(pdus) == 0 {
 		return 0, nil
 	}
-	return c.fedRpcCli.InputRoomEvents(ctx, &roomserverapi.RawEvent{
+	return c.fedRpcCli.InputRoomEvents(context.TODO(), &roomserverapi.RawEvent{
 		RoomID: roomID,
 		Kind:   kind,
 		Trust:  true,

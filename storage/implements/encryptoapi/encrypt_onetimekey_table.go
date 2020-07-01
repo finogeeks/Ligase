@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const oneTimeKeySchema = `
@@ -45,11 +45,11 @@ CREATE INDEX IF NOT EXISTS encrypt_onetime_key_device_id ON encrypt_onetime_key(
 `
 const insertOneTimeKeySQL = `
 INSERT INTO encrypt_onetime_key (device_id, user_id, key_id, key_info, algorithm, signature, identifier)
-VALUES ($1, $2, $3, $4, $5, $6, $7) on conflict ON CONSTRAINT encrypt_onetime_key_unique
+VALUES ($1, $2, $3, $4, $5, $6, $7) on conflict ON CONSTRAINT encrypt_onetime_key_unique 
 DO UPDATE SET key_info = EXCLUDED.key_info, signature = EXCLUDED.signature, identifier = EXCLUDED.identifier
 `
 const deleteOneTimeKeySQL = `
-DELETE FROM encrypt_onetime_key
+DELETE FROM encrypt_onetime_key 
 WHERE user_id = $1 AND device_id = $2 AND algorithm = $3 AND key_id = $4
 `
 
@@ -98,18 +98,18 @@ func (s *oneTimeKeyStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *oneTimeKeyStatements) recoverOneTimeKey(ctx context.Context) error {
+func (s *oneTimeKeyStatements) recoverOneTimeKey() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverOneTimeKeyStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverOneTimeKeyStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -118,7 +118,7 @@ func (s *oneTimeKeyStatements) recoverOneTimeKey(ctx context.Context) error {
 	return nil
 }
 
-func (s *oneTimeKeyStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *oneTimeKeyStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -136,7 +136,7 @@ func (s *oneTimeKeyStatements) processRecover(ctx context.Context, rows *sql.Row
 		update.IsRecovery = true
 		update.E2EDBEvents.KeyInsert = &keyInsert
 		update.SetUid(int64(common.CalcStringHashCode64(keyInsert.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_onetime_key")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update onetimeKey cache error: %v", err2)
 			if err == nil {
@@ -167,7 +167,7 @@ func (s *oneTimeKeyStatements) insertOneTimeKey(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_onetime_key")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.insertOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID, keyID, keyInfo, algorithm, signature, identifier)
@@ -199,7 +199,7 @@ func (s *oneTimeKeyStatements) deleteOneTimeKey(
 			Algorithm: algorithm,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_onetime_key")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID, algorithm, keyID)
@@ -230,7 +230,7 @@ func (s *oneTimeKeyStatements) deleteMacOneTimeKey(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_onetime_key")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteMacOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, userID, identifier, deviceID)
@@ -259,8 +259,7 @@ func (s *oneTimeKeyStatements) deleteDeviceOneTimeKey(
 			DeviceID: deviceID,
 			UserID:   userID,
 		}
-		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "encrypt_onetime_key")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteDeviceOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID)

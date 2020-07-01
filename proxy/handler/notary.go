@@ -30,25 +30,25 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/noticetypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/noticetypes"
 )
 
-func NoticeHandler(ctx context.Context, action, targetDomain string, keyDB model.KeyDatabase) (err error) {
+func NoticeHandler(action, targetDomain string, keyDB model.KeyDatabase) (err error) {
 	var reqUrl string
 	if action == "add" {
 		reqUrl = fmt.Sprintf(config.GetConfig().NotaryService.CertUrl, config.GetConfig().Matrix.ServerName[0])
 		// reqUrl := fmt.Sprintf(config.GetConfig().NotaryService.CertUrl, "dev.finogeeks.club")
-		_, err = DownloadFromNotary(ctx, "cert", reqUrl, keyDB)
+		_, err = DownloadFromNotary("cert", reqUrl, keyDB)
 	} else if action == "update" {
 		if common.CheckValidDomain(targetDomain, config.GetConfig().Matrix.ServerName) {
 			reqUrl = fmt.Sprintf(config.GetConfig().NotaryService.CertUrl, config.GetConfig().Matrix.ServerName[0])
 			// reqUrl = fmt.Sprintf(config.GetConfig().NotaryService.CertUrl, "dev.finogeeks.club")
-			_, err = DownloadFromNotary(ctx, "cert", reqUrl, keyDB)
+			_, err = DownloadFromNotary("cert", reqUrl, keyDB)
 
 			reqUrl = fmt.Sprintf(config.GetConfig().NotaryService.CRLUrl, config.GetConfig().Matrix.ServerName[0])
 			// reqUrl = fmt.Sprintf(config.GetConfig().NotaryService.CRLUrl, "dev.finogeeks.club")
-			_, err = DownloadFromNotary(ctx, "crl", reqUrl, keyDB)
+			_, err = DownloadFromNotary("crl", reqUrl, keyDB)
 		}
 
 		// cert revoke handler
@@ -59,8 +59,7 @@ func NoticeHandler(ctx context.Context, action, targetDomain string, keyDB model
 	return err
 }
 
-func DownloadFromNotary(ctx context.Context, typ string, reqUrl string,
-	keyDB model.KeyDatabase) (resp noticetypes.GetCertsResponse, err error) {
+func DownloadFromNotary(typ string, reqUrl string, keyDB model.KeyDatabase) (resp noticetypes.GetCertsResponse, err error) {
 	res, err := httpReq("GET", reqUrl, nil)
 	if err != nil {
 		log.Errorf("notary download, err: %v", err)
@@ -78,19 +77,19 @@ func DownloadFromNotary(ctx context.Context, typ string, reqUrl string,
 	if typ == "rootCA" {
 		log.Infof("--------------notary download, get rootCA: \n%s", resp.RootCA)
 
-		keyDB.InsertRootCA(ctx, resp.RootCA)
+		keyDB.InsertRootCA(context.TODO(), resp.RootCA)
 		return resp, nil
 	} else if typ == "cert" {
 		log.Infof("--------------notary download, get server_cert: \n%s", resp.ServerCert)
 		log.Infof("--------------notary download, get server_key: \n%s", resp.ServerKey)
 
 		// upsert cert
-		keyDB.UpsertCert(ctx, resp.ServerCert, resp.ServerKey)
+		keyDB.UpsertCert(context.TODO(), resp.ServerCert, resp.ServerKey)
 		return resp, nil
 	} else if typ == "crl" {
 		log.Infof("--------------notary download, get CRL: \n%s", resp.CRL)
 
-		keyDB.UpsertCRL(ctx, resp.CRL)
+		keyDB.UpsertCRL(context.TODO(), resp.CRL)
 		return resp, nil
 	}
 

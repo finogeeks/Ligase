@@ -17,9 +17,9 @@ package sync
 import (
 	"context"
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/syncapitypes"
 	"sort"
 )
 
