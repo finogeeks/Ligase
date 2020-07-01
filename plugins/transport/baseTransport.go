@@ -62,7 +62,7 @@ func (t *baseTransport) StartChannel(id string) {
 		return
 	}
 
-	log.Errorf("Failed to StartChannel id:%s", id)
+	log.Errorf("Failed to StartChannel id:%d", id)
 }
 
 func (t *baseTransport) StopChannel(id string) {
@@ -73,7 +73,7 @@ func (t *baseTransport) StopChannel(id string) {
 		return
 	}
 
-	log.Errorf("Failed to StopChannel id:%s", id)
+	log.Errorf("Failed to StopChannel id:%d", id)
 }
 
 func (t *baseTransport) GetChannel(id string) (core.IChannel, bool) {

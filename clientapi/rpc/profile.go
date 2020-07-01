@@ -24,28 +24,26 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/nats-io/go-nats"
 )
 
 type ProfileRpcConsumer struct {
-	rpcClient *common.RpcClient
-	rsRpcCli  roomserverapi.RoomserverRPCAPI
-	chanSize  uint32
-	//msgChan      []chan *types.ProfileContent
-	msgChan      []chan common.ContextMsg
+	rpcClient    *common.RpcClient
+	rsRpcCli     roomserverapi.RoomserverRPCAPI
+	chanSize     uint32
+	msgChan      []chan *types.ProfileContent
 	cfg          *config.Dendrite
 	idg          *uid.UidGenerator
 	accountDB    model.AccountsDatabase
 	presenceDB   model.PresenceDatabase
 	cache        service.Cache
 	complexCache *common.ComplexCache
-	serverConfDB model.ConfigDatabase
 }
 
 func NewProfileRpcConsumer(
@@ -73,7 +71,7 @@ func NewProfileRpcConsumer(
 	return s
 }
 
-func (s *ProfileRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *ProfileRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -84,7 +82,7 @@ func (s *ProfileRpcConsumer) GetTopic() string {
 func (s *ProfileRpcConsumer) Clean() {
 }
 
-func (s *ProfileRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *ProfileRpcConsumer) cb(msg *nats.Msg) {
 	var result types.ProfileContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc profile cb error %v", err)
@@ -92,32 +90,33 @@ func (s *ProfileRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	}
 
 	idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-	ctxMsg := common.ContextMsg{Ctx: ctx, Msg: &result}
-	s.msgChan[idx] <- ctxMsg
+	s.msgChan[idx] <- &result
 }
 
-func (s *ProfileRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *ProfileRpcConsumer) startWorker(msgChan chan *types.ProfileContent) {
 	for data := range msgChan {
-		s.processProfile(data.Ctx, data.Msg.(*types.ProfileContent))
+		s.processProfile(data)
 	}
 }
 
 func (s *ProfileRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.ProfileContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.ProfileContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
-	s.rpcClient.ReplyGrpWithContext(s.GetTopic(), types.PROFILE_RPC_GROUP, s.cb)
+
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
+
 	return nil
 }
 
-func (s *ProfileRpcConsumer) processProfile(ctx context.Context, profile *types.ProfileContent) {
+func (s *ProfileRpcConsumer) processProfile(profile *types.ProfileContent) {
 	upDisplayName := true
 	upAvatarUrl := true
 	upPresence := true
 	upUserInfo := true
-	oldDisplayName, oldAvatarURL, _ := s.complexCache.GetProfileByUserID(ctx, profile.UserID)
+	oldDisplayName, oldAvatarURL, _ := s.complexCache.GetProfileByUserID(profile.UserID)
 	if oldDisplayName == profile.DisplayName {
 		upDisplayName = false
 	}
@@ -144,19 +143,19 @@ func (s *ProfileRpcConsumer) processProfile(ctx context.Context, profile *types.
 	if upDisplayName || upAvatarUrl || upPresence || upUserInfo {
 		if upDisplayName {
 			s.cache.SetDisplayName(profile.UserID, profile.DisplayName)
-			s.accountDB.UpsertDisplayName(ctx, profile.UserID, profile.DisplayName)
+			s.accountDB.UpsertDisplayName(context.TODO(), profile.UserID, profile.DisplayName)
 		}
 		if upAvatarUrl {
 			s.cache.SetAvatar(profile.UserID, profile.AvatarUrl)
-			s.accountDB.UpsertAvatar(ctx, profile.UserID, profile.AvatarUrl)
+			s.accountDB.UpsertAvatar(context.TODO(), profile.UserID, profile.AvatarUrl)
 		}
 		if upUserInfo {
 			s.cache.SetUserInfo(profile.UserID, profile.UserName, profile.JobNumber, profile.Mobile, profile.Landline, profile.Email)
-			s.accountDB.UpsertUserInfo(ctx, profile.UserID, profile.UserName, profile.JobNumber, profile.Mobile, profile.Landline, profile.Email)
+			s.accountDB.UpsertUserInfo(context.TODO(), profile.UserID, profile.UserName, profile.JobNumber, profile.Mobile, profile.Landline, profile.Email)
 		}
 		if upPresence {
 			s.cache.SetPresences(profile.UserID, profile.Presence, profile.StatusMsg, profile.ExtStatusMsg)
-			s.presenceDB.UpsertPresences(ctx, profile.UserID, profile.Presence, profile.StatusMsg, profile.ExtStatusMsg)
+			s.presenceDB.UpsertPresences(context.TODO(), profile.UserID, profile.Presence, profile.StatusMsg, profile.ExtStatusMsg)
 		}
 
 		content := types.PresenceJSON{
@@ -190,24 +189,19 @@ func (s *ProfileRpcConsumer) processProfile(ctx context.Context, profile *types.
 		data.IsUpdateStauts = content.Presence != ""
 		data.UserID = profile.UserID
 		data.Presence = content
-		span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.OutputProfileData.Name)
-		defer span.Finish()
-		common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.OutputProfileData.Name,
-			s.cfg.Kafka.Producer.OutputProfileData.Underlying)
 		common.GetTransportMultiplexer().SendWithRetry(
 			s.cfg.Kafka.Producer.OutputProfileData.Underlying,
 			s.cfg.Kafka.Producer.OutputProfileData.Name,
 			&core.TransportPubMsg{
-				Keys:    []byte(profile.UserID),
-				Obj:     data,
-				Headers: common.InjectSpanToHeaderForSending(span),
+				Keys: []byte(profile.UserID),
+				Obj:  data,
 			})
 
 		if s.cfg.SendMemberEvent {
 			var request roomserverapi.QueryJoinRoomsRequest
 			request.UserID = profile.UserID
 			var response roomserverapi.QueryJoinRoomsResponse
-			err := s.rsRpcCli.QueryJoinRooms(ctx, &request, &response)
+			err := s.rsRpcCli.QueryJoinRooms(context.TODO(), &request, &response)
 			if err != nil {
 				if err != sql.ErrNoRows {
 					log.Errorf("ProfileRpcConsumer processProfile err %v", err)
@@ -217,7 +211,7 @@ func (s *ProfileRpcConsumer) processProfile(ctx context.Context, profile *types.
 					DisplayName: profile.DisplayName,
 					AvatarURL:   profile.AvatarUrl,
 				}
-				go routing.BuildMembershipAndFireEvents(ctx, response.Rooms, newProfile, profile.UserID, s.cfg, s.rsRpcCli, s.idg)
+				go routing.BuildMembershipAndFireEvents(response.Rooms, newProfile, profile.UserID, s.cfg, s.rsRpcCli, s.idg)
 			}
 		}
 	}

@@ -21,10 +21,10 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/storage/model"
 	fsm "github.com/smallnest/gofsm"
 )

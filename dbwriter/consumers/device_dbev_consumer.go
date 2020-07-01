@@ -21,6 +21,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/storage/model"
 	"io"
 	"os"
 	"strings"
@@ -28,13 +32,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/storage/model"
-
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -42,9 +41,8 @@ func init() {
 }
 
 type DeviceDBEVConsumer struct {
-	db model.DeviceDatabase
-	//msgChan     []chan *dbtypes.DBEvent
-	msgChan     []chan common.ContextMsg
+	db          model.DeviceDatabase
+	msgChan     []chan *dbtypes.DBEvent
 	monState    []*DBMonItem
 	path        string
 	fileName    string
@@ -55,24 +53,22 @@ type DeviceDBEVConsumer struct {
 	cfg         *config.Dendrite
 }
 
-func (s *DeviceDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *DeviceDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
 		data := output.DeviceDBEvents
 		switch key {
 		case dbtypes.DeviceInsertKey:
-			res = s.onDeviceInsert(ctx, data.DeviceInsert)
+			res = s.onDeviceInsert(context.TODO(), data.DeviceInsert)
 		case dbtypes.DeviceDeleteKey:
-			res = s.onDeviceDelete(ctx, data.DeviceDelete)
+			res = s.onDeviceDelete(context.TODO(), data.DeviceDelete)
 		case dbtypes.MigDeviceInsertKey:
-			res = s.onMigDeviceInsert(ctx, data.MigDeviceInsert)
+			res = s.onMigDeviceInsert(context.TODO(), data.MigDeviceInsert)
 		case dbtypes.DeviceUpdateTsKey:
-			res = s.onUpdateDeviceActiveTs(ctx, data.DeviceUpdateTs)
+			res = s.onUpdateDeviceActiveTs(context.TODO(), data.DeviceUpdateTs)
 		default:
 			res = nil
 			log.Infow("device db event: ignoring unknown output type", log.KeysAndValues{"key", key})
@@ -122,9 +118,9 @@ func NewDeviceDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, 1)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 1)
 	for i := uint64(0); i < 1; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 
 	s.mutex = new(sync.Mutex)
@@ -159,16 +155,12 @@ func (s *DeviceDBEVConsumer) startRecover() {
 		select {
 		case <-s.ticker.C:
 			s.ticker.Reset(time.Second * 600) //10分钟一次
-			func() {
-				span, ctx := common.StartSobSomSpan(context.Background(), "DeviceDBEVConsumer.startRecover")
-				defer span.Finish()
-				s.recover(ctx)
-			}()
+			s.recover()
 		}
 	}
 }
 
-func (s *DeviceDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
+func (s *DeviceDBEVConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
 	chanID := 0
 	switch dbEv.Key {
 	case dbtypes.DeviceInsertKey, dbtypes.DeviceDeleteKey, dbtypes.MigDeviceInsertKey, dbtypes.DeviceUpdateTsKey:
@@ -178,7 +170,7 @@ func (s *DeviceDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEven
 		return nil
 	}
 
-	s.msgChan[chanID] <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+	s.msgChan[chanID] <- dbEv
 	return nil
 }
 
@@ -267,7 +259,7 @@ func (s *DeviceDBEVConsumer) renameRecoverFile() bool {
 	return false
 }
 
-func (s *DeviceDBEVConsumer) recover(ctx context.Context) {
+func (s *DeviceDBEVConsumer) recover() {
 	log.Infof("DeviceDBEVConsumer start recover")
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
@@ -295,7 +287,7 @@ func (s *DeviceDBEVConsumer) recover(ctx context.Context) {
 				continue
 			}
 
-			s.OnMessage(ctx, &dbEv)
+			s.OnMessage(&dbEv)
 		}
 
 		f.Close()

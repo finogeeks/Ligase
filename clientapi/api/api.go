@@ -33,7 +33,6 @@ import (
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
@@ -49,22 +48,24 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 type InternalMsgConsumer struct {
 	apiconsumer.APIConsumer
 
-	idg                 *uid.UidGenerator
-	apiMux              *mux.Router
-	rsRpcCli            roomserverapi.RoomserverRPCAPI
-	accountDB           model.AccountsDatabase
-	deviceDB            model.DeviceDatabase
-	federation          *fed.Federation
-	keyRing             gomatrixserverlib.KeyRing
-	cacheIn             service.Cache
-	encryptDB           model.EncryptorAPIDatabase
-	syncDB              model.SyncAPIDatabase
-	presenceDB          model.PresenceDatabase
-	roomDB              model.RoomServerDatabase
-	tokenFilter         *filter.Filter
-	localcache          *cache.LocalCacheRepo
-	complexCache        *common.ComplexCache
-	serverConfDB        model.ConfigDatabase
+	idg          *uid.UidGenerator
+	apiMux       *mux.Router
+	rsRpcCli     roomserverapi.RoomserverRPCAPI
+	accountDB    model.AccountsDatabase
+	deviceDB     model.DeviceDatabase
+	federation   *fed.Federation
+	keyRing      gomatrixserverlib.KeyRing
+	cacheIn      service.Cache
+	encryptDB    model.EncryptorAPIDatabase
+	syncDB       model.SyncAPIDatabase
+	presenceDB   model.PresenceDatabase
+	roomDB       model.RoomServerDatabase
+	tokenFilter  *filter.Filter
+	localcache   *cache.LocalCacheRepo
+	settings     *common.Settings
+	fedDomians   *common.FedDomains
+	complexCache *common.ComplexCache
+
 	monitor             mon.Monitor
 	missingEventCounter mon.LabeledCounter
 }
@@ -83,8 +84,9 @@ func NewInternalMsgConsumer(
 	roomDB model.RoomServerDatabase,
 	rpcCli *common.RpcClient,
 	tokenFilter *filter.Filter,
+	settings *common.Settings,
+	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
-	serverConfDB model.ConfigDatabase,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
@@ -104,15 +106,16 @@ func NewInternalMsgConsumer(
 	c.tokenFilter = tokenFilter
 	c.localcache = new(cache.LocalCacheRepo)
 	c.localcache.Start(1, cfg.Cache.DurationDefault)
+	c.settings = settings
+	c.fedDomians = fedDomians
 	c.complexCache = complexCache
-	c.serverConfDB = serverConfDB
 	c.monitor = mon.GetInstance()
 	c.missingEventCounter = c.monitor.NewLabeledCounter("dendrite_missing_event", []string{"roomID"})
 	return c
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.InitGroup("clientapi", c, c.Cfg.Rpc.ProxyClientApiTopic, types.CLIENT_API_GROUP)
+	c.APIConsumer.Init("clientapi", c, c.Cfg.Rpc.ProxyClientApiTopic)
 	c.APIConsumer.Start()
 }
 
@@ -180,11 +183,13 @@ func init() {
 	apiconsumer.SetAPIProcessor(ReqGetSetting{})
 	apiconsumer.SetAPIProcessor(ReqPutSetting{})
 	apiconsumer.SetAPIProcessor(ReqGetRoomInfo{})
+	apiconsumer.SetAPIProcessor(ReqInternalGetRoomInfo{})
 	apiconsumer.SetAPIProcessor(ReqPostReport{})
 	apiconsumer.SetAPIProcessor(ReqGetUserInfo{})
 	apiconsumer.SetAPIProcessor(ReqPutUserInfo{})
 	apiconsumer.SetAPIProcessor(ReqPostUserInfo{})
 	apiconsumer.SetAPIProcessor(ReqDeleteUserInfo{})
+	apiconsumer.SetAPIProcessor(ReqDismissRoom{})
 }
 
 type ReqPostCreateRoom struct{}
@@ -208,12 +213,12 @@ func (ReqPostCreateRoom) FillRequest(coder core.Coder, req *http.Request, vars m
 	}
 	return nil
 }
-func (ReqPostCreateRoom) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostCreateRoom) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostCreateRoomRequest)
 	userID := device.UserID
 	return routing.CreateRoom(
-		ctx, req, userID, c.Cfg, c.accountDB,
+		context.Background(), req, userID, c.Cfg, c.accountDB,
 		c.rsRpcCli, c.cacheIn, c.idg, c.complexCache,
 	)
 }
@@ -247,12 +252,12 @@ func (ReqPostJoinRoomByIDOrAlias) FillRequest(coder core.Coder, req *http.Reques
 	return nil
 }
 func (ReqPostJoinRoomByIDOrAlias) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPostJoinRoomByIDOrAlias) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostJoinRoomByIDOrAlias) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostRoomsJoinByAliasRequest)
 	userID := device.UserID
 	return routing.JoinRoomByIDOrAlias(
-		ctx, req, userID, req.RoomID, c.Cfg, c.federation,
+		context.Background(), req, userID, req.RoomID, c.Cfg, c.federation,
 		c.rsRpcCli, c.keyRing, c.cacheIn, c.idg, c.complexCache,
 	)
 }
@@ -290,13 +295,13 @@ func (ReqPostRoomMembership) NewResponse(code int) core.Coder {
 	return new(external.PostRoomsMembershipResponse)
 }
 func (ReqPostRoomMembership) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPostRoomMembership) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostRoomMembership) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostRoomsMembershipRequest)
 	userID := device.UserID
 	deviceID := device.ID
 	return routing.SendMembership(
-		ctx, req, c.accountDB, userID, deviceID, req.RoomID,
+		context.Background(), req, c.accountDB, userID, deviceID, req.RoomID,
 		req.Membership, c.Cfg, c.rsRpcCli, c.federation, c.cacheIn, c.idg, c.complexCache,
 	)
 }
@@ -340,14 +345,14 @@ func (ReqPutRoomSendWithTypeAndTxnID) NewResponse(code int) core.Coder {
 	return new(external.PutRoomStateByTypeWithTxnIDResponse)
 }
 func (ReqPutRoomSendWithTypeAndTxnID) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPutRoomSendWithTypeAndTxnID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomSendWithTypeAndTxnID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRoomStateByTypeWithTxnID)
 	userID := device.UserID
 	deviceID := device.ID
 	return routing.PostEvent(
-		ctx, req, userID, deviceID, req.IP, req.RoomID,
-		req.EventType, &req.TxnID, nil, c.Cfg, c.rsRpcCli, c.cacheIn, c.idg,
+		context.Background(), req, userID, deviceID, req.IP, req.RoomID,
+		req.EventType, &req.TxnID, nil, c.Cfg, c.rsRpcCli, c.localcache, c.idg,
 	)
 }
 
@@ -386,7 +391,7 @@ func (ReqPutRoomStateWidthType) NewResponse(code int) core.Coder {
 	return new(external.PutRoomStateByTypeWithTxnIDResponse)
 }
 func (ReqPutRoomStateWidthType) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPutRoomStateWidthType) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomStateWidthType) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRoomStateByTypeWithTxnID)
 	userID := device.UserID
@@ -398,8 +403,8 @@ func (ReqPutRoomStateWidthType) Process(ctx context.Context, consumer interface{
 		eventType = eventType[:len(eventType)-1]
 	}
 	return routing.PostEvent(
-		ctx, req, userID, deviceID, req.IP, req.RoomID,
-		eventType, nil, &emptyString, c.Cfg, c.rsRpcCli, c.cacheIn, c.idg,
+		context.Background(), req, userID, deviceID, req.IP, req.RoomID,
+		eventType, nil, &emptyString, c.Cfg, c.rsRpcCli, c.localcache, c.idg,
 	)
 }
 
@@ -442,15 +447,15 @@ func (ReqPutRoomStateWidthTypeAndKey) NewResponse(code int) core.Coder {
 	return new(external.PutRoomStateByTypeWithTxnIDResponse)
 }
 func (ReqPutRoomStateWidthTypeAndKey) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPutRoomStateWidthTypeAndKey) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomStateWidthTypeAndKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRoomStateByTypeWithTxnID)
 	userID := device.UserID
 	deviceID := device.ID
 	stateKey := req.StateKey
 	return routing.PostEvent(
-		ctx, req, userID, deviceID, req.IP, req.RoomID,
-		req.EventType, nil, &stateKey, c.Cfg, c.rsRpcCli, c.cacheIn, c.idg,
+		context.Background(), req, userID, deviceID, req.IP, req.RoomID,
+		req.EventType, nil, &stateKey, c.Cfg, c.rsRpcCli, c.localcache, c.idg,
 	)
 }
 
@@ -487,14 +492,14 @@ func (ReqPutRoomRedact) NewResponse(code int) core.Coder {
 	return new(external.PutRedactEventResponse)
 }
 func (ReqPutRoomRedact) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPutRoomRedact) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomRedact) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRedactEventRequest)
 	userID := device.UserID
 	deviceID := device.ID
 	return routing.RedactEvent(
-		ctx, req.Content, userID, deviceID, req.RoomID,
-		nil, nil, c.Cfg, c.cacheIn, c.rsRpcCli, req.EventID, "m.room.redaction", c.idg,
+		context.Background(), req.Content, userID, deviceID, req.RoomID,
+		nil, nil, c.Cfg, c.localcache, c.rsRpcCli, req.EventID, "m.room.redaction", c.idg,
 	)
 }
 
@@ -536,15 +541,15 @@ func (ReqPutRoomRedactWithTxnID) NewResponse(code int) core.Coder {
 	return new(external.PutRedactEventResponse)
 }
 func (ReqPutRoomRedactWithTxnID) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPutRoomRedactWithTxnID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomRedactWithTxnID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRedactWithTxnIDEventRequest)
 	userID := device.UserID
 	deviceID := device.ID
 	txnID := req.TxnID
 	return routing.RedactEvent(
-		ctx, req.Content, userID, deviceID, req.RoomID,
-		&txnID, nil, c.Cfg, c.cacheIn, c.rsRpcCli, req.EventID, "m.room.redaction", c.idg,
+		context.Background(), req.Content, userID, deviceID, req.RoomID,
+		&txnID, nil, c.Cfg, c.localcache, c.rsRpcCli, req.EventID, "m.room.redaction", c.idg,
 	)
 }
 
@@ -581,14 +586,14 @@ func (ReqPutRoomUpdate) NewResponse(code int) core.Coder {
 	return new(external.PutRedactEventResponse)
 }
 func (ReqPutRoomUpdate) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPutRoomUpdate) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomUpdate) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRedactEventRequest)
 	userID := device.UserID
 	deviceID := device.ID
 	return routing.RedactEvent(
-		ctx, req.Content, userID, deviceID, req.RoomID,
-		nil, nil, c.Cfg, c.cacheIn, c.rsRpcCli, req.EventID, "m.room.update", c.idg,
+		context.Background(), req.Content, userID, deviceID, req.RoomID,
+		nil, nil, c.Cfg, c.localcache, c.rsRpcCli, req.EventID, "m.room.update", c.idg,
 	)
 }
 
@@ -630,15 +635,15 @@ func (ReqPutRoomUpdateWithTxnID) NewResponse(code int) core.Coder {
 	return new(external.PutRedactEventResponse)
 }
 func (ReqPutRoomUpdateWithTxnID) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
-func (ReqPutRoomUpdateWithTxnID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomUpdateWithTxnID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRedactWithTxnIDEventRequest)
 	userID := device.UserID
 	deviceID := device.ID
 	txnID := req.TxnID
 	return routing.RedactEvent(
-		ctx, req.Content, userID, deviceID, req.RoomID,
-		&txnID, nil, c.Cfg, c.cacheIn, c.rsRpcCli, req.EventID, "m.room.update", c.idg,
+		context.Background(), req.Content, userID, deviceID, req.RoomID,
+		&txnID, nil, c.Cfg, c.localcache, c.rsRpcCli, req.EventID, "m.room.update", c.idg,
 	)
 }
 
@@ -674,11 +679,11 @@ func (ReqPostRegister) NewResponse(code int) core.Coder {
 	}
 }
 func (ReqPostRegister) GetPrefix() []string { return []string{"r0"} }
-func (ReqPostRegister) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostRegister) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostRegisterRequest)
 	return routing.Register(
-		ctx, req, c.accountDB, c.deviceDB, &c.Cfg, c.idg,
+		context.Background(), req, c.accountDB, c.deviceDB, &c.Cfg, c.idg,
 	)
 }
 
@@ -709,11 +714,11 @@ func (ReqPostRegisterLegacy) NewResponse(code int) core.Coder {
 	return new(external.RegisterResponse)
 }
 func (ReqPostRegisterLegacy) GetPrefix() []string { return []string{"v1"} }
-func (ReqPostRegisterLegacy) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostRegisterLegacy) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.LegacyRegisterRequest)
 	return routing.LegacyRegister(
-		ctx, req, c.accountDB, c.deviceDB, &c.Cfg, c.idg,
+		context.Background(), req, c.accountDB, c.deviceDB, &c.Cfg, c.idg,
 	)
 }
 
@@ -735,7 +740,7 @@ func (ReqGetRegitsterAvailable) NewResponse(code int) core.Coder {
 	return new(external.GetRegisterAvailResponse)
 }
 func (ReqGetRegitsterAvailable) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetRegitsterAvailable) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRegitsterAvailable) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.RegisterAvailable()
 }
 
@@ -763,11 +768,11 @@ func (ReqGetDirectoryRoomAlias) NewResponse(code int) core.Coder {
 	return new(external.GetDirectoryRoomAliasResponse)
 }
 func (ReqGetDirectoryRoomAlias) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetDirectoryRoomAlias) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetDirectoryRoomAlias) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetDirectoryRoomAliasRequest)
 	return routing.DirectoryRoom(
-		ctx, req.RoomAlias, c.federation, &c.Cfg, c.rsRpcCli,
+		context.Background(), req.RoomAlias, c.federation, &c.Cfg, c.rsRpcCli,
 	)
 }
 
@@ -797,11 +802,11 @@ func (ReqPutDirectoryRoomAlias) FillRequest(coder core.Coder, req *http.Request,
 }
 func (ReqPutDirectoryRoomAlias) NewResponse(code int) core.Coder { return nil }
 func (ReqPutDirectoryRoomAlias) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPutDirectoryRoomAlias) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutDirectoryRoomAlias) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutDirectoryRoomAliasRequest)
 	return routing.SetLocalAlias(
-		ctx, req, device.UserID, req.RoomAlias, &c.Cfg, c.rsRpcCli,
+		context.Background(), req, device.UserID, req.RoomAlias, &c.Cfg, c.rsRpcCli,
 	)
 }
 
@@ -831,11 +836,11 @@ func (ReqDelDirectoryRoomAlias) FillRequest(coder core.Coder, req *http.Request,
 }
 func (ReqDelDirectoryRoomAlias) NewResponse(code int) core.Coder { return nil }
 func (ReqDelDirectoryRoomAlias) GetPrefix() []string             { return []string{"r0"} }
-func (ReqDelDirectoryRoomAlias) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqDelDirectoryRoomAlias) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.DelDirectoryRoomAliasRequest)
 	return routing.RemoveLocalAlias(
-		ctx, device.UserID, req.RoomAlias, c.rsRpcCli,
+		context.Background(), device.UserID, req.RoomAlias, c.rsRpcCli,
 	)
 }
 
@@ -853,10 +858,10 @@ func (ReqPostLogout) FillRequest(coder core.Coder, req *http.Request, vars map[s
 }
 func (ReqPostLogout) NewResponse(code int) core.Coder { return nil }
 func (ReqPostLogout) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPostLogout) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostLogout) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	return routing.Logout(
-		ctx, c.deviceDB, device.UserID, device.ID, c.cacheIn, c.encryptDB,
+		c.deviceDB, device.UserID, device.ID, c.cacheIn, c.encryptDB,
 		c.syncDB, c.tokenFilter, c.RpcCli,
 	)
 }
@@ -875,10 +880,10 @@ func (ReqPostLogoutAll) FillRequest(coder core.Coder, req *http.Request, vars ma
 }
 func (ReqPostLogoutAll) NewResponse(code int) core.Coder { return nil }
 func (ReqPostLogoutAll) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPostLogoutAll) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostLogoutAll) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	return routing.LogoutAll(
-		ctx, c.deviceDB, device.UserID, device.ID, c.cacheIn, c.encryptDB,
+		c.deviceDB, device.UserID, device.ID, c.cacheIn, c.encryptDB,
 		c.syncDB, c.tokenFilter, c.RpcCli,
 	)
 }
@@ -899,11 +904,11 @@ func (ReqGetLogin) FillRequest(coder core.Coder, req *http.Request, vars map[str
 }
 func (ReqGetLogin) NewResponse(code int) core.Coder { return new(external.GetLoginResponse) }
 func (ReqGetLogin) GetPrefix() []string             { return []string{"r0", "v1"} }
-func (ReqGetLogin) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetLogin) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetLoginRequest)
 	return routing.LoginGet(
-		ctx, req, c.accountDB, c.deviceDB, c.encryptDB,
+		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
 		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter, c.RpcCli,
 	)
 }
@@ -929,11 +934,11 @@ func (ReqPostLogin) FillRequest(coder core.Coder, req *http.Request, vars map[st
 }
 func (ReqPostLogin) NewResponse(code int) core.Coder { return new(external.PostLoginResponse) }
 func (ReqPostLogin) GetPrefix() []string             { return []string{"r0", "v1"} }
-func (ReqPostLogin) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostLogin) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostLoginRequest)
 	return routing.LoginPost(
-		ctx, req, c.accountDB, c.deviceDB, c.encryptDB,
+		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
 		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter, c.RpcCli,
 	)
 }
@@ -954,11 +959,11 @@ func (ReqGetLoginAdmin) FillRequest(coder core.Coder, req *http.Request, vars ma
 }
 func (ReqGetLoginAdmin) NewResponse(code int) core.Coder { return new(external.GetLoginResponse) }
 func (ReqGetLoginAdmin) GetPrefix() []string             { return []string{"r0"} }
-func (ReqGetLoginAdmin) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetLoginAdmin) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetLoginRequest)
 	return routing.LoginGet(
-		ctx, req, c.accountDB, c.deviceDB, c.encryptDB,
+		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
 		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter, c.RpcCli,
 	)
 }
@@ -984,11 +989,11 @@ func (ReqPostLoginAdmin) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqPostLoginAdmin) NewResponse(code int) core.Coder { return new(external.PostLoginResponse) }
 func (ReqPostLoginAdmin) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPostLoginAdmin) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostLoginAdmin) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostLoginRequest)
 	return routing.LoginPost(
-		ctx, req, c.accountDB, c.deviceDB, c.encryptDB,
+		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
 		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter, c.RpcCli,
 	)
 }
@@ -1019,11 +1024,11 @@ func (ReqPostUserFilter) NewResponse(code int) core.Coder {
 	return new(external.PostUserFilterResponse)
 }
 func (ReqPostUserFilter) GetPrefix() []string { return []string{"r0"} }
-func (ReqPostUserFilter) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostUserFilter) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostUserFilterRequest)
 	return routing.PutFilter(
-		ctx, req, device.UserID, c.accountDB, c.cacheIn,
+		context.Background(), req, device.UserID, c.accountDB, c.cacheIn,
 	)
 }
 
@@ -1052,11 +1057,11 @@ func (ReqGetUserFilterWithID) NewResponse(code int) core.Coder {
 	return new(external.GetUserFilterResponse)
 }
 func (ReqGetUserFilterWithID) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetUserFilterWithID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetUserFilterWithID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetUserFilterRequest)
 	return routing.GetFilter(
-		ctx, req, device.UserID, c.cacheIn,
+		context.Background(), req, device.UserID, c.cacheIn,
 	)
 }
 
@@ -1080,11 +1085,11 @@ func (ReqGetProfile) FillRequest(coder core.Coder, req *http.Request, vars map[s
 }
 func (ReqGetProfile) NewResponse(code int) core.Coder { return new(external.GetProfileResponse) }
 func (ReqGetProfile) GetPrefix() []string             { return []string{"r0"} }
-func (ReqGetProfile) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetProfile) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetProfileRequest)
 	return routing.GetProfile(
-		ctx, req, c.Cfg, c.federation, c.accountDB, c.cacheIn, c.complexCache, c.roomDB,
+		context.Background(), req, c.Cfg, c.federation, c.accountDB, c.cacheIn, c.fedDomians, c.complexCache,
 	)
 }
 
@@ -1109,11 +1114,11 @@ func (ReqGetProfiles) FillRequest(coder core.Coder, req *http.Request, vars map[
 }
 func (ReqGetProfiles) NewResponse(code int) core.Coder { return new(external.GetProfilesResponse) }
 func (ReqGetProfiles) GetPrefix() []string             { return []string{"r0"} }
-func (ReqGetProfiles) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetProfiles) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetProfilesRequest)
 	return routing.GetProfiles(
-		ctx, req, c.Cfg, c.federation, c.accountDB, c.cacheIn, c.complexCache, c.roomDB,
+		context.Background(), req, c.Cfg, c.federation, c.accountDB, c.cacheIn, c.fedDomians, c.complexCache,
 	)
 }
 
@@ -1137,11 +1142,11 @@ func (ReqGetAvatarURL) FillRequest(coder core.Coder, req *http.Request, vars map
 }
 func (ReqGetAvatarURL) NewResponse(code int) core.Coder { return new(external.GetAvatarURLResponse) }
 func (ReqGetAvatarURL) GetPrefix() []string             { return []string{"r0"} }
-func (ReqGetAvatarURL) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetAvatarURL) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetAvatarURLRequest)
 	return routing.GetAvatarURL(
-		ctx, req.UserID, c.Cfg, c.accountDB, c.cacheIn, c.federation, c.complexCache, c.roomDB,
+		context.Background(), req.UserID, c.Cfg, c.accountDB, c.cacheIn, c.federation, c.fedDomians, c.complexCache,
 	)
 }
 
@@ -1169,11 +1174,11 @@ func (ReqPutAvatarURL) FillRequest(coder core.Coder, req *http.Request, vars map
 }
 func (ReqPutAvatarURL) NewResponse(code int) core.Coder { return nil }
 func (ReqPutAvatarURL) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPutAvatarURL) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutAvatarURL) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutAvatarURLRequest)
 	return routing.SetAvatarURL(
-		ctx, req, c.accountDB, device.UserID, &c.Cfg,
+		context.Background(), req, c.accountDB, device.UserID, &c.Cfg,
 		c.cacheIn, c.rsRpcCli, c.idg, c.complexCache,
 	)
 }
@@ -1200,11 +1205,11 @@ func (ReqGetDisplayName) NewResponse(code int) core.Coder {
 	return new(external.GetDisplayNameResponse)
 }
 func (ReqGetDisplayName) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetDisplayName) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetDisplayName) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetDisplayNameRequest)
 	return routing.GetDisplayName(
-		ctx, req.UserID, c.Cfg, c.accountDB, c.cacheIn, c.federation, c.complexCache, c.roomDB,
+		context.Background(), req.UserID, c.Cfg, c.accountDB, c.cacheIn, c.federation, c.fedDomians, c.complexCache,
 	)
 }
 
@@ -1232,11 +1237,11 @@ func (ReqPutDisplayName) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqPutDisplayName) NewResponse(code int) core.Coder { return nil }
 func (ReqPutDisplayName) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPutDisplayName) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutDisplayName) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutDisplayNameRequest)
 	return routing.SetDisplayName(
-		ctx, req, c.accountDB, device.UserID, &c.Cfg,
+		context.Background(), req, c.accountDB, device.UserID, &c.Cfg,
 		c.cacheIn, c.rsRpcCli, c.idg, c.complexCache,
 	)
 }
@@ -1259,7 +1264,7 @@ func (ReqGetAssociated3PIDs) NewResponse(code int) core.Coder {
 	return new(external.GetThreePIDsResponse)
 }
 func (ReqGetAssociated3PIDs) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetAssociated3PIDs) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetAssociated3PIDs) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.GetAssociated3PIDs()
 }
 
@@ -1286,7 +1291,7 @@ func (ReqPostAssociated3PIDs) FillRequest(coder core.Coder, req *http.Request, v
 }
 func (ReqPostAssociated3PIDs) NewResponse(code int) core.Coder { return nil }
 func (ReqPostAssociated3PIDs) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPostAssociated3PIDs) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostAssociated3PIDs) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.CheckAndSave3PIDAssociation()
 }
 
@@ -1313,7 +1318,7 @@ func (ReqPostAssociated3PIDsDel) FillRequest(coder core.Coder, req *http.Request
 }
 func (ReqPostAssociated3PIDsDel) NewResponse(code int) core.Coder { return nil }
 func (ReqPostAssociated3PIDsDel) GetPrefix() []string             { return []string{"unstable"} }
-func (ReqPostAssociated3PIDsDel) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostAssociated3PIDsDel) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.Forget3PID()
 }
 
@@ -1347,7 +1352,7 @@ func (ReqPostAccount3PIDEmail) NewResponse(code int) core.Coder {
 	return new(external.PostAccount3PIDEmailResponse)
 }
 func (ReqPostAccount3PIDEmail) GetPrefix() []string { return []string{"r0"} }
-func (ReqPostAccount3PIDEmail) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostAccount3PIDEmail) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.RequestEmailToken()
 }
 
@@ -1369,9 +1374,9 @@ func (ReqGetVoipTurnServer) NewResponse(code int) core.Coder {
 	return new(external.PostVoipTurnServerResponse)
 }
 func (ReqGetVoipTurnServer) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetVoipTurnServer) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetVoipTurnServer) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	return routing.RequestTurnServer(ctx, device.UserID, c.Cfg)
+	return routing.RequestTurnServer(context.Background(), device.UserID, c.Cfg)
 }
 
 type ReqGetThirdpartyProtos struct{}
@@ -1390,7 +1395,7 @@ func (ReqGetThirdpartyProtos) FillRequest(coder core.Coder, req *http.Request, v
 }
 func (ReqGetThirdpartyProtos) NewResponse(code int) core.Coder { return nil }
 func (ReqGetThirdpartyProtos) GetPrefix() []string             { return []string{"r0"} }
-func (ReqGetThirdpartyProtos) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetThirdpartyProtos) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	// TODO: Return the third party protcols
 	return http.StatusOK, nil
 }
@@ -1411,7 +1416,7 @@ func (ReqGetDevicesByUserID) FillRequest(coder core.Coder, req *http.Request, va
 }
 func (ReqGetDevicesByUserID) NewResponse(code int) core.Coder { return new(external.DeviceList) }
 func (ReqGetDevicesByUserID) GetPrefix() []string             { return []string{"r0", "unstable"} }
-func (ReqGetDevicesByUserID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetDevicesByUserID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	return routing.GetDevicesByUserID(c.cacheIn, device.UserID)
 }
@@ -1436,7 +1441,7 @@ func (ReqGetDeviceByID) FillRequest(coder core.Coder, req *http.Request, vars ma
 }
 func (ReqGetDeviceByID) NewResponse(code int) core.Coder { return new(external.Device) }
 func (ReqGetDeviceByID) GetPrefix() []string             { return []string{"r0", "unstable"} }
-func (ReqGetDeviceByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetDeviceByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetDeviceRequest)
 	return routing.GetDeviceByID(c.cacheIn, device.UserID, req.DeviceID)
@@ -1466,10 +1471,10 @@ func (ReqPutDevice) FillRequest(coder core.Coder, req *http.Request, vars map[st
 }
 func (ReqPutDevice) NewResponse(code int) core.Coder { return nil }
 func (ReqPutDevice) GetPrefix() []string             { return []string{"r0", "unstable"} }
-func (ReqPutDevice) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutDevice) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutDeviceRequest)
-	return routing.UpdateDeviceByID(ctx, req, c.deviceDB, device.UserID, device.ID, req.DeviceID, c.cacheIn)
+	return routing.UpdateDeviceByID(context.Background(), req, c.deviceDB, device.UserID, device.ID, req.DeviceID, c.cacheIn)
 }
 
 type ReqDelDevice struct{}
@@ -1503,10 +1508,10 @@ func (ReqDelDevice) NewResponse(code int) core.Coder {
 	}
 }
 func (ReqDelDevice) GetPrefix() []string { return []string{"r0", "unstable"} }
-func (ReqDelDevice) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqDelDevice) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.DelDeviceRequest)
-	return routing.DeleteDeviceByID(ctx, req, req.DeviceID, c.Cfg, c.cacheIn,
+	return routing.DeleteDeviceByID(req, req.DeviceID, c.Cfg, c.cacheIn,
 		c.encryptDB, c.tokenFilter, c.syncDB, c.deviceDB, c.RpcCli,
 	)
 }
@@ -1532,10 +1537,10 @@ func (ReqPostDelDevices) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqPostDelDevices) NewResponse(code int) core.Coder { return nil }
 func (ReqPostDelDevices) GetPrefix() []string             { return []string{"r0", "unstable"} }
-func (ReqPostDelDevices) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostDelDevices) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostDelDevicesRequest)
-	return routing.DeleteDevices(ctx, req, device, c.cacheIn,
+	return routing.DeleteDevices(req, device, c.cacheIn,
 		c.encryptDB, c.tokenFilter, c.syncDB, c.deviceDB, c.RpcCli)
 }
 
@@ -1563,11 +1568,11 @@ func (ReqPutPresenceByID) FillRequest(coder core.Coder, req *http.Request, vars 
 }
 func (ReqPutPresenceByID) NewResponse(code int) core.Coder { return nil }
 func (ReqPutPresenceByID) GetPrefix() []string             { return []string{"r0", "inr0"} }
-func (ReqPutPresenceByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutPresenceByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutPresenceRequest)
-	return routing.UpdatePresenceByID(ctx, req,
-		c.presenceDB, &c.Cfg, c.RpcCli, c.cacheIn, device.UserID, device.ID, c.complexCache,
+	return routing.UpdatePresenceByID(context.Background(), req,
+		c.presenceDB, &c.Cfg, c.cacheIn, device.UserID, device.ID, c.complexCache,
 	)
 }
 
@@ -1593,7 +1598,7 @@ func (ReqGetPresenceByID) NewResponse(code int) core.Coder {
 	return new(external.GetPresenceResponse)
 }
 func (ReqGetPresenceByID) GetPrefix() []string { return []string{"r0", "inr0"} }
-func (ReqGetPresenceByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPresenceByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetPresenceRequest)
 	return routing.GetPresenceByID(c.RpcCli, c.cacheIn, c.federation, &c.Cfg, req.UserID)
@@ -1623,7 +1628,7 @@ func (ReqGetPresenceListByID) NewResponse(code int) core.Coder {
 	return new(external.GetPresenceListResponse)
 }
 func (ReqGetPresenceListByID) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetPresenceListByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPresenceListByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.GetPresenceListByID()
 }
 
@@ -1653,7 +1658,7 @@ func (ReqPostPresenceListByID) FillRequest(coder core.Coder, req *http.Request, 
 }
 func (ReqPostPresenceListByID) NewResponse(code int) core.Coder { return new(external.PresenceJSON) }
 func (ReqPostPresenceListByID) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPostPresenceListByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostPresenceListByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.UpdatePresenceListByID()
 }
 
@@ -1682,10 +1687,10 @@ func (ReqGetRoomsTagsByID) NewResponse(code int) core.Coder {
 	return new(external.GetRoomsTagsByIDResponse)
 }
 func (ReqGetRoomsTagsByID) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetRoomsTagsByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomsTagsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomsTagsByIDRequest)
-	return routing.GetRoomTags(ctx, c.cacheIn, device.UserID, req)
+	return routing.GetRoomTags(context.Background(), c.cacheIn, device.UserID, req)
 }
 
 type ReqPutRoomsTagsByID struct{}
@@ -1717,10 +1722,10 @@ func (ReqPutRoomsTagsByID) FillRequest(coder core.Coder, req *http.Request, vars
 }
 func (ReqPutRoomsTagsByID) NewResponse(code int) core.Coder { return nil }
 func (ReqPutRoomsTagsByID) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPutRoomsTagsByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomsTagsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRoomsTagsByIDRequest)
-	return routing.SetRoomTag(ctx, req, c.accountDB, device.UserID, c.Cfg)
+	return routing.SetRoomTag(context.Background(), req, c.accountDB, device.UserID, c.Cfg)
 }
 
 type ReqDelRoomsTagsByID struct{}
@@ -1751,10 +1756,10 @@ func (ReqDelRoomsTagsByID) FillRequest(coder core.Coder, req *http.Request, vars
 }
 func (ReqDelRoomsTagsByID) NewResponse(code int) core.Coder { return nil }
 func (ReqDelRoomsTagsByID) GetPrefix() []string             { return []string{"r0"} }
-func (ReqDelRoomsTagsByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqDelRoomsTagsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.DelRoomsTagsByIDRequest)
-	return routing.DeleteRoomTag(ctx, req, c.accountDB, device.UserID, c.Cfg)
+	return routing.DeleteRoomTag(context.Background(), req, c.accountDB, device.UserID, c.Cfg)
 }
 
 type ReqPutUserAccountData struct{}
@@ -1785,13 +1790,13 @@ func (ReqPutUserAccountData) FillRequest(coder core.Coder, req *http.Request, va
 }
 func (ReqPutUserAccountData) NewResponse(code int) core.Coder { return nil }
 func (ReqPutUserAccountData) GetPrefix() []string             { return []string{"r0", "inr0"} }
-func (ReqPutUserAccountData) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutUserAccountData) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutUserAccountDataRequest)
 	if req.UserId != device.UserID {
 		return http.StatusForbidden, jsonerror.Forbidden("userID does not match the current user")
 	}
-	return routing.SaveAccountData(ctx, c.accountDB, device.ID, c.Cfg, req.UserId, "", req.Type, req.Content, c.cacheIn)
+	return routing.SaveAccountData(context.Background(), c.accountDB, device.ID, c.Cfg, req.UserId, "", req.Type, req.Content, c.cacheIn)
 }
 
 type ReqPutRoomAccountData struct{}
@@ -1825,11 +1830,11 @@ func (ReqPutRoomAccountData) FillRequest(coder core.Coder, req *http.Request, va
 }
 func (ReqPutRoomAccountData) NewResponse(code int) core.Coder { return nil }
 func (ReqPutRoomAccountData) GetPrefix() []string             { return []string{"r0", "inr0"} }
-func (ReqPutRoomAccountData) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutRoomAccountData) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRoomAccountDataRequest)
 	return routing.SaveAccountData(
-		ctx, c.accountDB, device.ID, c.Cfg, req.UserId,
+		context.Background(), c.accountDB, device.ID, c.Cfg, req.UserId,
 		req.RoomID, req.Type, req.Content, c.cacheIn,
 	)
 }
@@ -1848,7 +1853,7 @@ func (ReqGetWhoAmi) FillRequest(coder core.Coder, req *http.Request, vars map[st
 }
 func (ReqGetWhoAmi) NewResponse(code int) core.Coder { return new(external.GetAccountWhoAmI) }
 func (ReqGetWhoAmi) GetPrefix() []string             { return []string{"r0"} }
-func (ReqGetWhoAmi) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetWhoAmi) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return routing.GetWhoAmi(device.UserID)
 }
 
@@ -1876,10 +1881,10 @@ func (ReqGetDirectoryRoom) NewResponse(code int) core.Coder {
 	return new(external.GetDirectoryRoomResponse)
 }
 func (ReqGetDirectoryRoom) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetDirectoryRoom) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetDirectoryRoom) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetDirectoryRoomRequest)
-	return routing.GetVisibility(ctx, req.RoomID, c.rsRpcCli)
+	return routing.GetVisibility(context.Background(), req.RoomID, c.rsRpcCli)
 }
 
 type ReqPutDirectoryRoom struct{}
@@ -1915,15 +1920,15 @@ func (ReqPutDirectoryRoom) NewResponse(code int) core.Coder {
 	return new(external.PutRoomStateByTypeWithTxnIDResponse)
 }
 func (ReqPutDirectoryRoom) GetPrefix() []string { return []string{"r0"} }
-func (ReqPutDirectoryRoom) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutDirectoryRoom) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRoomStateByTypeWithTxnID)
 	userID := device.UserID
 	deviceID := device.ID
 	stateKey := req.StateKey
 	return routing.PostEvent(
-		ctx, req, userID, deviceID, req.IP, req.RoomID,
-		req.EventType, nil, &stateKey, c.Cfg, c.rsRpcCli, c.cacheIn, c.idg,
+		context.Background(), req, userID, deviceID, req.IP, req.RoomID,
+		req.EventType, nil, &stateKey, c.Cfg, c.rsRpcCli, c.localcache, c.idg,
 	)
 }
 
@@ -1949,10 +1954,10 @@ func (ReqGetJoinedMember) NewResponse(code int) core.Coder {
 	return new(external.GetJoinedMemberResponse)
 }
 func (ReqGetJoinedMember) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetJoinedMember) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetJoinedMember) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetJoinedMemberRequest)
-	return routing.OnRoomJoinedRequest(ctx, device.UserID, req.RoomID, c.rsRpcCli, c.cacheIn, c.complexCache)
+	return routing.OnRoomJoinedRequest(context.Background(), device.UserID, req.RoomID, c.rsRpcCli, c.cacheIn, c.complexCache)
 }
 
 type ReqGetRoomInfo struct{}
@@ -1978,10 +1983,41 @@ func (ReqGetRoomInfo) NewResponse(code int) core.Coder {
 	return new(external.GetRoomInfoResponse)
 }
 func (ReqGetRoomInfo) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetRoomInfo) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomInfoRequest)
-	return routing.OnRoomInfoRequest(ctx, device.UserID, req.RoomIDs, c.rsRpcCli, c.cacheIn)
+	return routing.OnRoomInfoRequest(context.Background(), device.UserID, req.RoomIDs, c.rsRpcCli, c.cacheIn)
+}
+
+type ReqInternalGetRoomInfo struct{}
+
+func (ReqInternalGetRoomInfo) GetRoute() string       { return "/rooms" }
+func (ReqInternalGetRoomInfo) GetMetricsName() string { return "room_info" }
+func (ReqInternalGetRoomInfo) GetMsgType() int32      { return internals.MSG_INTERNAL_POST_ROOM_INFO }
+func (ReqInternalGetRoomInfo) GetAPIType() int8       { return apiconsumer.APITypeInternalAuth }
+func (ReqInternalGetRoomInfo) GetMethod() []string {
+	return []string{http.MethodPost, http.MethodOptions}
+}
+func (ReqInternalGetRoomInfo) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqInternalGetRoomInfo) NewRequest() core.Coder {
+	return new(external.GetRoomInfoRequest)
+}
+func (ReqInternalGetRoomInfo) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.GetRoomInfoRequest)
+	err := common.UnmarshalJSON(req, msg)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (ReqInternalGetRoomInfo) NewResponse(code int) core.Coder {
+	return new(external.GetRoomInfoResponse)
+}
+func (ReqInternalGetRoomInfo) GetPrefix() []string { return []string{"inr0"} }
+func (ReqInternalGetRoomInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+	c := consumer.(*InternalMsgConsumer)
+	req := msg.(*external.GetRoomInfoRequest)
+	return routing.OnRoomInfoRequest(context.Background(), device.UserID, req.RoomIDs, c.rsRpcCli, c.cacheIn)
 }
 
 type ReqGetUserNewToken struct{}
@@ -2002,9 +2038,9 @@ func (ReqGetUserNewToken) NewResponse(code int) core.Coder {
 	return new(external.PostLoginResponse)
 }
 func (ReqGetUserNewToken) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetUserNewToken) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetUserNewToken) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	return routing.GenNewToken(ctx, c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli)
+	return routing.GenNewToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli)
 }
 
 type ReqGetSuperAdminToken struct{}
@@ -2027,9 +2063,9 @@ func (ReqGetSuperAdminToken) NewResponse(code int) core.Coder {
 	return new(external.PostLoginResponse)
 }
 func (ReqGetSuperAdminToken) GetPrefix() []string { return []string{"r0"} }
-func (ReqGetSuperAdminToken) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetSuperAdminToken) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	return routing.GetSuperAdminToken(ctx, c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli)
+	return routing.GetSuperAdminToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli)
 }
 
 type ReqGetSetting struct{}
@@ -2050,7 +2086,7 @@ func (ReqGetSetting) FillRequest(coder core.Coder, req *http.Request, vars map[s
 }
 func (ReqGetSetting) NewResponse(code int) core.Coder { return new(internals.RawBytes) }
 func (ReqGetSetting) GetPrefix() []string             { return []string{"inr0"} }
-func (ReqGetSetting) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetSetting) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.ReqGetSettingRequest)
 	str, err := c.cacheIn.GetSettingRaw(req.SettingKey)
@@ -2086,7 +2122,7 @@ func (ReqPutSetting) FillRequest(coder core.Coder, req *http.Request, vars map[s
 }
 func (ReqPutSetting) NewResponse(code int) core.Coder { return nil }
 func (ReqPutSetting) GetPrefix() []string             { return []string{"inr0"} }
-func (ReqPutSetting) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutSetting) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.ReqPutSettingRequest)
 
@@ -2097,19 +2133,15 @@ func (ReqPutSetting) Process(ctx context.Context, consumer interface{}, msg core
 	}
 
 	log.Infof("put setting %s: %s -> %s", req.SettingKey, v, req.Content)
-	c.roomDB.SettingsInsertRaw(ctx, req.SettingKey, req.Content)
+	c.roomDB.SettingsInsertRaw(context.TODO(), req.SettingKey, req.Content)
+	c.settings.UpdateSetting(req.SettingKey, req.Content)
 
-	span, _ := common.StartSpanFromContext(ctx, c.Cfg.Kafka.Producer.SettingUpdate.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, c.Cfg.Kafka.Producer.SettingUpdate.Name,
-		c.Cfg.Kafka.Producer.SettingUpdate.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		c.Cfg.Kafka.Producer.SettingUpdate.Underlying,
 		c.Cfg.Kafka.Producer.SettingUpdate.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte{},
-			Obj:     req,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte{},
+			Obj:  req,
 		})
 
 	return http.StatusOK, nil
@@ -2137,7 +2169,7 @@ func (ReqPostReport) FillRequest(coder core.Coder, req *http.Request, vars map[s
 }
 func (ReqPostReport) NewResponse(code int) core.Coder { return nil }
 func (ReqPostReport) GetPrefix() []string             { return []string{"r0", "v1", "inr0"} }
-func (ReqPostReport) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostReport) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostReportMissingEventsRequest)
 
@@ -2166,11 +2198,11 @@ func (ReqGetUserInfo) FillRequest(coder core.Coder, req *http.Request, vars map[
 }
 func (ReqGetUserInfo) NewResponse(code int) core.Coder { return new(external.GetUserInfoResponse) }
 func (ReqGetUserInfo) GetPrefix() []string             { return []string{"r0"} }
-func (ReqGetUserInfo) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetUserInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetUserInfoRequest)
 	return routing.GetUserInfo(
-		ctx, req, c.Cfg, c.federation, c.accountDB, c.cacheIn,
+		context.Background(), req, c.Cfg, c.federation, c.accountDB, c.cacheIn,
 	)
 }
 
@@ -2198,11 +2230,11 @@ func (ReqPostUserInfo) FillRequest(coder core.Coder, req *http.Request, vars map
 }
 func (ReqPostUserInfo) NewResponse(code int) core.Coder { return nil }
 func (ReqPostUserInfo) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPostUserInfo) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostUserInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostUserInfoRequest)
 	return routing.AddUserInfo(
-		ctx, req, c.accountDB, device.UserID, &c.Cfg,
+		context.Background(), req, c.accountDB, device.UserID, &c.Cfg,
 		c.cacheIn, c.rsRpcCli, c.idg, c.complexCache,
 	)
 }
@@ -2231,11 +2263,11 @@ func (ReqPutUserInfo) FillRequest(coder core.Coder, req *http.Request, vars map[
 }
 func (ReqPutUserInfo) NewResponse(code int) core.Coder { return nil }
 func (ReqPutUserInfo) GetPrefix() []string             { return []string{"r0"} }
-func (ReqPutUserInfo) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutUserInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutUserInfoRequest)
 	return routing.SetUserInfo(
-		ctx, req, c.accountDB, device.UserID, &c.Cfg,
+		context.Background(), req, c.accountDB, device.UserID, &c.Cfg,
 		c.cacheIn, c.rsRpcCli, c.idg, c.complexCache,
 	)
 }
@@ -2245,7 +2277,7 @@ type ReqDeleteUserInfo struct{}
 func (ReqDeleteUserInfo) GetRoute() string                     { return "/user_info/{userID}" }
 func (ReqDeleteUserInfo) GetMetricsName() string               { return "delete_user_info" }
 func (ReqDeleteUserInfo) GetMsgType() int32                    { return internals.MSG_DELETE_USER_INFO }
-func (ReqDeleteUserInfo) GetAPIType() int8                     { return apiconsumer.APITypeAuth }
+func (ReqDeleteUserInfo) GetAPIType() int8                     { return apiconsumer.APITypeExternal }
 func (ReqDeleteUserInfo) GetMethod() []string                  { return []string{http.MethodDelete, http.MethodOptions} }
 func (ReqDeleteUserInfo) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
 func (ReqDeleteUserInfo) NewRequest() core.Coder {
@@ -2260,10 +2292,41 @@ func (ReqDeleteUserInfo) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqDeleteUserInfo) NewResponse(code int) core.Coder { return nil }
 func (ReqDeleteUserInfo) GetPrefix() []string             { return []string{"r0"} }
-func (ReqDeleteUserInfo) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqDeleteUserInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.DeleteUserInfoRequest)
 	return routing.DeleteUserInfo(
-		ctx, req, c.Cfg, c.federation, c.accountDB, c.cacheIn,
+		context.Background(), req, c.Cfg, c.federation, c.accountDB, c.cacheIn,
+	)
+}
+
+type ReqDismissRoom struct{}
+
+func (ReqDismissRoom) GetRoute() string                     { return "/{roomID}/dismiss" }
+func (ReqDismissRoom) GetMetricsName() string               { return "dismiss_room" }
+func (ReqDismissRoom) GetMsgType() int32                    { return internals.MSG_POST_ROOM_DISMISS }
+func (ReqDismissRoom) GetAPIType() int8                     { return apiconsumer.APITypeAuth }
+func (ReqDismissRoom) GetMethod() []string                  { return []string{http.MethodPost, http.MethodOptions} }
+func (ReqDismissRoom) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqDismissRoom) NewRequest() core.Coder {
+	return new(external.DismissRoomRequest)
+}
+func (ReqDismissRoom) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.DismissRoomRequest)
+	if vars != nil {
+		msg.RoomID = vars["roomID"]
+	}
+	return nil
+}
+func (ReqDismissRoom) NewResponse(code int) core.Coder { return nil }
+func (ReqDismissRoom) GetPrefix() []string             { return []string{"r0"} }
+func (ReqDismissRoom) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+	c := consumer.(*InternalMsgConsumer)
+	req := msg.(*external.DismissRoomRequest)
+	userID := device.UserID
+	deviceID := device.ID
+	return routing.DismissRoom(
+		context.Background(), req, c.accountDB, userID, deviceID, req.RoomID,
+		c.Cfg, c.rsRpcCli, c.federation, c.cacheIn, c.idg, c.complexCache,
 	)
 }

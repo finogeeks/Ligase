@@ -27,15 +27,15 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrix"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/gomatrix"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncserver/extra"
 )
 
@@ -74,7 +74,7 @@ func (ReqGetRoomMessages) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqGetRoomMessages) NewResponse(code int) core.Coder {
 	return new(syncapitypes.MessageEventResp)
 }
-func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (r ReqGetRoomMessages) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomMessagesRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -84,7 +84,7 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 	userID := device.UserID
 	roomID := req.RoomID
 
-	states := c.rsTimeline.GetStateStreams(ctx, roomID)
+	states := c.rsTimeline.GetStateStreams(roomID)
 	if states == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room state")
 	}
@@ -109,9 +109,9 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 	var toTs int64
 	fromStr := req.From
 	toStr := req.To
-	roomMinStream := c.rmHsTimeline.GetRoomMinStream(ctx, roomID)
+	roomMinStream := c.rmHsTimeline.GetRoomMinStream(roomID)
 	//兼容android
-	lastEv := c.rmHsTimeline.GetLastEvent(ctx, roomID)
+	lastEv := c.rmHsTimeline.GetLastEvent(roomID)
 	if lastEv != nil {
 		fromPos = lastEv.Offset
 		fromTs = int64(lastEv.Ev.OriginServerTS)
@@ -151,7 +151,7 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 		}
 	}
 
-	tl := c.rmHsTimeline.GetHistory(ctx, roomID)
+	tl := c.rmHsTimeline.GetHistory(roomID)
 	if tl == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room history")
 	}
@@ -179,7 +179,7 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 		endTs = fromTs
 	} else if fromPos < feedlow || fromPos <= roomMinStream { // use db
 		log.Infof("get messages from db, fromPos: %d", fromPos)
-		_outputRoomEvents, _endPos, _endTs, err := r.selectFromDB(ctx, c, rs, userID, roomID, dir, fromPos, fromTs, toPos, toTs, limit)
+		_outputRoomEvents, _endPos, _endTs, err := r.selectFromDB(context.TODO(), c, rs, userID, roomID, dir, fromPos, fromTs, toPos, toTs, limit)
 
 		if err != nil {
 			return http.StatusInternalServerError, jsonerror.Unknown(err.Error())
@@ -355,9 +355,9 @@ func (r ReqGetRoomMessages) selectFromDB(
 	)
 
 	if limit > 0 {
-		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDir(ctx, userId, roomID, dir, fromTs, limit*2)
+		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDir(ctx, userId, roomID, dir, fromPos, limit*2)
 	} else {
-		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDirRange(ctx, userId, roomID, dir, fromTs, toTs)
+		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDirRange(ctx, userId, roomID, dir, fromPos, toTs)
 	}
 	if err != nil {
 		return

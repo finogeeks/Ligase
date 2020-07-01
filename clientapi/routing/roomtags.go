@@ -23,10 +23,10 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -106,18 +106,12 @@ func SetRoomTag(
 	data.RoomID = req.RoomId
 	data.DataType = ""
 	data.StreamType = "roomTag"
-
-	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(req.UserId),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(req.UserId),
+			Obj:  data,
 		})
 
 	return http.StatusOK, nil
@@ -151,18 +145,12 @@ func DeleteRoomTag(
 	data.RoomID = req.RoomId
 	data.DataType = ""
 	data.StreamType = "roomTag"
-
-	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(req.UserId),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(req.UserId),
+			Obj:  data,
 		})
 
 	return http.StatusOK, nil

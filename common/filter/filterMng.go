@@ -18,7 +18,6 @@
 package filter
 
 import (
-	"context"
 	"sync"
 
 	"github.com/irfansharif/cfilter"
@@ -52,7 +51,7 @@ func (mng *FilterMng) Register(key string, loader FilterLoader) *Filter {
 
 		return filter
 	} else {
-		log.Errorf("filter %s already registered", key)
+		log.Error("filter %s already registered", key)
 		return val.(*Filter)
 	}
 }
@@ -73,7 +72,7 @@ func (f *Filter) Load() {
 			return
 		}
 
-		if f.loader.LoadFilterData(context.TODO(), f.key, f) {
+		if f.loader.LoadFilterData(f.key, f) {
 			f.ready = true
 			log.Infof("filter key:%s load %d", f.key, f.f.Count())
 		}

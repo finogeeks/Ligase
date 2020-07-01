@@ -27,17 +27,17 @@ import (
 	"strings"
 	"time"
 
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/content/download"
 	"github.com/finogeeks/ligase/content/repos"
-	"github.com/finogeeks/ligase/model/authtypes"
-	"github.com/finogeeks/ligase/model/mediatypes"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/model/mediatypes"
 	"github.com/gorilla/mux"
 )
 
@@ -67,9 +67,7 @@ func NewProcessor(
 		DialContext: (&net.Dialer{
 			Timeout: time.Second * 15,
 		}).DialContext,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100,
-		IdleConnTimeout:     time.Second * 90,
+		DisableKeepAlives: true, // fd will leak if set it false(default value)
 	}
 	httpCli := &http.Client{Transport: transport}
 	return &Processor{
@@ -339,6 +337,14 @@ func (p *Processor) doDownload(
 }
 
 func (p *Processor) httpRequest(userID, method, reqUrl string, req *http.Request) (*http.Response, error) {
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: time.Second * 15,
+		}).DialContext,
+		DisableKeepAlives: true, // fd will leak if set it false(default value)
+	}
+	client := &http.Client{Transport: transport}
+
 	newReq, err := http.NewRequest(method, reqUrl, req.Body)
 	if err != nil {
 		return nil, err
@@ -357,7 +363,7 @@ func (p *Processor) httpRequest(userID, method, reqUrl string, req *http.Request
 	log.Infof("url for net disk request: %s", reqUrl)
 	log.Infof("header for net disk request: %s", string(headStr))
 
-	return p.httpCli.Do(newReq)
+	return client.Do(newReq)
 }
 
 func (p *Processor) respDownload(w http.ResponseWriter, header http.Header, statusCode int, body io.Reader) {

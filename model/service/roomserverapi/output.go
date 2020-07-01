@@ -18,8 +18,8 @@
 package roomserverapi
 
 import (
-	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/roomservertypes"
 )
 
 // An OutputType is a type of roomserver output.

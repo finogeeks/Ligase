@@ -15,13 +15,12 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/go-nats"
 )
 
@@ -34,9 +33,8 @@ type ReceiptUpdateRpcConsumer struct {
 	rpcClient    *common.RpcClient
 	userTimeLine *repos.UserTimeLineRepo
 	chanSize     uint32
-	//msgChan      []chan *UpdateReceiptOffset
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan      []chan *UpdateReceiptOffset
+	cfg          *config.Dendrite
 }
 
 func NewReceiptUpdateRpcConsumer(
@@ -58,7 +56,7 @@ func (s *ReceiptUpdateRpcConsumer) GetTopic() string {
 	return types.ReceiptUpdateTopicDef
 }
 
-func (s *ReceiptUpdateRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *ReceiptUpdateRpcConsumer) cb(msg *nats.Msg) {
 	var result syncapitypes.ReceiptUpdate
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc receipt update cb error %v", err)
@@ -75,30 +73,29 @@ func (s *ReceiptUpdateRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	}
 	if len(updateReceiptOffset.Users) > 0 {
 		idx := common.CalcStringHashCode(result.RoomID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: updateReceiptOffset}
+		s.msgChan[idx] <- updateReceiptOffset
 	}
 }
 
-func (s *ReceiptUpdateRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*UpdateReceiptOffset)
-		s.processReceiptUpdate(msg.Ctx, data)
+func (s *ReceiptUpdateRpcConsumer) startWorker(msgChan chan *UpdateReceiptOffset) {
+	for data := range msgChan {
+		s.processReceiptUpdate(data)
 	}
 }
 
 func (s *ReceiptUpdateRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *UpdateReceiptOffset, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *UpdateReceiptOffset, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *ReceiptUpdateRpcConsumer) processReceiptUpdate(ctx context.Context, data *UpdateReceiptOffset) {
+func (s *ReceiptUpdateRpcConsumer) processReceiptUpdate(data *UpdateReceiptOffset) {
 	for _, userID := range data.Users {
 		log.Infof("process update receipt user:%s offset:%d", userID, data.Offset)
 		s.userTimeLine.SetReceiptLatest(userID, data.Offset)

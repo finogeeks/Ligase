@@ -23,8 +23,8 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/encryption"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/lib/pq"
 )
 
@@ -253,7 +253,7 @@ func (s *currentRoomStateStatements) upsertRoomState(
 			AddPos:        addedAt,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(event.RoomID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_current_room_state")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 
@@ -325,7 +325,7 @@ func (s *currentRoomStateStatements) upsertRoomStateRaw2(
 		AddPos:        addedAt,
 	}
 	update.SetUid(int64(common.CalcStringHashCode64(roomId)))
-	s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_current_room_state")
+	s.db.WriteDBEvent(&update)
 	return nil
 }
 

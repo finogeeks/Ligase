@@ -15,17 +15,16 @@
 package entry
 
 import (
-	"context"
 	"errors"
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -34,14 +33,13 @@ func init() {
 	Register(model.CMD_FED_DISPLAYNAME, GetDisplayName)
 }
 
-func getProfileFromCache(ctx context.Context,
-	msg *model.GobMessage, cache service.Cache) (*authtypes.Profile, *authtypes.Presences, error) {
+func getProfileFromCache(msg *model.GobMessage, cache service.Cache) (*authtypes.Profile, *authtypes.Presences, error) {
 	if msg == nil {
 		return nil, nil, errors.New("msg from connector is nil")
 	}
 
 	userID := string(msg.Body)
-	displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+	displayName, avatarURL, _ := complexCache.GetProfileByUserID(userID)
 	log.Infof("fed get profile, userID: %s, displayName: %s, avatarURL: %s", userID, displayName, avatarURL)
 
 	profile := &authtypes.Profile{}
@@ -57,16 +55,16 @@ func getProfileFromCache(ctx context.Context,
 	return profile, presence, nil
 }
 
-func GetProfile(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
-	profile, presence, err := getProfileFromCache(ctx, msg, cache)
+func GetProfile(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+	profile, presence, err := getProfileFromCache(msg, cache)
 	if err != nil {
 		return &model.GobMessage{}, err
 	}
 
-	resp := &external.GetProfileResponse{
+	resp := (&external.GetProfileResponse{
 		AvatarURL:   profile.AvatarURL,
 		DisplayName: profile.DisplayName,
-	}
+	})
 	if presence != nil {
 		resp.Status = presence.Status
 		resp.StatusMsg = presence.StatusMsg
@@ -80,8 +78,8 @@ func GetProfile(ctx context.Context, msg *model.GobMessage, cache service.Cache,
 	return retMsg, nil
 }
 
-func GetAvatarURL(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
-	profile, _, err := getProfileFromCache(ctx, msg, cache)
+func GetAvatarURL(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+	profile, _, err := getProfileFromCache(msg, cache)
 	if err != nil {
 		return &model.GobMessage{}, err
 	}
@@ -96,8 +94,8 @@ func GetAvatarURL(ctx context.Context, msg *model.GobMessage, cache service.Cach
 	return retMsg, nil
 }
 
-func GetDisplayName(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
-	profile, _, err := getProfileFromCache(ctx, msg, cache)
+func GetDisplayName(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+	profile, _, err := getProfileFromCache(msg, cache)
 	if err != nil {
 		return &model.GobMessage{}, err
 	}

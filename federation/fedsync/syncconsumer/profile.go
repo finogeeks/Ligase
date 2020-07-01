@@ -22,9 +22,9 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/config"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/go-nats"
 )
 
@@ -33,8 +33,7 @@ type ProfileRpcConsumer struct {
 	fedClient *client.FedClientWrap
 	rpcClient *common.RpcClient
 	feddomain *common.FedDomains
-	//msgChan   chan *roomserverapi.FederationEvent
-	msgChan chan common.ContextMsg
+	msgChan   chan *roomserverapi.FederationEvent
 }
 
 func NewProfileRpcConsumer(
@@ -50,20 +49,19 @@ func NewProfileRpcConsumer(
 		feddomain: feddomain,
 	}
 
-	s.msgChan = make(chan common.ContextMsg, 1024)
+	s.msgChan = make(chan *roomserverapi.FederationEvent, 1024)
 	return s
 }
 
 func (s *ProfileRpcConsumer) Start() error {
 	go func() {
-		for msg := range s.msgChan {
-			data := msg.Msg.(*roomserverapi.FederationEvent)
-			s.processGetProfile(msg.Ctx, data, data.Reply)
+		for data := range s.msgChan {
+			s.processGetProfile(data, data.Reply)
 		}
 	}()
 
 	subject := fmt.Sprintf("%s.%s", s.GetTopic(), ">")
-	s.rpcClient.ReplyWithContext(subject, s.cb)
+	s.rpcClient.Reply(subject, s.cb)
 	return nil
 }
 
@@ -71,7 +69,7 @@ func (s *ProfileRpcConsumer) GetTopic() string {
 	return s.cfg.Rpc.FedProfileTopic
 }
 
-func (s *ProfileRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *ProfileRpcConsumer) cb(msg *nats.Msg) {
 	var request roomserverapi.FederationEvent
 	if err := json.Unmarshal(msg.Data, &request); err != nil {
 		log.Errorf("profileRpcConsumer federationEvent unmarshal error %v", err)
@@ -79,11 +77,10 @@ func (s *ProfileRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	}
 	request.Reply = msg.Reply
 
-	s.msgChan <- common.ContextMsg{Ctx: ctx, Msg: &request}
+	s.msgChan <- &request
 }
 
 func (s *ProfileRpcConsumer) processGetProfile(
-	ctx context.Context,
 	request *roomserverapi.FederationEvent,
 	reply string,
 ) {
@@ -100,7 +97,7 @@ func (s *ProfileRpcConsumer) processGetProfile(
 	}
 	destination := info.Host + ":" + strconv.Itoa(info.Port)
 	log.Infof("source dest: %s, userID: %s", destination, profileReq.UserID)
-	response, err := s.fedClient.LookupProfile(ctx, destination, profileReq.UserID)
+	response, err := s.fedClient.LookupProfile(context.Background(), destination, profileReq.UserID)
 	if err != nil {
 		log.Errorf("federation processGetProfile error: %v", err)
 		return
@@ -111,7 +108,6 @@ func (s *ProfileRpcConsumer) processGetProfile(
 }
 
 func GetProfile(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -123,7 +119,7 @@ func GetProfile(
 	}
 
 	// destination := fmt.Sprintf("%s:%s", request.Destination, s.cfg.GetConnectorPort())
-	response, err := fedClient.LookupProfile(ctx, destination, profileReq.UserID)
+	response, err := fedClient.LookupProfile(context.Background(), destination, profileReq.UserID)
 	if err != nil {
 		log.Errorf("federation LookupProfile error: %v", err)
 		return external.GetProfileResponse{}
@@ -138,7 +134,6 @@ func GetProfile(
 }
 
 func GetAvatar(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -149,7 +144,7 @@ func GetAvatar(
 		return external.GetAvatarURLResponse{}
 	}
 
-	response, err := fedClient.LookupAvatarURL(ctx, destination, profileReq.UserID)
+	response, err := fedClient.LookupAvatarURL(context.Background(), destination, profileReq.UserID)
 	if err != nil {
 		log.Errorf("federation avatar error: %v", err)
 		return external.GetAvatarURLResponse{}
@@ -163,7 +158,6 @@ func GetAvatar(
 }
 
 func GetDisplayName(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -174,7 +168,7 @@ func GetDisplayName(
 		return external.GetDisplayNameResponse{}
 	}
 
-	response, err := fedClient.LookupDisplayName(ctx, destination, profileReq.UserID)
+	response, err := fedClient.LookupDisplayName(context.Background(), destination, profileReq.UserID)
 	if err != nil {
 		log.Errorf("federation display name error: %v", err)
 		return external.GetDisplayNameResponse{}
@@ -188,7 +182,6 @@ func GetDisplayName(
 }
 
 func GetUserInfo(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -199,7 +192,7 @@ func GetUserInfo(
 		return external.GetUserInfoResponse{}
 	}
 
-	response, err := fedClient.LookupUserInfo(ctx, destination, userInfoReq.UserID)
+	response, err := fedClient.LookupUserInfo(context.Background(), destination, userInfoReq.UserID)
 	if err != nil {
 		log.Errorf("federation LookupUserInfo error: %v", err)
 		return external.GetUserInfoResponse{}

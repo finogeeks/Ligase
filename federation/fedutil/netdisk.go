@@ -15,6 +15,8 @@
 package fedutil
 
 import (
+	"strings"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
@@ -40,6 +42,16 @@ func IsMediaEv(content map[string]interface{}) bool {
 		return false
 	}
 	return msgtype == "m.image" || msgtype == "m.audio" || msgtype == "m.video" || msgtype == "m.file"
+}
+
+func splitMxc(s string) (domain, netdiskID string) {
+	tmpUrl := strings.TrimPrefix(s, "mxc://")
+	ss := strings.Split(tmpUrl, "/")
+	if len(ss) != 2 {
+		return "", s
+	} else {
+		return ss[0], ss[1]
+	}
 }
 
 func DownloadFromNetdisk(domain, destination string, ev *gomatrixserverlib.Event, content map[string]interface{}, fedClient *client.FedClientWrap) {

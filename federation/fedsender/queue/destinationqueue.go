@@ -20,16 +20,15 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/federation/client"
-	fedrepos "github.com/finogeeks/ligase/federation/model/repos"
-	"github.com/finogeeks/ligase/model/repos"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/federation/storage/model"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 )
 
 // destinationQueue is a queue of events for a single destination.
@@ -37,335 +36,363 @@ import (
 // ensures that only one request is in flight to a given destination
 // at a time.
 type destinationQueue struct {
+	// client     *gomatrixserverlib.FederationClient
 	fedClient  *client.FedClientWrap
-	rsRepo     *repos.RoomServerCurStateRepo
-	recRepo    *fedrepos.SendRecRepo
 	origin     gomatrixserverlib.ServerName
-	roomID     string
 	domain     string
 	feddomains *common.FedDomains
+	// destination string
 	// The running mutex protects running, sentCounter, lastTransactionIDs and
 	// pendingEvents, pendingEDUs.
 	runningMutex       sync.Mutex
 	running            bool
-	sentCounter        int
+	sentCounter        *int64
 	lastTransactionIDs []gomatrixserverlib.TransactionID
+	needSendMissEv     bool
+	states             []*gomatrixserverlib.Event
+	stateEvents        []*gomatrixserverlib.Event
+	backfillEvents     []gomatrixserverlib.Event
+	backfillFailSize   int32
 	pendingEvents      []*gomatrixserverlib.Event
 	pendingEDUs        []*gomatrixserverlib.EDU
+	recItem            *RecordItem
+	retryingSize       int32
 	rpcCli             roomserverapi.RoomserverRPCAPI
-	partitionProcessor PartitionProcessor
-}
-
-func (oq *destinationQueue) RetrySend(ctx context.Context) {
+	db                 model.FederationDatabase
 }
 
 // Send event adds the event to the pending queue for the destination.
 // If the queue is empty then it starts a background goroutine to
 // start sending events to that destination.
-func (oq *destinationQueue) SendEvent(ctx context.Context, partition int32, ev *gomatrixserverlib.Event) {
+func (oq *destinationQueue) SendEvent(ev *gomatrixserverlib.Event) {
 	oq.runningMutex.Lock()
 	defer oq.runningMutex.Unlock()
 	oq.pendingEvents = append(oq.pendingEvents, ev)
 	if !oq.running {
 		oq.running = true
-		go oq.backgroundSend(ctx)
+		go oq.backgroundSend()
+	}
+}
+
+func (oq *destinationQueue) SendStates(evs []*gomatrixserverlib.Event) {
+	oq.runningMutex.Lock()
+	defer oq.runningMutex.Unlock()
+	oq.stateEvents = evs
+	if !oq.running {
+		oq.running = true
+		go oq.backgroundSend()
+	}
+}
+
+func (oq *destinationQueue) sendBackfillEvents(evs []gomatrixserverlib.Event) {
+	oq.runningMutex.Lock()
+	defer oq.runningMutex.Unlock()
+	oq.backfillEvents = append(oq.backfillEvents, evs...)
+	if !oq.running {
+		oq.running = true
+		go oq.backgroundSend()
 	}
 }
 
 // SendEDU adds the EDU event to the pending queue for the destination.
 // If the queue is empty then it starts a background goroutine to
 // start sending event to that destination.
-func (oq *destinationQueue) SendEDU(ctx context.Context, partition int32, e *gomatrixserverlib.EDU) {
+func (oq *destinationQueue) SendEDU(e *gomatrixserverlib.EDU) {
 	oq.runningMutex.Lock()
 	defer oq.runningMutex.Unlock()
 	oq.pendingEDUs = append(oq.pendingEDUs, e)
 	if !oq.running {
 		oq.running = true
-		go oq.backgroundSend(ctx)
+		go oq.backgroundSend()
 	}
 }
 
-func (oq *destinationQueue) backgroundSend(ctx context.Context) {
-	retryTimes := 0
+func (oq *destinationQueue) backgroundSend() {
 	for {
-		log.Debugf("fed send start baground send %s %s", oq.roomID, oq.domain)
-		var recItem *fedrepos.RecordItem
-		if oq.roomID != "" {
-			var ok bool
-			recItem, ok = oq.partitionProcessor.HasAssgined(ctx, oq.roomID, oq.domain)
-			log.Debugf("fed send get has rec item %s %s %v, %t", oq.roomID, oq.domain, recItem, ok)
-			if !ok {
-				recItem, ok = oq.partitionProcessor.AssignRoomPartition(ctx, oq.roomID, oq.domain, time.Second*60, time.Millisecond*100)
-				log.Debugf("fed send get assign rec item %s %s %v, %t", oq.roomID, oq.domain, recItem, ok)
-				if !ok {
-					oq.partitionProcessor.OnRoomDomainRelease(ctx, string(oq.origin), oq.roomID, oq.domain)
-					return
-				}
-			}
-			log.Debugf("fed send room %s target %s pending %d", oq.roomID, oq.domain, recItem.PendingSize)
-		}
-
 		destination, ok := oq.feddomains.GetDomainHost(oq.domain)
 		if !ok {
 			time.Sleep(time.Second * 10)
-			if oq.roomID != "" {
-				oq.partitionProcessor.UnassignRoomPartition(ctx, oq.roomID, oq.domain)
-			}
 			continue
 		}
-		t, eventID, decrementSize, usePDUSize, useEDUSize := oq.next(ctx, recItem, destination)
-		if (t == nil || (len(t.PDUs) == 0 && len(t.EDUs) == 0)) && !oq.running {
-			oq.partitionProcessor.OnRoomDomainRelease(ctx, string(oq.origin), oq.roomID, oq.domain)
+		t, eventID, decrementSize := oq.next(destination)
+		if t == nil {
+			// If the queue is empty then stop processing for this destination.
+			// TODO: Remove this destination from the queue map.
 			return
 		}
-		failed := false
-		if t == nil || (len(t.PDUs) == 0 && len(t.EDUs) == 0) {
-			failed = true
-		} else {
-			log.Debugf("fed send begin room %s target %s size %d desrSize %d useSize %d", oq.roomID, oq.domain, len(t.PDUs), decrementSize, usePDUSize)
-			err := oq.trySend(t)
-			if err != nil {
-				log.Errorf("fedsender err room:%s domain:%s %v", oq.roomID, oq.domain, err)
-				failed = true
-			} else {
-				// 落地最后成功
-				oq.pendingEvents = oq.pendingEvents[usePDUSize:]
-				if len(oq.pendingEvents) == 0 {
-					oq.pendingEvents = nil
-				}
-				oq.pendingEDUs = oq.pendingEDUs[useEDUSize:]
-				if len(oq.pendingEDUs) == 0 {
-					oq.pendingEDUs = nil
-				}
-				if recItem != nil {
-					domainOffset := recItem.DomainOffset
-					if len(t.PDUs) != 0 {
-						update := t.PDUs[len(t.PDUs)-1].DomainOffset()
-						if update+1 > domainOffset {
-							domainOffset = update + 1
-						}
-						log.Debugf("fed send update domain offset ", oq.roomID, oq.domain, eventID, domainOffset, decrementSize, recItem.PendingSize)
-						oq.recRepo.UpdateDomainOffset(ctx, oq.roomID, oq.domain, eventID, domainOffset, decrementSize)
-					}
-				}
-			}
-		}
-		if failed {
-			second := retryTimes + 5
-			if second > 600 {
-				second = 600
-			}
-			if oq.roomID != "" {
-				oq.partitionProcessor.UnassignRoomPartition(ctx, oq.roomID, oq.domain)
-			}
-			time.Sleep(time.Second * time.Duration(second))
+
+		// TODO: handle retries.
+		// TODO: blacklist uncooperative servers.
+
+		oq.mustSend(t, eventID, decrementSize)
+	}
+}
+
+func (oq *destinationQueue) mustSend(t *gomatrixserverlib.Transaction, eventID string, decrementSize int32) {
+	retryTimes := 0
+	for {
+		destination, ok := oq.feddomains.GetDomainHost(oq.domain)
+		if !ok {
 			retryTimes++
+			if retryTimes < 30 {
+				time.Sleep(time.Second * time.Duration(retryTimes) * 10)
+			} else {
+				time.Sleep(time.Second * 300)
+			}
+			continue
 		} else {
 			retryTimes = 0
 		}
+		t.Destination = gomatrixserverlib.ServerName(destination)
+		// _, err := oq.client.SendTransaction(context.TODO(), *t)
+		_, err := oq.fedClient.SendTransaction(context.TODO(), *t)
+		if err != nil {
+			if strings.Contains(err.Error(), "Backfill not finished") {
+				log.Infof("sending transaction, destination: %v, backfill not finished", t.Destination)
+			} else {
+				log.Errorf("problem sending transaction, destination: %v, error: %v", t.Destination, err)
+			}
+			retryTimes++
+			if retryTimes < 10 {
+				time.Sleep(time.Second * 3)
+			} else if retryTimes < 30 {
+				time.Sleep(time.Second * time.Duration(retryTimes) * 10)
+			} else {
+				time.Sleep(time.Second * 300)
+			}
+		} else {
+			// 落地最后成功 eventID
+			pendingDiff := -decrementSize
+			if pendingDiff != 0 {
+				recItem := oq.recItem
+				atomic.AddInt32(&recItem.PendingSize, pendingDiff)
+				atomic.AddInt32(&recItem.SendTimes, 1)
+				recItem.EventID = eventID
+				err = oq.db.UpdateSendRecordPendingSizeAndEventID(context.TODO(), recItem.RoomID, oq.domain, pendingDiff, eventID)
+				if err != nil {
+					log.Errorf("UpdateSendRecordPendingSizeAndEventID %s %d %s error %v", recItem.RoomID, pendingDiff, eventID, err)
+				}
+			}
+			break
+		}
 	}
+}
+
+func (oq *destinationQueue) RetrySendBackfillEvs() {
+	oq.retryingSize = oq.recItem.PendingSize
+	go oq.startSendBackfillEvs(oq.recItem.PendingSize, oq.recItem.EventID)
+}
+
+func (oq *destinationQueue) startSendBackfillEvs(size int32, lastEventID string) {
+	log.Infof("retry send backfill events, %v", oq.recItem)
+
+	leftSize := size
+	retryTimes := 0
+	waitTimes := 0
+
+	sleep := func(err error) {
+		retryTimes++
+		waitTimes++
+		if waitTimes > 10 && err != nil {
+			log.Errorf("fed-sender queue backfill retyr-times: %d, roomID: %s, pendingSize: %d, err: %v", waitTimes, oq.recItem.RoomID, size, err)
+		}
+		sleepSec := waitTimes
+		if sleepSec > 60 {
+			sleepSec = 60
+		}
+		time.Sleep(time.Second * time.Duration(sleepSec))
+	}
+
+	lastDomainOffset := int64(0)
+	for leftSize > 0 {
+		batchSize := int(leftSize)
+		if batchSize > 50 {
+			batchSize = 50
+		}
+		pdus, err := oq.getBackfillEvs(batchSize, lastEventID, "f")
+		if err != nil {
+			if waitTimes > 3 {
+				break
+			}
+			sleep(err)
+			continue
+		}
+
+		log.Infof("fed-sender queue backfill, batchSize: %d, leftSize: %d resp %#v", batchSize, leftSize, pdus)
+		lossCount := 0
+		if len(pdus) > 0 {
+			if lastDomainOffset == 0 {
+				lastDomainOffset = pdus[0].DomainOffset() - 1
+			}
+			for _, pdu := range pdus {
+				domainOffset := pdu.DomainOffset()
+				if domainOffset != lastDomainOffset+1 {
+					log.Errorf("fed retry send events domainOffset wrong, roomID: %s, lastDomainOffset: %d, domainOffset: %d", oq.recItem.RoomID, lastDomainOffset, domainOffset)
+					if domainOffset > lastDomainOffset {
+						lossCount += int(domainOffset - lastDomainOffset - 1)
+					} else {
+						log.Errorf("fed retry send events domainOffset not sorted, roomID: %s, lastDomainOffset: %d, domainOffset: %d", oq.recItem.RoomID, lastDomainOffset, domainOffset)
+					}
+				}
+				lastDomainOffset = domainOffset
+			}
+		}
+		if len(pdus) > 0 {
+			leftSize -= int32(len(pdus)) + int32(lossCount)
+			lastEventID = pdus[len(pdus)-1].EventID()
+			oq.sendBackfillEvents(pdus)
+		}
+		if len(pdus) == 0 && leftSize > 0 {
+			log.Errorf("fed retry send events leftSize, roomID: %s, pendingSize: %d, backfillSize: %d", oq.recItem.RoomID, size, size-leftSize)
+			if waitTimes > 3 {
+				break
+			}
+			sleep(nil)
+			continue
+		}
+		waitTimes = 0
+	}
+	if leftSize > 0 {
+		log.Errorf("fed retry send events failed. roomID: %s, from: %s, size: %d", oq.recItem.RoomID, lastEventID, leftSize)
+		atomic.AddInt32(&oq.recItem.PendingSize, -leftSize)
+		oq.db.UpdateSendRecordPendingSizeAndEventID(context.TODO(), oq.recItem.RoomID, oq.domain, -leftSize, oq.recItem.EventID)
+		oq.runningMutex.Lock()
+		defer oq.runningMutex.Unlock()
+		oq.backfillFailSize = leftSize
+		oq.retryingSize = 0
+	}
+}
+
+func (oq *destinationQueue) getBackfillEvs(size int, lastEventID, dir string) ([]gomatrixserverlib.Event, error) {
+	var req roomserverapi.QueryBackFillEventsRequest
+	var resp roomserverapi.QueryBackFillEventsResponse
+	req.EventID = lastEventID
+	req.Limit = size
+	req.RoomID = oq.recItem.RoomID
+	req.Dir = dir
+	log.Infof("fed-sender queue query backfill events %#v", req)
+	err := oq.rpcCli.QueryBackFillEvents(context.TODO(), &req, &resp)
+	if err != nil {
+		log.Errorf("Backfill err %v", err)
+		return nil, err
+	}
+
+	return resp.PDUs, nil
 }
 
 // next creates a new transaction from the pending event queue
 // and flushes the queue.
 // Returns nil if the queue was empty.
-func (oq *destinationQueue) next(ctx context.Context, recItem *fedrepos.RecordItem, destination string) (*gomatrixserverlib.Transaction, string, int32, int, int) {
+func (oq *destinationQueue) next(destination string) (*gomatrixserverlib.Transaction, string, int32) {
 	oq.runningMutex.Lock()
 	defer oq.runningMutex.Unlock()
 
-	const MAX_SIZE = 50
+	if oq.stateEvents != nil {
+		var eventID string
+		pdus := []gomatrixserverlib.Event{}
+		for _, ev := range oq.stateEvents {
+			pdus = append(pdus, *ev)
+			eventID = ev.EventID()
+		}
+		oq.states = oq.stateEvents
+		oq.stateEvents = nil
+		oq.needSendMissEv = true
 
-	edus := make([]gomatrixserverlib.EDU, 0, len(oq.pendingEDUs))
-	if len(oq.pendingEDUs) > 0 {
-		for i, v := range oq.pendingEDUs {
-			edus = append(edus, *v)
-			if i > MAX_SIZE {
+		counter := atomic.AddInt64(oq.sentCounter, int64(len(pdus)))
+		t := oq.newTransaction(destination, counter)
+		t.PDUs = pdus
+		oq.lastTransactionIDs = []gomatrixserverlib.TransactionID{t.TransactionID}
+
+		data, _ := json.Marshal(t.PDUs)
+		log.Debugf("send state room: %s, states: %s", oq.recItem.RoomID, data)
+		return t, eventID, int32(len(t.PDUs))
+	}
+
+	if len(oq.backfillEvents) > 0 {
+		pdus := oq.backfillEvents
+		if len(pdus) > 50 {
+			pdus = oq.backfillEvents[:50]
+			oq.backfillEvents = oq.backfillEvents[50:]
+		} else {
+			oq.backfillEvents = nil
+		}
+
+		lossCount := 0
+		lastDomainOffset := pdus[0].DomainOffset() - 1
+		for _, pdu := range pdus {
+			domainOffset := pdu.DomainOffset()
+			if domainOffset != lastDomainOffset+1 {
+				if domainOffset > lastDomainOffset {
+					lossCount += int(domainOffset - lastDomainOffset - 1)
+				}
+			}
+		}
+
+		counter := atomic.AddInt64(oq.sentCounter, int64(len(pdus)))
+		t := oq.newTransaction(destination, counter)
+		t.PDUs = pdus
+		oq.lastTransactionIDs = []gomatrixserverlib.TransactionID{t.TransactionID}
+
+		oq.retryingSize -= int32(len(pdus)) + int32(lossCount)
+
+		eventID := pdus[len(pdus)-1].EventID()
+		return t, eventID, int32(len(pdus))
+	}
+
+	if oq.retryingSize <= 0 && (len(oq.pendingEvents) != 0 || len(oq.pendingEDUs) != 0) {
+		var eventID string
+		count := 0
+
+		var pdus []gomatrixserverlib.Event
+		for _, ev := range oq.pendingEvents {
+			pdus = append(pdus, *ev)
+			eventID = ev.EventID()
+			count++
+			if count >= 50 {
 				break
 			}
 		}
-	}
-	if oq.roomID == "" {
-		if len(edus) > 0 {
-			t := oq.newTransaction(destination, nil, edus)
-			return t, "", 0, 0, len(edus)
+		if count == len(oq.pendingEvents) {
+			oq.pendingEvents = nil
 		} else {
-			oq.running = false
-			return nil, "", 0, 0, 0
-		}
-	}
-
-	if oq.roomID != "" && (recItem == nil || recItem.SendTimes == 0) {
-		pdus := oq.getStateEvs(ctx)
-		if pdus != nil {
-			domainOffset := int64(0)
-			if recItem == nil {
-				if len(oq.pendingEvents) > 0 {
-					domainOffset = oq.pendingEvents[0].DomainOffset()
-				}
-				var err error
-				recItem, err = oq.recRepo.StoreRec(ctx, oq.roomID, oq.domain, domainOffset)
-				if err != nil {
-					log.Errorf("Store send record error %v", err)
-					if len(edus) > 0 {
-						t := oq.newTransaction(destination, nil, edus)
-						return t, "", 0, 0, len(edus)
-					} else {
-						oq.running = false
-						return nil, "", 0, 0, 0
-					}
-				}
-			} else {
-				domainOffset = recItem.DomainOffset
-			}
-
-			var eventID string
-			for i := len(pdus) - 1; i >= 0; i-- {
-				ev := pdus[i]
-				if domainOffset != 0 && ev.DomainOffset() >= domainOffset {
-					pdus = append(pdus[:i], pdus[i+1:]...)
-					continue
-				}
-				eventID = ev.EventID()
-			}
-			oq.sentCounter += len(pdus)
-			t := oq.newTransaction(destination, pdus, edus)
-			oq.lastTransactionIDs = []gomatrixserverlib.TransactionID{t.TransactionID}
-
-			data, _ := json.Marshal(pdus)
-			log.Debugf("send state room: %s, states: %s", oq.roomID, data)
-			return t, eventID, 0, 0, len(edus)
-		}
-	}
-
-	if recItem != nil && recItem.PendingSize > 0 {
-		var pdus []gomatrixserverlib.Event
-		getSize := int(recItem.PendingSize)
-		useSize := 0
-		if len(oq.pendingEvents) > 0 {
-			domainOffset := oq.pendingEvents[0].DomainOffset()
-			if recItem.DomainOffset == domainOffset {
-				getSize = 0
-				for i, v := range oq.pendingEvents {
-					useSize++
-					pdus = append(pdus, *v)
-					if i > MAX_SIZE {
-						break
-					}
-				}
-			}
+			oq.pendingEvents = oq.pendingEvents[50:]
 		}
 
-		if getSize > MAX_SIZE {
-			getSize = MAX_SIZE
+		var edus []gomatrixserverlib.EDU
+		for _, edu := range oq.pendingEDUs {
+			edus = append(edus, *edu)
 		}
-		log.Infof("fed send room %s target %s usepending %d getSize %d", oq.roomID, oq.domain, len(pdus), getSize)
-		if getSize > 0 {
-			getPDUs := oq.getPendingEvs(ctx, recItem.DomainOffset, recItem.EventID, getSize)
-			pdus = append(pdus, getPDUs...)
-		}
-		if len(pdus) == 0 {
-			if len(edus) > 0 {
-				t := oq.newTransaction(destination, nil, edus)
-				return t, "", 0, 0, len(edus)
-			} else {
-				return nil, "", 0, 0, 0
-			}
-		}
-
-		t := oq.newTransaction(destination, pdus, edus)
+		oq.pendingEDUs = nil
+		counter := atomic.AddInt64(oq.sentCounter, int64(len(pdus)+len(edus)))
+		t := oq.newTransaction(destination, counter)
+		t.PDUs = pdus
+		t.EDUs = edus
 		oq.lastTransactionIDs = []gomatrixserverlib.TransactionID{t.TransactionID}
-		oq.sentCounter += len(pdus)
 
-		eventID := pdus[len(pdus)-1].EventID()
-		return t, eventID, int32(len(pdus)), useSize, len(edus)
+		decrementSize := int32(len(t.PDUs))
+		if oq.backfillFailSize > 0 {
+			decrementSize += oq.backfillFailSize
+			oq.backfillFailSize = 0
+		}
+
+		return t, eventID, decrementSize
 	}
+
 	oq.running = false
-	if len(edus) > 0 {
-		t := oq.newTransaction(destination, nil, edus)
-		return t, "", 0, 0, len(edus)
-	} else {
-		return nil, "", 0, 0, 0
-	}
+	return nil, "", 0
 }
 
-func (oq *destinationQueue) newTransaction(destination string, pdus []gomatrixserverlib.Event, edus []gomatrixserverlib.EDU) *gomatrixserverlib.Transaction {
+func (oq *destinationQueue) newTransaction(destination string, counter int64) *gomatrixserverlib.Transaction {
 	var t gomatrixserverlib.Transaction
 	now := gomatrixserverlib.AsTimestamp(time.Now())
-	t.TransactionID = gomatrixserverlib.TransactionID(fmt.Sprintf("%d-%d", now, oq.sentCounter))
+	t.TransactionID = gomatrixserverlib.TransactionID(fmt.Sprintf("%d-%d", now, counter))
 	t.Origin = oq.origin
 	t.Destination = gomatrixserverlib.ServerName(destination)
 	t.OriginServerTS = now
 	t.PreviousIDs = oq.lastTransactionIDs
-	t.PDUs = pdus
-	t.EDUs = edus
 	if t.PreviousIDs == nil {
 		t.PreviousIDs = []gomatrixserverlib.TransactionID{}
 	}
 
 	return &t
-}
-
-func (oq *destinationQueue) trySend(t *gomatrixserverlib.Transaction) error {
-	_, err := oq.fedClient.SendTransaction(context.TODO(), *t)
-	if err != nil {
-		if strings.Contains(err.Error(), "Backfill not finished") {
-			log.Infof("sending transaction, destination: %v, backfill not finished", t.Destination)
-		} else {
-			log.Errorf("problem sending transaction, destination: %v, error: %v", t.Destination, err)
-		}
-		return err
-	}
-	return nil
-}
-
-func (oq *destinationQueue) getStateEvs(ctx context.Context) []gomatrixserverlib.Event {
-	rs := oq.rsRepo.GetRoomState(ctx, oq.roomID)
-	states := rs.GetAllState()
-	pdus := make([]gomatrixserverlib.Event, 0, len(states))
-	var sender string
-	for i := 0; i < len(states); i++ {
-		state := &states[i]
-		stateDomain, _ := common.DomainFromID(state.Sender())
-		log.Infof("room:%s type:%s evntID:%s state-domain:%s target-domain:%s", state.RoomID(), state.Type(), state.EventID(), stateDomain, oq.domain)
-		if state.Type() == "m.room.create" {
-			sender = state.Sender()
-		}
-		pdus = append(pdus, *state)
-	}
-	if len(pdus) == 0 {
-		return nil
-	}
-
-	senderDomain, _ := utils.DomainFromID(sender)
-	if senderDomain == oq.domain {
-		log.Infof("fed-send target domain is sender domain, ignore sending state %s", oq.domain)
-		return nil
-	}
-	return pdus
-}
-
-func (oq *destinationQueue) getPendingEvs(ctx context.Context, domainOffset int64, eventID string, limit int) []gomatrixserverlib.Event {
-	request := roomserverapi.QueryEventsByDomainOffsetRequest{
-		RoomID:       oq.roomID,
-		Domain:       string(oq.origin),
-		DomainOffset: domainOffset,
-		EventID:      eventID,
-		Limit:        limit,
-	}
-	if domainOffset == 0 && eventID != "" {
-		request.UseEventID = true
-	}
-	var response roomserverapi.QueryEventsByDomainOffsetResponse
-	err := oq.rpcCli.QueryEventsByDomainOffset(ctx, &request, &response)
-	if err != nil {
-		log.Errorf("query events by domainOffset error %v", err)
-		return nil
-	}
-	if response.Error != "" {
-		log.Errorf("query events by domainOffset error by roomserver %s", response.Error)
-		return nil
-	}
-
-	// TODO: cjw check loss
-	return response.PDUs
 }

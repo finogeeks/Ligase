@@ -28,13 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -46,9 +46,8 @@ const (
 )
 
 type AccountDBEVConsumer struct {
-	db model.AccountsDatabase
-	//msgChan     []chan *dbtypes.DBEvent
-	msgChan     []chan common.ContextMsg
+	db          model.AccountsDatabase
+	msgChan     []chan *dbtypes.DBEvent
 	monState    []*DBMonItem
 	path        string
 	fileName    string
@@ -59,11 +58,9 @@ type AccountDBEVConsumer struct {
 	cfg         *config.Dendrite
 }
 
-func (s *AccountDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *AccountDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		// start := time.Now().UnixNano() / 1000000
 		start := time.Now()
 
@@ -71,29 +68,29 @@ func (s *AccountDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error 
 		data := output.AccountDBEvents
 		switch key {
 		case dbtypes.AccountDataInsertKey:
-			res = s.OnInsertAccountData(ctx, data.AccountDataInsert)
+			res = s.OnInsertAccountData(context.TODO(), data.AccountDataInsert)
 		case dbtypes.AccountInsertKey:
-			res = s.OnInsertAccount(ctx, data.AccountInsert)
+			res = s.OnInsertAccount(context.TODO(), data.AccountInsert)
 		case dbtypes.FilterInsertKey:
-			res = s.OnInsertFilter(ctx, data.FilterInsert)
+			res = s.OnInsertFilter(context.TODO(), data.FilterInsert)
 		case dbtypes.ProfileInsertKey:
-			res = s.OnUpsertProfile(ctx, data.ProfileInsert)
+			res = s.OnUpsertProfile(context.TODO(), data.ProfileInsert)
 		case dbtypes.ProfileInitKey:
-			res = s.OnInitProfile(ctx, data.ProfileInsert)
+			res = s.OnInitProfile(context.TODO(), data.ProfileInsert)
 		case dbtypes.RoomTagInsertKey:
-			res = s.OnInsertRoomTag(ctx, data.RoomTagInsert)
+			res = s.OnInsertRoomTag(context.TODO(), data.RoomTagInsert)
 		case dbtypes.RoomTagDeleteKey:
-			res = s.OnDeleteRoomTag(ctx, data.RoomTagDelete)
+			res = s.OnDeleteRoomTag(context.TODO(), data.RoomTagDelete)
 		case dbtypes.DisplayNameInsertKey:
-			res = s.OnUpsertDisplayName(ctx, data.ProfileInsert)
+			res = s.OnUpsertDisplayName(context.TODO(), data.ProfileInsert)
 		case dbtypes.AvatarInsertKey:
-			res = s.OnUpsertAvatar(ctx, data.ProfileInsert)
+			res = s.OnUpsertAvatar(context.TODO(), data.ProfileInsert)
 		case dbtypes.UserInfoInsertKey:
-			res = s.OnUpsertUserInfo(ctx, data.UserInfoInsert)
+			res = s.OnUpsertUserInfo(context.TODO(), data.UserInfoInsert)
 		case dbtypes.UserInfoInitKey:
-			res = s.OnInitUserInfo(ctx, data.UserInfoInsert)
+			res = s.OnInitUserInfo(context.TODO(), data.UserInfoInsert)
 		case dbtypes.UserInfoDeleteKey:
-			res = s.OnDeleteUserInfo(ctx, data.UserInfoDelete)
+			res = s.OnDeleteUserInfo(context.TODO(), data.UserInfoDelete)
 		default:
 			res = nil
 			log.Infow("account db event: ignoring unknown output type", log.KeysAndValues{"key", key})
@@ -144,9 +141,9 @@ func NewAccountDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, accDBWorkerCount)
+	s.msgChan = make([]chan *dbtypes.DBEvent, accDBWorkerCount)
 	for i := uint64(0); i < accDBWorkerCount; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 
 	s.mutex = new(sync.Mutex)
@@ -181,16 +178,12 @@ func (s *AccountDBEVConsumer) startRecover() {
 		select {
 		case <-s.ticker.C:
 			s.ticker.Reset(time.Second * 600) //10分钟一次
-			func() {
-				span, ctx := common.StartSobSomSpan(context.Background(), "AccountDBEVConsumer.startRecover")
-				defer span.Finish()
-				s.recover(ctx)
-			}()
+			s.recover()
 		}
 	}
 }
 
-func (s *AccountDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
+func (s *AccountDBEVConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
 	chanID := 0
 	switch dbEv.Key {
 	case dbtypes.AccountDataInsertKey:
@@ -210,7 +203,7 @@ func (s *AccountDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEve
 		return nil
 	}
 
-	s.msgChan[chanID] <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+	s.msgChan[chanID] <- dbEv
 	return nil
 }
 
@@ -343,7 +336,7 @@ func (s *AccountDBEVConsumer) renameRecoverFile() bool {
 	return false
 }
 
-func (s *AccountDBEVConsumer) recover(ctx context.Context) {
+func (s *AccountDBEVConsumer) recover() {
 	log.Infof("AccountDBEVConsumer start recover")
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
@@ -371,7 +364,7 @@ func (s *AccountDBEVConsumer) recover(ctx context.Context) {
 				continue
 			}
 
-			s.OnMessage(ctx, &dbEv)
+			s.OnMessage(&dbEv)
 		}
 
 		f.Close()

@@ -20,8 +20,8 @@ package processors
 import (
 	"context"
 
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	//log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
@@ -30,7 +30,6 @@ type FedProcessor struct {
 }
 
 func (r *FedProcessor) OnRoomEvent(
-	ctx context.Context,
 	event *gomatrixserverlib.Event,
 ) error {
 	if event.Type() == "m.room.aliases" {
@@ -47,7 +46,7 @@ func (r *FedProcessor) OnRoomEvent(
 			request.Alias = alias
 			request.RoomID = event.RoomID()
 			request.UserID = event.Sender()
-			err = r.Alias.AllocRoomAlias(ctx, &request, &response)
+			err = r.Alias.AllocRoomAlias(context.TODO(), &request, &response)
 			if err != nil {
 				return err
 			}

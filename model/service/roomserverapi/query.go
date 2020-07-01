@@ -21,8 +21,8 @@ import (
 	"context"
 	"sort"
 
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -75,20 +75,6 @@ type QueryEventAuthResponse struct {
 	AuthEvents []*gomatrixserverlib.Event
 }
 
-type QueryEventsByDomainOffsetRequest struct {
-	RoomID       string `json:"room_id"`
-	Domain       string `json:"domain"`
-	DomainOffset int64  `json:"domain_offset"`
-	EventID      string `json:"event_id"`
-	Limit        int    `json:"limit"`
-	UseEventID   bool   `json:"use_event_id"`
-}
-
-type QueryEventsByDomainOffsetResponse struct {
-	Error string                    `json:"error"`
-	PDUs  []gomatrixserverlib.Event `json:"pdus"`
-}
-
 type QueryJoinRoomsRequest struct {
 	UserID string `json:"user_id"`
 }
@@ -124,14 +110,13 @@ type QueryRoomStateResponse struct {
 }
 
 type RoomserverRpcRequest struct {
-	QueryEventsByID           *QueryEventsByIDRequest           `json:"qry_events_by_id,omitempty"`
-	QueryRoomEventByID        *QueryRoomEventByIDRequest        `json:"qry_room_events_by_id,omitempty"`
-	QueryJoinRooms            *QueryJoinRoomsRequest            `json:"qry_join_rooms,omitempty"`
-	QueryRoomState            *QueryRoomStateRequest            `json:"qry_room_state,omitempty"`
-	QueryBackFillEvents       *QueryBackFillEventsRequest       `json:"qry_back_fill,omitempty"`
-	QueryEventAuth            *QueryEventAuthRequest            `json:"qry_event_auth,omitempty"`
-	QueryEventsByDomainOffset *QueryEventsByDomainOffsetRequest `json:"qry_events_by_domain_offset,omitempty"`
-	Reply                     string
+	QueryEventsByID     *QueryEventsByIDRequest     `json:"qry_events_by_id,omitempty"`
+	QueryRoomEventByID  *QueryRoomEventByIDRequest  `json:"qry_room_events_by_id,omitempty"`
+	QueryJoinRooms      *QueryJoinRoomsRequest      `json:"qry_join_rooms,omitempty"`
+	QueryRoomState      *QueryRoomStateRequest      `json:"qry_room_state,omitempty"`
+	QueryBackFillEvents *QueryBackFillEventsRequest `json:"qry_back_fill,omitempty"`
+	QueryEventAuth      *QueryEventAuthRequest      `json:"qry_event_auth,omitempty"`
+	Reply               string
 }
 
 func (rs *QueryRoomStateResponse) InitFromEvents(events []gomatrixserverlib.Event) {
@@ -340,11 +325,5 @@ type RoomserverQueryAPI interface {
 		ctx context.Context,
 		request *QueryEventAuthRequest,
 		response *QueryEventAuthResponse,
-	) error
-
-	QueryEventsByDomainOffset( //fed
-		ctx context.Context,
-		request *QueryEventsByDomainOffsetRequest,
-		response *QueryEventsByDomainOffsetResponse,
 	) error
 }

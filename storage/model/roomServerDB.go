@@ -16,22 +16,19 @@ package model
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type RoomServerDatabase interface {
 	//NewDatabase(driver, createAddr, address, topic string, useAsync bool) (interface{}, error)
-	GetDB() *sql.DB
-
 	SetIDGenerator(idg *uid.UidGenerator)
 
-	WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error
+	WriteDBEvent(update *dbtypes.DBEvent) error
 
 	RecoverCache()
 
@@ -123,9 +120,9 @@ type RoomServerDatabase interface {
 		ctx context.Context,
 	) (count int, err error)
 	SetLatestEvents(
-		ctx context.Context, roomNID int64, lastEventNIDSent, currentStateSnapshotNID, depth int64,
+		roomNID int64, lastEventNIDSent, currentStateSnapshotNID, depth int64,
 	) error
-	LoadFilterData(ctx context.Context, key string, f *filter.Filter) bool
+	LoadFilterData(key string, f *filter.Filter) bool
 	GetUserRooms(
 		ctx context.Context, uid string,
 	) ([]string, []string, []string, error)
@@ -139,14 +136,13 @@ type RoomServerDatabase interface {
 	RoomDomainsInsertRaw(ctx context.Context, room_nid int64, domain string, offset int64) error
 	GetRoomDomainsOffset(ctx context.Context, room_nid int64) ([]string, []int64, error)
 	BackFillNids(ctx context.Context, roomNID int64, domain string, eventNid int64, limit int, dir string) ([]int64, error)
-	SelectRoomEventsByDomainOffset(ctx context.Context, roomNID int64, domain string, domainOffset int64, limit int) ([]int64, error)
+	SelectEventNidForBackfill(ctx context.Context, roomNID int64, domain string) (int64, error)
 	UpdateRoomEvent(ctx context.Context, eventNID, roomNID, depth, domainOffset int64, domain string) error
 	OnUpdateRoomEvent(ctx context.Context, eventNID, roomNID, depth, domainOffset int64, domain string) error
 	UpdateRoomDepth(ctx context.Context, depth, roomNid int64) error
 	OnUpdateRoomDepth(ctx context.Context, depth, roomNid int64) error
 	SettingsInsertRaw(ctx context.Context, settingKey string, val string) error
 	SaveSettings(ctx context.Context, settingKey string, val string) error
-	SelectSettingKey(ctx context.Context, settingKey string) (string, error)
 	SelectRoomMaxDomainOffsets(ctx context.Context, roomNID int64) (domains, eventIDs []string, offsets []int64, err error)
 	SelectEventStateSnapshotNID(ctx context.Context, eventID string) (int64, error)
 	SelectRoomStateNIDByStateBlockNID(ctx context.Context, roomNID int64, stateBlockNID int64) ([]int64, []string, []string, []string, error)

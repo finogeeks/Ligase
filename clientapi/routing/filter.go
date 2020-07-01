@@ -69,9 +69,21 @@ func PutFilter(
 	accountDB model.AccountsDatabase,
 	cache service.Cache,
 ) (int, core.Coder) {
+	// if req.Method != http.MethodPost {
+	// 	return util.JSONResponse{
+	// 		Code: http.StatusMethodNotAllowed,
+	// 		JSON: jsonerror.NotFound("Bad method"),
+	// 	}
+	// }
 	if userID != filter.UserID {
 		return http.StatusForbidden, jsonerror.Forbidden("Cannot create filters for other users")
 	}
+
+	// var filter external.PostUserFilterRequest
+
+	// if reqErr := httputil.UnmarshalJSONRequest(req, &filter); reqErr != nil {
+	// 	return *reqErr
+	// }
 
 	filterArray, err := json.Marshal(filter)
 	if err != nil {
@@ -80,6 +92,12 @@ func PutFilter(
 
 	filterString := string(filterArray)
 	filterHash := common.GetStringHash(filterString)
+	/*if filterID, ok := cache.GetAccountFilterIDByContent(userID, filterHash); ok {
+		return util.JSONResponse{
+			Code: http.StatusOK,
+			JSON: external.PostUserFilterResponse{FilterID: filterID},
+		}
+	}*/
 
 	err = accountDB.PutFilter(ctx, userID, filterHash, filterString)
 	if err != nil {

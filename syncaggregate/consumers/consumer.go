@@ -20,18 +20,20 @@ package consumers
 import (
 	"context"
 	"github.com/finogeeks/ligase/adapter"
+	"math"
+	"math/rand"
 	"time"
 
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/plugins/message/external"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -57,10 +59,9 @@ type EventFeedConsumer struct {
 	presenceStreamRepo *repos.PresenceDataStreamRepo
 	cfg                *config.Dendrite
 	chanSize           uint32
-	//msgChan            []chan *UtlEvent
-	msgChan     []chan common.ContextMsg
-	utlChanSize uint32
-	utlChan     []chan common.ContextMsg
+	msgChan            []chan *UtlEvent
+	utlChanSize        uint32
+	utlChan            []chan *UtlContent
 }
 
 func NewEventFeedConsumer(
@@ -98,57 +99,54 @@ func (s *EventFeedConsumer) SetPresenceStreamRepo(presenceRepo *repos.PresenceDa
 	return s
 }
 
-func (s *EventFeedConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*UtlEvent)
-		s.onNewRoomEvent(msg.Ctx, data)
+func (s *EventFeedConsumer) startWorker(msgChan chan *UtlEvent) {
+	for data := range msgChan {
+		s.onNewRoomEvent(context.TODO(), data)
 	}
 }
 
-func (s *EventFeedConsumer) startUtlWorker(utlChan chan common.ContextMsg) {
-	for msg := range utlChan {
-		data := msg.Msg.(*UtlContent)
-		s.onInsertUserTimeLine(msg.Ctx, data)
+func (s *EventFeedConsumer) startUtlWorker(utlChan chan *UtlContent) {
+	for data := range utlChan {
+		s.onInsertUserTimeLine(data)
 	}
 }
 
-func (s *EventFeedConsumer) dispthInsertUserTimeLine(ctx context.Context, ev *gomatrixserverlib.ClientEvent, user string, result chan int64) {
+func (s *EventFeedConsumer) dispthInsertUserTimeLine(ev *gomatrixserverlib.ClientEvent, user string, result chan int64) {
 	idx := common.CalcStringHashCode(user) % s.utlChanSize
-	s.utlChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &UtlContent{
+	s.utlChan[idx] <- &UtlContent{
 		ev:     ev,
 		user:   user,
 		result: result,
-	}}
+	}
 }
 
-func (s *EventFeedConsumer) onInsertUserTimeLine(ctx context.Context, data *UtlContent) {
+func (s *EventFeedConsumer) onInsertUserTimeLine(data *UtlContent) {
 	offset, _ := s.userTimeLine.Idg.Next()
-	//only for debug
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
-		delay := adapter.Random(0, 10)
+		delay := math.Max(0, 11-math.Pow(float64(rand.Intn(200)), 1/1.5))
 		log.Infof("roomId:%s offset:%d event_id:%s user:%s sleep %ds", data.ev.RoomID, offset, data.ev.EventID, data.user, delay)
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
-	s.userTimeLine.AddP2PEv(ctx, data.ev, offset, data.user)
+	s.userTimeLine.AddP2PEv(data.ev, offset, data.user)
 	data.result <- offset
 }
 
 func (s *EventFeedConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *UtlEvent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *UtlEvent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
-	s.utlChan = make([]chan common.ContextMsg, s.chanSize)
+	s.utlChan = make([]chan *UtlContent, s.chanSize)
 	for i := uint32(0); i < s.utlChanSize; i++ {
-		s.utlChan[i] = make(chan common.ContextMsg, 512)
+		s.utlChan[i] = make(chan *UtlContent, 512)
 		go s.startUtlWorker(s.utlChan[i])
 	}
 	//s.channel.Start()
 	return nil
 }
 
-func (s *EventFeedConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *EventFeedConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("sync aggregate: message parse failure", log.KeysAndValues{"error", err})
@@ -173,7 +171,7 @@ func (s *EventFeedConsumer) OnMessage(ctx context.Context, topic string, partiti
 		if len(utlEvent.RelateJoined) > 0 || (len(utlEvent.RelateJoined) <= 0 && utlEvent.Event.Type == "m.room.member") {
 			log.Infof("sync aggregate received data instance:%d IsRelatedRequest event_id:%s room:%s RelateJoined:%v", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, utlEvent.RelateJoined)
 			idx := common.CalcStringHashCode(utlEvent.Event.RoomID) % s.chanSize
-			s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: utlEvent}
+			s.msgChan[idx] <- utlEvent
 		} else {
 			log.Infof("sync aggregate received data instance:%d not IsRelatedRequest and not m.room.member event_id:%s room:%s joined:%v", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, output.NewRoomEvent.Joined)
 		}
@@ -192,13 +190,12 @@ func (s *EventFeedConsumer) onNewRoomEvent(
 		}
 	}()
 	log.Infof("onNewRoomEvent.addUserTimeLineEvent roomID:%s eventID:%s msg.RelateJoined len:%d msg.Joined len:%d", msg.Event.RoomID, msg.Event.EventID, len(msg.RelateJoined), len(msg.Joined))
-	s.addUserTimeLineEvent(ctx, &msg.Event, msg.RelateJoined, msg.Joined)
+	s.addUserTimeLineEvent(&msg.Event, msg.RelateJoined, msg.Joined)
 	return nil
 }
 
-func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatrixserverlib.ClientEvent, relateUsers []string, users []string) {
+func (s *EventFeedConsumer) addUserTimeLineEvent(ev *gomatrixserverlib.ClientEvent, relateUsers []string, users []string) {
 	var updateProfileUser map[string]map[string]struct{}
-	//offset, _ := s.userTimeLine.Idg.Next()
 	if ev.Type == "m.room.member" && ev.StateKey != nil {
 		member := external.MemberContent{}
 		json.Unmarshal(ev.Content, &member)
@@ -207,7 +204,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatr
 				bs := time.Now().UnixNano() / 1000000
 				//s.userTimeLine.AddP2PEv(ctx, ev, offset, *ev.StateKey)
 				result := make(chan int64)
-				s.dispthInsertUserTimeLine(ctx, ev, *ev.StateKey, result)
+				s.dispthInsertUserTimeLine(ev, *ev.StateKey, result)
 				offset := <-result
 				spend := time.Now().UnixNano()/1000000 - bs
 				log.Infof("m.room.member not join add to timeline roomId:%s offset:%d event_id:%s user_id:%s spend:%dms", ev.RoomID, offset, ev.EventID, *ev.StateKey, spend)
@@ -216,7 +213,6 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatr
 			updateProfileUser = map[string]map[string]struct{}{}
 			domain, _ := common.DomainFromID(*ev.StateKey)
 			isSelfDomain := common.CheckValidDomain(domain, s.cfg.Matrix.ServerName)
-			bs := time.Now().UnixNano() / 1000000
 			for _, member := range relateUsers {
 				hasLoad, hasFriendship := s.userTimeLine.AddFriendShip(member, *ev.StateKey)
 				domainCheck, _ := common.DomainFromID(member)
@@ -243,15 +239,13 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatr
 					s.userTimeLine.AddFriendShip(*ev.StateKey, member)
 				}
 			}
-			spend := time.Now().UnixNano()/1000000 - bs
-			log.Infof("m.room.member join add to add friend ship roomId:%s event_id:%s user_id:%s spend:%dms", ev.RoomID, ev.EventID, *ev.StateKey, spend)
 		}
 	}
 	for _, user := range relateUsers {
 		bs := time.Now().UnixNano() / 1000000
 		//s.userTimeLine.AddP2PEv(ctx, ev, offset, user)
 		result := make(chan int64)
-		s.dispthInsertUserTimeLine(ctx, ev, user, result)
+		s.dispthInsertUserTimeLine(ev, user, result)
 		offset := <-result
 		spend := time.Now().UnixNano()/1000000 - bs
 		log.Infof("m.room.member not join add to timeline roomId:%s offset:%d event_id:%s user_id:%s spend:%dms", ev.RoomID, offset, ev.EventID, user, spend)
@@ -287,20 +281,13 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatr
 						Destination: domain,
 						Content:     content,
 					}
-					func() {
-						span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.FedEduUpdate.Name)
-						defer span.Finish()
-						common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.FedEduUpdate.Name,
-							s.cfg.Kafka.Producer.FedEduUpdate.Underlying)
-						common.GetTransportMultiplexer().SendWithRetry(
-							s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
-							s.cfg.Kafka.Producer.FedEduUpdate.Name,
-							&core.TransportPubMsg{
-								Keys:    []byte(user),
-								Obj:     edu,
-								Headers: common.InjectSpanToHeaderForSending(span),
-							})
-					}()
+					common.GetTransportMultiplexer().SendWithRetry(
+						s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
+						s.cfg.Kafka.Producer.FedEduUpdate.Name,
+						&core.TransportPubMsg{
+							Keys: []byte(user),
+							Obj:  edu,
+						})
 				}
 			}
 		}

@@ -16,7 +16,6 @@ package rpc
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/model/types"
 	"strconv"
 
 	"github.com/finogeeks/ligase/common"
@@ -41,8 +40,7 @@ type PublicRoomsRpcConsumer struct {
 	UmsRepo   *repos.RoomServerUserMembershipRepo
 	Proc      roomserverapi.RoomserverQueryAPI
 
-	//msgChan1 chan *publicroomsapi.PublicRoomsRpcRequest
-	msgChan1 chan common.ContextMsg
+	msgChan1 chan *publicroomsapi.PublicRoomsRpcRequest
 }
 
 func NewPublicRoomsRpcConsumer(
@@ -56,19 +54,18 @@ func NewPublicRoomsRpcConsumer(
 		DB:        db,
 	}
 
-	s.msgChan1 = make(chan common.ContextMsg, 1024)
+	s.msgChan1 = make(chan *publicroomsapi.PublicRoomsRpcRequest, 1024)
 	return s
 }
 
 func (s *PublicRoomsRpcConsumer) Start() error {
 	go func() {
-		for msg := range s.msgChan1 {
-			data := msg.Msg.(*publicroomsapi.PublicRoomsRpcRequest)
-			s.processQueryRoomState(msg.Ctx, data.QueryPublicRooms, data.Reply)
+		for data := range s.msgChan1 {
+			s.processQueryRoomState(data.QueryPublicRooms, data.Reply)
 		}
 	}()
 
-	s.rpcClient.ReplyGrpWithContext(s.GetTopic(), types.PUBLICROOM_RPC_GROUP, s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 	return nil
 }
 
@@ -76,7 +73,7 @@ func (s *PublicRoomsRpcConsumer) GetTopic() string {
 	return s.cfg.Rpc.PrQryTopic
 }
 
-func (s *PublicRoomsRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *PublicRoomsRpcConsumer) cb(msg *nats.Msg) {
 	var request publicroomsapi.PublicRoomsRpcRequest
 	if err := json.Unmarshal(msg.Data, &request); err != nil {
 		log.Errorf("rpc roomserverqry unmarshal error %v", err)
@@ -86,16 +83,15 @@ func (s *PublicRoomsRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	request.Reply = msg.Reply
 
 	if request.QueryPublicRooms != nil {
-		s.msgChan1 <- common.ContextMsg{Ctx: ctx, Msg: &request}
+		s.msgChan1 <- &request
 	}
 }
 
 func (s *PublicRoomsRpcConsumer) processQueryRoomState(
-	ctx context.Context,
 	request *publicroomsapi.QueryPublicRoomsRequest,
 	reply string,
 ) {
-	//ctx := context.TODO()
+	ctx := context.TODO()
 	limit := request.Limit
 	since := request.Since
 	filter := request.Filter

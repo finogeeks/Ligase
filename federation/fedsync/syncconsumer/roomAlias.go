@@ -19,14 +19,13 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/plugins/message/external"
 )
 
 func GetAliasRoomID(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -40,7 +39,7 @@ func GetAliasRoomID(
 	log.Infof("extra: %s, aliasreq: %v", string(request.Extra), aliasReq)
 
 	// destination := fmt.Sprintf("%s:%s", request.Destination, s.cfg.GetConnectorPort())
-	fedResp, err := fedClient.LookupRoomAlias(ctx, destination, aliasReq.RoomAlias)
+	fedResp, err := fedClient.LookupRoomAlias(context.Background(), destination, aliasReq.RoomAlias)
 	if err != nil {
 		log.Errorf("federation LookupRoomAlias error %v", err)
 		return external.GetDirectoryRoomAliasResponse{}
@@ -55,7 +54,6 @@ func GetAliasRoomID(
 }
 
 func GetRoomState(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -70,13 +68,13 @@ func GetRoomState(
 	log.Infof("extra: %s, statereq: %v", string(request.Extra), stateReq)
 
 	// destination := fmt.Sprintf("%s:%s", request.Destination, s.cfg.GetConnectorPort())
-	fedResp, err := fedClient.LookupState(ctx, destination, stateReq.RoomID, stateReq.EventID)
+	fedResp, err := fedClient.LookupState(context.Background(), destination, stateReq.RoomID, stateReq.EventID)
 	if err != nil {
 		log.Errorf("federation LookupRoomState error %v", err)
 		return gomatrixserverlib.RespState{}
 	}
 
-	proc.AddRequest(ctx, fedResp.StateEvents, false) // TODO: false是因为自动邀请时有可能需要历史消息，这是临时解决方案，看以后有没有更好的处理
+	proc.AddRequest(fedResp.StateEvents, false) // TODO: false是因为自动邀请时有可能需要历史消息，这是临时解决方案，看以后有没有更好的处理
 	log.Infof("LookupState return :%v", fedResp)
 	return fedResp
 	// s.rpcClient.PubObj(reply, response)

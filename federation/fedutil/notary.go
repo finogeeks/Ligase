@@ -23,11 +23,11 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/finogeeks/ligase/common/fetch"
-	"github.com/finogeeks/ligase/model/noticetypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/noticetypes"
 )
 
-func DownloadFromNotary(ctx context.Context, typ string, reqUrl string, keyDB model.KeyDatabase) (resp noticetypes.GetCertsResponse, err error) {
+func DownloadFromNotary(typ string, reqUrl string, keyDB model.KeyDatabase) (resp noticetypes.GetCertsResponse, err error) {
 	res, err := fetch.HttpsReqUnsafe("GET", reqUrl, nil, nil)
 	if err != nil {
 		log.Errorf("notary download, err: %v", err)
@@ -45,19 +45,19 @@ func DownloadFromNotary(ctx context.Context, typ string, reqUrl string, keyDB mo
 	if typ == "rootCA" {
 		log.Infof("--------------notary download, get rootCA: \n%s", resp.RootCA)
 
-		keyDB.InsertRootCA(ctx, resp.RootCA)
+		keyDB.InsertRootCA(context.TODO(), resp.RootCA)
 		return resp, nil
 	} else if typ == "cert" {
 		log.Infof("--------------notary download, get server_cert: \n%s", resp.ServerCert)
 		log.Infof("--------------notary download, get server_key: \n%s", resp.ServerKey)
 
 		// upsert cert
-		keyDB.UpsertCert(ctx, resp.ServerCert, resp.ServerKey)
+		keyDB.UpsertCert(context.TODO(), resp.ServerCert, resp.ServerKey)
 		return resp, nil
 	} else if typ == "crl" {
 		log.Infof("--------------notary download, get CRL: \n%s", resp.CRL)
 
-		keyDB.UpsertCRL(ctx, resp.CRL)
+		keyDB.UpsertCRL(context.TODO(), resp.CRL)
 		return resp, nil
 	}
 

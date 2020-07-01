@@ -24,7 +24,7 @@ import (
 type DeviceDatabase interface {
 	//NewDatabase(driver, createAddr, address, topic string, useAsync bool) (interface{}, error)
 
-	WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error
+	WriteDBEvent(update *dbtypes.DBEvent) error
 
 	RecoverCache()
 
@@ -87,7 +87,7 @@ type DeviceDatabase interface {
 		ctx context.Context, identifier, userID string,
 	) (string, string, int64, error)
 
-	LoadSimpleFilterData(ctx context.Context, f *filter.SimpleFilter) bool
+	LoadSimpleFilterData(f *filter.SimpleFilter) bool
 
-	LoadFilterData(ctx context.Context, key string, f *filter.Filter) bool
+	LoadFilterData(key string, f *filter.Filter) bool
 }

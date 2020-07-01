@@ -15,15 +15,14 @@
 package consumers
 
 import (
-	"context"
 	"math/rand"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/go-nats"
 )
 
@@ -39,15 +38,14 @@ type VerifyTokenCB struct {
 	cache       service.Cache
 	cfg         *config.Dendrite
 	chanSize    uint32
-	//msgChan     []chan VerifyToken
-	msgChan []chan common.ContextMsg
+	msgChan     []chan VerifyToken
 }
 
 func (f *VerifyTokenCB) GetTopic() string {
 	return types.VerifyTokenTopicDef
 }
 
-func (f *VerifyTokenCB) GetCB() common.MsgHandlerWithContext {
+func (f *VerifyTokenCB) GetCB() nats.MsgHandler {
 	return f.cb
 }
 
@@ -71,7 +69,7 @@ func NewVerifyTokenConsumer(
 	return f
 }
 
-func (f *VerifyTokenCB) cb(ctx context.Context, msg *nats.Msg) {
+func (f *VerifyTokenCB) cb(msg *nats.Msg) {
 	var req types.VerifyTokenRequest
 	err := json.Unmarshal(msg.Data, &req)
 	if err != nil {
@@ -79,36 +77,32 @@ func (f *VerifyTokenCB) cb(ctx context.Context, msg *nats.Msg) {
 		return
 	}
 	idx := rand.Intn(len(f.msgChan))
-	f.msgChan[idx] <- common.ContextMsg{
-		Ctx: ctx,
-		Msg: VerifyToken{
-			reply:      msg.Reply,
-			token:      req.Token,
-			requestURI: req.RequestURI,
-		},
+	f.msgChan[idx] <- VerifyToken{
+		reply:      msg.Reply,
+		token:      req.Token,
+		requestURI: req.RequestURI,
 	}
 }
 
-func (f *VerifyTokenCB) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(VerifyToken)
-		f.process(msg.Ctx, &data)
+func (f *VerifyTokenCB) startWorker(msgChan chan VerifyToken) {
+	for data := range msgChan {
+		f.process(&data)
 	}
 }
 
 func (f *VerifyTokenCB) Start() error {
 	log.Infof("FilterTokenConsumer start")
-	f.msgChan = make([]chan common.ContextMsg, f.chanSize)
+	f.msgChan = make([]chan VerifyToken, f.chanSize)
 	for i := uint32(0); i < f.chanSize; i++ {
-		f.msgChan[i] = make(chan common.ContextMsg, 512)
+		f.msgChan[i] = make(chan VerifyToken, 512)
 		go f.startWorker(f.msgChan[i])
 	}
 
-	f.rpcClient.ReplyWithContext(f.GetTopic(), f.cb)
+	f.rpcClient.Reply(f.GetTopic(), f.cb)
 	return nil
 }
 
-func (f *VerifyTokenCB) process(ctx context.Context, data *VerifyToken) {
+func (f *VerifyTokenCB) process(data *VerifyToken) {
 	device, resErr := common.VerifyToken(data.token, data.requestURI, f.cache, *f.cfg, f.tokenFilter)
 	resp := types.VerifyTokenResponse{}
 	if device != nil {

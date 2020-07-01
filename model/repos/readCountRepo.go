@@ -16,8 +16,8 @@ package repos
 
 import (
 	"fmt"
-	"github.com/finogeeks/ligase/model/service"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service"
 	"sync"
 	"time"
 )

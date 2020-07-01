@@ -15,17 +15,16 @@
 package entry
 
 import (
-	"context"
 	"errors"
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -48,7 +47,7 @@ func getUserInfoFromCache(msg *model.GobMessage, cache service.Cache) (*authtype
 	return userInfo, nil
 }
 
-func GetUserInfo(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func GetUserInfo(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	userInfo, err := getUserInfoFromCache(msg, cache)
 	if err != nil {
 		return &model.GobMessage{}, err

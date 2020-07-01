@@ -18,12 +18,10 @@
 package consumers
 
 import (
-	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"time"
 )
 
@@ -32,15 +30,13 @@ func init() {
 }
 
 type E2EDBEvCacheConsumer struct {
-	pool PoolProviderInterface
-	//msgChan chan *dbtypes.DBEvent
-	msgChan chan common.ContextMsg
+	pool    PoolProviderInterface
+	msgChan chan *dbtypes.DBEvent
 }
 
-func (s *E2EDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *E2EDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
 	var res error
-	for msg := range msgChan {
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		if output.IsRecovery {
 			start := time.Now().UnixNano() / 1000000
 
@@ -73,7 +69,7 @@ func (s *E2EDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
 // NewE2EDBEvCacheConsumer creates a new DBUpdateData consumer. Call Start() to begin consuming from room servers.
 func NewE2EDBEvCacheConsumer() ConsumerInterface {
 	s := new(E2EDBEvCacheConsumer)
-	s.msgChan = make(chan common.ContextMsg, 1024)
+	s.msgChan = make(chan *dbtypes.DBEvent, 1024)
 
 	return s
 }
@@ -89,8 +85,8 @@ func (s *E2EDBEvCacheConsumer) Start() {
 	go s.startWorker(s.msgChan)
 }
 
-func (s *E2EDBEvCacheConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
-	s.msgChan <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+func (s *E2EDBEvCacheConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
+	s.msgChan <- dbEv
 	return nil
 }
 

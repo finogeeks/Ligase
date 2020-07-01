@@ -22,8 +22,8 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -257,17 +257,17 @@ func (c *RoomserverRpcClient) InputRoomEvents(
 ) (int, error) {
 	log.Infof("-------RoomserverRpcClient InputRoomEvents start")
 	if c.input != nil {
-		log.Infof("-------RoomserverRpcClient input not nil, direct call")
-		return c.input.InputRoomEvents(ctx, rawEvent)
+		if rawEvent.TxnID != nil {
+			log.Infof("-------RoomserverRpcClient input not nil, direct call txnId:%s", rawEvent.TxnID)
+		} else {
+			log.Infof("-------RoomserverRpcClient input not nil, direct call")
+		}
+		return c.input.InputRoomEvents(context.TODO(), rawEvent)
 	}
 
 	if c.inputUseKafka == true {
 		log.Infof("-------RoomserverRpcClient send to node %s", c.cfg.Kafka.Producer.InputRoomEvent.Name)
 		// TODO: 返回0先，如果成功则也没问题，如果失败则认为所有事件失败
-		span, _ := common.StartSpanFromContext(ctx, c.cfg.Kafka.Producer.InputRoomEvent.Name)
-		defer span.Finish()
-		common.ExportMetricsBeforeSending(span, c.cfg.Kafka.Producer.InputRoomEvent.Name,
-			c.cfg.Kafka.Producer.InputRoomEvent.Underlying)
 		return 0, common.GetTransportMultiplexer().SendAndRecvWithRetry(
 			c.cfg.Kafka.Producer.InputRoomEvent.Underlying,
 			c.cfg.Kafka.Producer.InputRoomEvent.Name,
@@ -350,33 +350,6 @@ func (c *RoomserverRpcClient) QueryEventAuth(
 	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
 
 	log.Infof("-------QueryEventAuth resp data:%v, err:%v", string(data), err)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
-}
-
-func (c *RoomserverRpcClient) QueryEventsByDomainOffset( //fed
-	ctx context.Context,
-	req *roomserverapi.QueryEventsByDomainOffsetRequest,
-	response *roomserverapi.QueryEventsByDomainOffsetResponse,
-) error {
-	log.Infof("-------RoomserverRpcClient QueryEventsByDomainOffset start, %v", c.qry)
-	if c.qry != nil {
-		return c.qry.QueryEventsByDomainOffset(ctx, req, response)
-	}
-
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryEventsByDomainOffset: req,
-	}
-	bytes, err := json.Marshal(content)
-
-	log.Infof("-------QueryEventsByDomainOffset send data:%v", string(bytes))
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
-
-	log.Infof("-------QueryEventsByDomainOffset resp data:%v, err:%v", string(data), err)
 	if err == nil {
 		json.Unmarshal(data, response)
 		return nil

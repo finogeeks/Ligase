@@ -19,9 +19,10 @@ package basecomponent
 
 import (
 	"flag"
-	"log"
 
 	"github.com/finogeeks/ligase/common/config"
+
+	"log"
 )
 
 var configPath = flag.String("config", "dendrite.yaml", "The path to the config file. For more information, see the config file in this repository.")

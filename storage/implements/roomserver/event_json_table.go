@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common/encryption"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/lib/pq"
 )
 
@@ -137,13 +137,14 @@ func (s *eventJSONStatements) insertEventJSON(
 		var update dbtypes.DBEvent
 		update.Category = dbtypes.CATEGORY_ROOM_DB_EVENT
 		update.Key = dbtypes.EventJsonInsertKey
+		update.SetUid(eventNID)
 		update.RoomDBEvents.EventJsonInsert = &dbtypes.EventJsonInsert{
 			EventNid:  eventNID,
 			EventJson: eventJSON,
 			EventType: eventType,
 		}
 		update.SetUid(eventNID)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_event_json")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 

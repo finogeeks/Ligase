@@ -20,10 +20,10 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/rcsserver/processors"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/rcsserver/processors"
 	"github.com/nats-io/go-nats"
 )
 
@@ -35,8 +35,7 @@ type EventConsumer struct {
 	cfg      *config.Dendrite
 	slot     uint32
 	chanSize uint32
-	//msgChan  []chan *types.RCSInputEventContent
-	msgChan []chan common.ContextMsg
+	msgChan  []chan *types.RCSInputEventContent
 }
 
 func NewEventConsumer(
@@ -61,7 +60,7 @@ func (s *EventConsumer) GetTopic() string {
 	return types.RCSEventTopicDef
 }
 
-func (s *EventConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *EventConsumer) cb(msg *nats.Msg) {
 	var cont types.RCSInputEventContent
 	if err := json.Unmarshal(msg.Data, &cont); err != nil {
 		log.Errorf("Failed to unmarshal nats.Msg to gomatrixserverlib.Event: %v\n", err)
@@ -70,23 +69,23 @@ func (s *EventConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	cont.Reply = msg.Reply
 	// TODO: glare situation.
 	idx := common.CalcStringHashCode(cont.Event.RoomID()) % s.slot
-	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &cont}
+	s.msgChan[idx] <- &cont
 }
 
 func (s *EventConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.slot)
+	s.msgChan = make([]chan *types.RCSInputEventContent, s.slot)
 	for i := uint32(0); i < s.slot; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, s.chanSize)
-		go s.startWorker(s.msgChan[i])
+		s.msgChan[i] = make(chan *types.RCSInputEventContent, s.chanSize)
+		go s.startWorker(context.Background(), s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyGrpWithContext(s.GetTopic(), types.RCSSERVER_RPC_GROUP, s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 	return nil
 }
 
-func (s *EventConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *EventConsumer) startWorker(ctx context.Context, msgChan chan *types.RCSInputEventContent) {
 	for cont := range msgChan {
-		s.handleEvent(cont.Ctx, cont.Msg.(*types.RCSInputEventContent))
+		s.handleEvent(ctx, cont)
 	}
 }
 

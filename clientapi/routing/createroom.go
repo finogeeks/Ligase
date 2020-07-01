@@ -32,13 +32,13 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -68,7 +68,7 @@ func validate(r *external.PostCreateRoomRequest) (int, *jsonerror.MatrixError) {
 	}
 	for _, userID := range r.Invite {
 		// TODO: We should put user ID parsing code into gomatrixserverlib and use that instead
-		//       (see https://github.com/finogeeks/dendrite/skunkworks/gomatrixserverlib/blob/3394e7c7003312043208aa73727d2256eea3d1f6/eventcontent.go#L347 )
+		//       (see https://github.com/finogeeks/ligase/skunkworks/gomatrixserverlib/blob/3394e7c7003312043208aa73727d2256eea3d1f6/eventcontent.go#L347 )
 		//       It should be a struct (with pointers into a single string to avoid copying) and
 		//       we should update all refs to use UserID types rather than strings.
 		// https://github.com/matrix-org/synapse/blob/v0.19.2/synapse/types.py#L92
@@ -163,7 +163,7 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 	log.Debugf("send event check param use %v", now.Sub(last))
 	last = now
 
-	displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+	displayName, avatarURL, _ := complexCache.GetProfileByUserID(userID)
 
 	now = time.Now()
 	log.Debugf("send event get profile use %v", now.Sub(last))
@@ -215,7 +215,7 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 	federate := false
 	fed, ok := r.CreationContent["m.federate"]
 	if ok {
-		federate = fed.(bool)
+		federate, _ = fed.(bool)
 	}
 	//r.CreationContent["m.federate"] = federate
 	//r.CreationContent["creator"] = userID
@@ -265,6 +265,18 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 		createContent.RoomType = &val
 	}
 
+	mapVal, ok = r.CreationContent["is_organization_room"]
+	if ok {
+		val := mapVal.(bool)
+		createContent.IsOrganizationRoom = &val
+	}
+
+	mapVal, ok = r.CreationContent["is_group_room"]
+	if ok {
+		val := mapVal.(bool)
+		createContent.IsGroupRoom = &val
+	}
+
 	eventsToMake := []external.StateEvent{
 		{Type: "m.room.create", Content: createContent},
 		{Type: "m.room.member", StateKey: userID, Content: membershipContent},
@@ -281,11 +293,11 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 	if r.Name != "" {
 		eventsToMake = append(eventsToMake, external.StateEvent{Type: "m.room.name", Content: common.NameContent{Name: r.Name}})
 	}
-	if r.Desc != "" {
-		eventsToMake = append(eventsToMake, external.StateEvent{Type: "m.room.desc", Content: common.DescContent{Desc: r.Desc}})
-	}
 	if r.Topic != "" {
 		eventsToMake = append(eventsToMake, external.StateEvent{Type: "m.room.topic", Content: common.TopicContent{Topic: r.Topic}})
+	}
+	if r.Desc != "" {
+		eventsToMake = append(eventsToMake, external.StateEvent{Type: "m.room.desc", Content: common.DescContent{Desc: r.Desc}})
 	}
 	if roomAlias != "" {
 		eventsToMake = append(eventsToMake, external.StateEvent{Type: "m.room.aliases", StateKey: domainID, Content: common.AliasesContent{Aliases: []string{roomAlias}}})
@@ -297,7 +309,7 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 
 	for _, invitor := range r.Invite {
 
-		displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, invitor)
+		displayName, avatarURL, _ := complexCache.GetProfileByUserID(invitor)
 
 		membershipContent := external.MemberContent{
 			Membership:  "invite",
@@ -381,7 +393,7 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 		Query: []string{"create_room", ""},
 	}
 
-	_, err := rpcCli.InputRoomEvents(ctx, &rawEvent)
+	_, err := rpcCli.InputRoomEvents(context.Background(), &rawEvent)
 
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)

@@ -27,10 +27,10 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/storage/model"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 // SetupClientAPIComponent sets up and registers HTTP handlers for the ClientAPI
@@ -50,8 +50,9 @@ func SetupClientAPIComponent(
 	rpcCli *common.RpcClient,
 	tokenFilter *filter.Filter,
 	idg *uid.UidGenerator,
+	settings *common.Settings,
+	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
-	serverConfDB model.ConfigDatabase,
 ) {
 	profileRpcConsumer := rpc.NewProfileRpcConsumer(rpcCli, base.Cfg, rsRpcCli, idg, accountsDB, presenceDB, cache, complexCache)
 	profileRpcConsumer.Start()
@@ -61,7 +62,7 @@ func SetupClientAPIComponent(
 		rsRpcCli, accountsDB, deviceDB,
 		federation, *keyRing,
 		cache, encryptDB, syncDB, presenceDB,
-		roomDB, rpcCli, tokenFilter, complexCache, serverConfDB,
+		roomDB, rpcCli, tokenFilter, settings, fedDomians, complexCache,
 	)
 	apiConsumer.Start()
 }

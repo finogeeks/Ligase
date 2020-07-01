@@ -21,6 +21,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/storage/model"
 	"io"
 	"os"
 	"strings"
@@ -28,13 +32,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/storage/model"
-
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -42,9 +41,8 @@ func init() {
 }
 
 type PublicRoomDBEVConsumer struct {
-	db model.PublicRoomAPIDatabase
-	//msgChan     []chan *dbtypes.DBEvent
-	msgChan     []chan common.ContextMsg
+	db          model.PublicRoomAPIDatabase
+	msgChan     []chan *dbtypes.DBEvent
 	monState    []*DBMonItem
 	path        string
 	fileName    string
@@ -55,24 +53,22 @@ type PublicRoomDBEVConsumer struct {
 	cfg         *config.Dendrite
 }
 
-func (s *PublicRoomDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *PublicRoomDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
 		data := output.PublicRoomDBEvents
 		switch key {
 		case dbtypes.PublicRoomInsertKey:
-			res = s.onInsertNewRoom(ctx, data.PublicRoomInsert)
+			res = s.onInsertNewRoom(context.TODO(), data.PublicRoomInsert)
 		case dbtypes.PublicRoomUpdateKey:
-			res = s.onUpdateRoomAttribute(ctx, data.PublicRoomUpdate)
+			res = s.onUpdateRoomAttribute(context.TODO(), data.PublicRoomUpdate)
 		case dbtypes.PublicRoomIncrementJoinedKey:
-			res = s.onIncrementJoinedMembersInRoom(ctx, data.PublicRoomJoined)
+			res = s.onIncrementJoinedMembersInRoom(context.TODO(), data.PublicRoomJoined)
 		case dbtypes.PublicRoomDecrementJoinedKey:
-			res = s.onDecrementJoinedMembersInRoom(ctx, data.PublicRoomJoined)
+			res = s.onDecrementJoinedMembersInRoom(context.TODO(), data.PublicRoomJoined)
 		default:
 			res = nil
 			log.Infow("public room api db event: ignoring unknown output type", log.KeysAndValues{"key", key})
@@ -122,9 +118,9 @@ func NewPublicRoomDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, 1)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 1)
 	for i := uint64(0); i < 1; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 
 	s.mutex = new(sync.Mutex)
@@ -159,17 +155,12 @@ func (s *PublicRoomDBEVConsumer) startRecover() {
 		select {
 		case <-s.ticker.C:
 			s.ticker.Reset(time.Second * 600) //10分钟一次
-			func() {
-				span, ctx := common.StartSobSomSpan(context.Background(), "PublicRoomDBEVConsumer.startRecover")
-				defer span.Finish()
-				s.recover(ctx)
-			}()
-
+			s.recover()
 		}
 	}
 }
 
-func (s *PublicRoomDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
+func (s *PublicRoomDBEVConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
 	chanID := 0
 	switch dbEv.Key {
 	case dbtypes.PublicRoomInsertKey, dbtypes.PublicRoomUpdateKey, dbtypes.PublicRoomIncrementJoinedKey, dbtypes.PublicRoomDecrementJoinedKey:
@@ -179,7 +170,7 @@ func (s *PublicRoomDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DB
 		return nil
 	}
 
-	s.msgChan[chanID] <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+	s.msgChan[chanID] <- dbEv
 	return nil
 }
 
@@ -263,7 +254,7 @@ func (s *PublicRoomDBEVConsumer) renameRecoverFile() bool {
 	return false
 }
 
-func (s *PublicRoomDBEVConsumer) recover(ctx context.Context) {
+func (s *PublicRoomDBEVConsumer) recover() {
 	log.Infof("PublicRoomDBEVConsumer start recover")
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
@@ -291,7 +282,7 @@ func (s *PublicRoomDBEVConsumer) recover(ctx context.Context) {
 				continue
 			}
 
-			s.OnMessage(ctx, &dbEv)
+			s.OnMessage(&dbEv)
 		}
 
 		f.Close()

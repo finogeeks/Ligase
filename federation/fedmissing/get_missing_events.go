@@ -27,9 +27,9 @@ import (
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/storage/model"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/util/cas"
 )
 
@@ -96,11 +96,8 @@ func (p *GetMissingEventsProcessor) startProcessor() {
 			time.Sleep(time.Millisecond * 50)
 			continue
 		}
-		func() {
-			span, ctx := common.StartSobSomSpan(context.Background(), "GetMissingEventsProcessor.startProcessor")
-			defer span.Finish()
-			p.backfillEvents(ctx, info)
-		}()
+
+		p.backfillEvents(info)
 	}
 }
 
@@ -123,14 +120,14 @@ func (p *GetMissingEventsProcessor) push(info model.GetMissingEventsInfo) {
 	return
 }
 
-func (p *GetMissingEventsProcessor) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (p *GetMissingEventsProcessor) OnMessage(topic string, partition int32, data []byte) {
 	var info model.GetMissingEventsInfo
 	json.Unmarshal(data, &info)
-	p.db.InsertMissingEvents(ctx, info.RoomID, info.EventID, info.Limit)
+	p.db.InsertMissingEvents(context.TODO(), info.RoomID, info.EventID, info.Limit)
 	p.push(info)
 }
 
-func (p *GetMissingEventsProcessor) backfillEvents(ctx context.Context, info model.GetMissingEventsInfo) {
+func (p *GetMissingEventsProcessor) backfillEvents(info model.GetMissingEventsInfo) {
 	eventID := info.EventID
 	domain, err := common.DomainFromID(eventID)
 	if err != nil {
@@ -156,7 +153,7 @@ func (p *GetMissingEventsProcessor) backfillEvents(ctx context.Context, info mod
 	for i := 0; i < info.Limit/limit+3; i++ {
 		var resp gomatrixserverlib.BackfillResponse
 		if !backwardFinished {
-			resp, err = p.fedClient.Backfill(ctx, gomatrixserverlib.ServerName(host), domain, roomID, limit*2, []string{minEventID}, "b")
+			resp, err = p.fedClient.Backfill(context.TODO(), gomatrixserverlib.ServerName(host), domain, roomID, limit*2, []string{minEventID}, "b")
 			if err != nil {
 				log.Errorf("GetMissingEvents backfill error %v", err)
 				return
@@ -180,7 +177,7 @@ func (p *GetMissingEventsProcessor) backfillEvents(ctx context.Context, info mod
 		}
 
 		if !forwardFinished {
-			resp, err = p.fedClient.Backfill(ctx, gomatrixserverlib.ServerName(host), domain, roomID, limit, []string{maxEventID}, "f")
+			resp, err = p.fedClient.Backfill(context.TODO(), gomatrixserverlib.ServerName(host), domain, roomID, limit, []string{maxEventID}, "f")
 			if err != nil {
 				log.Errorf("GetMissingEvents backfill error %v", err)
 				return
@@ -210,7 +207,7 @@ func (p *GetMissingEventsProcessor) backfillEvents(ctx context.Context, info mod
 		backfilPDUs[i].SetDepth(-1)
 	}
 	sort.Slice(backfilPDUs, func(i, j int) bool { return backfilPDUs[i].EventNID() < backfilPDUs[j].EventNID() })
-	_, err = p.rpcCli.InputRoomEvents(ctx, &roomserverapi.RawEvent{
+	_, err = p.rpcCli.InputRoomEvents(context.TODO(), &roomserverapi.RawEvent{
 		RoomID: roomID,
 		Kind:   roomserverapi.KindBackfill,
 		Trust:  true,
@@ -224,6 +221,6 @@ func (p *GetMissingEventsProcessor) backfillEvents(ctx context.Context, info mod
 		p.push(info)
 	} else {
 		log.Debugf("GetMissingEvents finished: %s, %s, %d", info.RoomID, info.EventID, info.Limit)
-		p.db.UpdateMissingEvents(ctx, info.RoomID, info.EventID, true)
+		p.db.UpdateMissingEvents(context.TODO(), info.RoomID, info.EventID, true)
 	}
 }

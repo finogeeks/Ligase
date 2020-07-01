@@ -28,14 +28,10 @@ type AccountsDatabase interface {
 
 	RecoverCache()
 
-	WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error
+	WriteDBEvent(update *dbtypes.DBEvent) error
 
 	CreateAccount(
 		ctx context.Context, userID, plaintextPassword, appServiceID, displayName string,
-	) (*authtypes.Account, error)
-
-	CreateAccountWithCheck(
-		ctx context.Context, oldAccount *authtypes.Account, userID, plaintextPassword, appServiceID, displayName string,
 	) (*authtypes.Account, error)
 
 	GetAccount(ctx context.Context, userID string) (*authtypes.Account, error)
@@ -60,7 +56,7 @@ type AccountsDatabase interface {
 	DeleteRoomTag(ctx context.Context, userId, roomID, tag string) error
 
 	GetAccountsTotal(ctx context.Context) (int, error)
-	GetActualTotal(ctx context.Context) (int, error)
+
 	GetRoomTagsTotal(ctx context.Context) (int, error)
 
 	SaveAccountData(ctx context.Context, userID, roomID, dataType, content string) error

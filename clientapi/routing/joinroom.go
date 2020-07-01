@@ -28,13 +28,13 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
-	"github.com/finogeeks/ligase/model/service"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrix"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/plugins/message/external"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 // JoinRoomByIDOrAlias implements the "/join/{roomIDOrAlias}" API.
@@ -57,7 +57,7 @@ func JoinRoomByIDOrAlias(
 		return http.StatusBadRequest, jsonerror.BadJSON("The request body could not be decoded into valid JSON. " + err.Error())
 	}
 
-	displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+	displayName, avatarURL, _ := complexCache.GetProfileByUserID(userID)
 
 	content["membership"] = "join"
 	content["displayname"] = displayName
@@ -66,10 +66,10 @@ func JoinRoomByIDOrAlias(
 	req := joinRoomReq{ctx, content, userID, cfg, federation, rpcCli, keyRing}
 
 	if strings.HasPrefix(roomIDOrAlias, "!") {
-		return req.joinRoomByID(ctx, roomIDOrAlias, idg)
+		return req.joinRoomByID(roomIDOrAlias, idg)
 	}
 	if strings.HasPrefix(roomIDOrAlias, "#") {
-		return req.joinRoomByAlias(ctx, roomIDOrAlias, idg)
+		return req.joinRoomByAlias(roomIDOrAlias, idg)
 	}
 	// return http.StatusBadRequest,
 	return http.StatusBadRequest, jsonerror.BadJSON("Invalid first character for room ID or alias")
@@ -87,7 +87,6 @@ type joinRoomReq struct {
 
 // joinRoomByID joins a room by room ID
 func (r joinRoomReq) joinRoomByID(
-	ctx context.Context,
 	roomID string,
 	idg *uid.UidGenerator,
 ) (int, core.Coder) {
@@ -104,12 +103,25 @@ func (r joinRoomReq) joinRoomByID(
 		return http.StatusBadRequest, jsonerror.BadJSON("Room Id must be in the form '!localpart:domain'")
 	}
 
-	return r.joinRoom(ctx, roomID, domainID, idg)
+	return r.joinRoom(roomID, domainID, idg)
+
+	/*
+		domainID, err1 := common.DomainFromID(r.userID)
+		roomDomain, err2 := common.DomainFromID(roomID)
+		if err1 != nil || err2 != nil {
+			return http.StatusBadRequest, jsonerror.BadJSON("Room Id must be in the form '!localpart:domain'")
+		}
+
+		if common.CheckValidDomain(roomDomain, r.cfg.Matrix.ServerName) {
+			return r.joinRoom(roomID, domainID, idg)
+		}
+
+		return r.joinRemoteRoom(roomID, roomDomain, idg)
+	*/
 }
 
 // joinRoomByAlias joins a room using a room alias.
 func (r joinRoomReq) joinRoomByAlias(
-	ctx context.Context,
 	roomAlias string,
 	idg *uid.UidGenerator,
 ) (int, core.Coder) {
@@ -125,14 +137,36 @@ func (r joinRoomReq) joinRoomByAlias(
 	}
 
 	if len(queryRes.RoomID) > 0 {
-		return r.joinRoom(ctx, queryRes.RoomID, domainID, idg)
+		return r.joinRoom(queryRes.RoomID, domainID, idg)
 	}
 	// If the response doesn't contain a non-empty string, return an error
 	return http.StatusNotFound, jsonerror.NotFound("Room alias " + roomAlias + " not found.")
+
+	/*
+		domainID, err1 := common.DomainFromID(r.userID)
+		roomDomain, err2 := common.DomainFromID(roomAlias)
+		if err1 != nil || err2 != nil {
+			return http.StatusBadRequest, jsonerror.BadJSON("Room alias must be in the form '#localpart:domain'")
+		}
+		if common.CheckValidDomain(roomDomain, r.cfg.Matrix.ServerName) {
+			queryReq := roomserverapi.GetAliasRoomIDRequest{Alias: roomAlias}
+			var queryRes roomserverapi.GetAliasRoomIDResponse
+		if err := r.rpcCli.GetAliasRoomID(r.ctx, &queryReq, &queryRes); err != nil {
+			return httputil.LogThenErrorCtx(r.ctx, err)
+			}
+
+			if len(queryRes.RoomID) > 0 {
+				return r.joinRoom(queryRes.RoomID, domainID, idg)
+			}
+			// If the response doesn't contain a non-empty string, return an error
+			return http.StatusNotFound, jsonerror.NotFound("Room alias " + roomAlias + " not found.")
+		}
+		// If the room isn't local, use federation to join
+		return r.joinRoomByRemoteAlias(roomDomain, roomAlias, idg)
+	*/
 }
 
 func (r joinRoomReq) joinRoomByRemoteAlias(
-	ctx context.Context,
 	domain, roomAlias string,
 	idg *uid.UidGenerator,
 ) (int, core.Coder) {
@@ -147,7 +181,7 @@ func (r joinRoomReq) joinRoomByRemoteAlias(
 		return httputil.LogThenErrorCtx(r.ctx, err)
 	}
 
-	return r.joinRoomByID(ctx, resp.RoomID, idg)
+	return r.joinRoomByID(resp.RoomID, idg)
 }
 
 func (r joinRoomReq) writeToBuilder(eb *gomatrixserverlib.EventBuilder, roomID string) error {
@@ -171,8 +205,26 @@ func (r joinRoomReq) writeToBuilder(eb *gomatrixserverlib.EventBuilder, roomID s
 	return nil
 }
 
+/*
+func (r joinRoomReq) joinRemoteRoom(
+	roomID, roomserver string, idg *uid.UidGenerator,
+) (int, core.Coder) {
+	//when join room ,servers actually is no use , only send request to the server created room
+	code, coder, lastErr := r.joinRoomUsingFederationServer(roomID, roomserver, idg)
+	if lastErr != nil {
+		// There was a problem talking to one of the servers.
+		fields := util.GetLogFields(r.ctx)
+		fields = append(fields, log.KeysAndValues{"error", lastErr, "server", roomserver}...)
+		log.Warnw("Failed to join room using server", fields)
+
+		return httputil.LogThenErrorCtx(r.ctx, lastErr)
+	}
+
+	return code, coder
+}
+*/
+
 func (r joinRoomReq) joinRoom(
-	ctx context.Context,
 	roomID, domainID string,
 	idg *uid.UidGenerator,
 ) (int, core.Coder) {
@@ -254,7 +306,7 @@ func (r joinRoomReq) joinRoom(
 			Query: []string{"join_room", ""},
 		}
 
-		_, err = r.rpcCli.InputRoomEvents(ctx, &rawEvent)
+		_, err = r.rpcCli.InputRoomEvents(context.Background(), &rawEvent)
 		if err != nil {
 			return http.StatusForbidden, jsonerror.Forbidden("You are not invited to this room.")
 		}
@@ -264,3 +316,44 @@ func (r joinRoomReq) joinRoom(
 
 	return http.StatusForbidden, jsonerror.Forbidden(err.Error())
 }
+
+// joinRoomUsingFederationServer tries to join a remote room using a given matrix server.
+// If there was a failure communicating with the server or the response from the
+// server was invalid this returns an error.
+// Otherwise this returns a JSONResponse.
+/*
+func (r joinRoomReq) joinRoomUsingFederationServer(
+	roomID, server string, idg *uid.UidGenerator,
+) (int, core.Coder, error) {
+	respMakeJoin, err := r.federation.MakeJoin(r.ctx, gomatrixserverlib.ServerName(server), roomID, r.userID)
+	if err != nil {
+		// TODO: Check if the user was not allowed to join the room.
+		return http.StatusInternalServerError, nil, err
+	}
+
+	// Set all the fields to be what they should be, this should be a no-op
+	// but it's possible that the remote server returned us something "odd"
+	err = r.writeToBuilder(&respMakeJoin.JoinEvent, roomID)
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	event, err := common.BuildEvent(&respMakeJoin.JoinEvent, server, r.cfg, idg)
+	if err != nil {
+		code, matrixErr := httputil.LogThenErrorCtx(r.ctx, err)
+		return code, matrixErr, nil
+	}
+
+	respSendJoin, err := r.federation.SendJoin(r.ctx, gomatrixserverlib.ServerName(server), *event)
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	if err = respSendJoin.Check(r.ctx, r.keyRing, *event); err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	// TODO: Put the response struct somewhere common.
+	return http.StatusOK, &external.PostRoomsJoinByAliasResponse{roomID}, nil
+}
+*/

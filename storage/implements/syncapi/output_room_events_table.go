@@ -23,11 +23,11 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/encryption"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -123,29 +123,26 @@ const selectEventsSQL = "" +
 
 const selectEventForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND origin_server_ts >= $2" +
-	" ORDER BY origin_server_ts ASC, depth ASC, domain ASC, id ASC LIMIT $3"
+	" WHERE room_id = $1 AND id >= $2" +
+	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
 
 const selectEventBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND  origin_server_ts <= $2" +
-	" ORDER BY origin_server_ts DESC, depth DESC, domain DESC,id DESC LIMIT $3"
+	" WHERE room_id = $1 AND  id <= $2" +
+	" ORDER BY id DESC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
 
 const selectEventRangeForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND origin_server_ts >= $2 AND origin_server_ts <= $3" +
-	" ORDER BY origin_server_ts ASC, depth ASC, domain ASC, id ASC"
+	" WHERE room_id = $1 AND id >= $2 AND id <= $3" +
+	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC"
 
 const selectEventRangeBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND origin_server_ts <= $2 AND origin_server_ts >= $3" +
-	" ORDER BY origin_server_ts DESC, depth DESC, domain DESC,id DESC"
+	" WHERE room_id = $1 AND id <= $2 AND id >= $3" +
+	" ORDER BY id DESC, origin_server_ts ASC, depth ASC, domain ASC"
 
 const updateEventSQL = "" +
 	"UPDATE syncapi_output_room_events SET event_json = $1 WHERE event_id = $2 and room_id= $3"
-
-const updateEventMirrorSQL = "" +
-	"UPDATE syncapi_output_room_events_mirror SET event_json = $1 WHERE event_id = $2 and room_id= $3"
 
 const selectHistoryEvents = "" +
 	"SELECT id, event_json, type FROM syncapi_output_room_events" +
@@ -218,7 +215,6 @@ type outputRoomEventsStatements struct {
 	selectEventRangeBackStmt    *sql.Stmt
 	selectEventRangeForwardStmt *sql.Stmt
 	updateEventStmt             *sql.Stmt
-	updateEventMirrorStmt       *sql.Stmt
 	selectHistoryEventStmt      *sql.Stmt
 	selectRoomStateStreamStmt   *sql.Stmt
 	selectRoomLatestStreamsStmt *sql.Stmt
@@ -272,9 +268,6 @@ func (s *outputRoomEventsStatements) prepare(db *sql.DB, d *Database) (err error
 		return
 	}
 	if s.updateEventStmt, err = db.Prepare(updateEventSQL); err != nil {
-		return
-	}
-	if s.updateEventMirrorStmt, err = db.Prepare(updateEventMirrorSQL); err != nil {
 		return
 	}
 	if s.selectHistoryEventStmt, err = db.Prepare(selectHistoryEvents); err != nil {
@@ -490,7 +483,7 @@ func (s *outputRoomEventsStatements) insertEvent(
 			OriginTs:     originTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(event.RoomID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_output_room_events")
+		s.db.WriteDBEvent(&update)
 	} else {
 		if encryption.CheckCrypto(event.Type) {
 			_, err = s.insertEventStmt.ExecContext(ctx,
@@ -695,43 +688,12 @@ func (s *outputRoomEventsStatements) updateEvent(
 	eventID string,
 	RoomID string,
 	eventType string,
-) (err error) {
-	if s.db.AsyncSave == true {
-		var update dbtypes.DBEvent
-		update.Category = dbtypes.CATEGORY_SYNC_DB_EVENT
-		update.Key = dbtypes.SyncEventUpdateContentKey
-		update.SyncDBEvents.SyncEventUpdateContent = &dbtypes.SyncEventUpdateContent{
-			EventID:   eventID,
-			RoomID:    RoomID,
-			Content:   string(eventJson),
-			EventType: eventType,
-		}
-		update.SetUid(int64(common.CalcStringHashCode64(RoomID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_output_room_events")
-	} else {
-		err = s.updateEventRaw(ctx, eventJson, eventID, RoomID, eventType)
-	}
-
-	return
-}
-
-func (s *outputRoomEventsStatements) updateEventRaw(
-	ctx context.Context,
-	eventJson []byte,
-	eventID string,
-	RoomID string,
-	eventType string,
 ) error {
 	var err error
 	if encryption.CheckCrypto(eventType) {
 		_, err = s.updateEventStmt.ExecContext(
 			ctx, encryption.Encrypt(eventJson), eventID, RoomID,
 		)
-		if encryption.CheckMirror(eventType) {
-			_, err = s.updateEventMirrorStmt.ExecContext(
-				ctx, eventJson, eventID, RoomID,
-			)
-		}
 	} else {
 		_, err = s.updateEventStmt.ExecContext(
 			ctx, eventJson, eventID, RoomID,
@@ -910,7 +872,7 @@ func (s *outputRoomEventsStatements) UpdateSyncEvent(
 			OriginTs:     originTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_output_room_events")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		return s.onUpdateSyncEvent(ctx, domainOffset, originTs, domain, roomID, eventID)
 	}
@@ -928,21 +890,21 @@ func (s *outputRoomEventsStatements) onUpdateSyncEvent(
 	return err
 }
 
-func (s *outputRoomEventsStatements) selectSyncEvents(ctx context.Context, start, end int64, limit, offset int64) ([][]byte, error) {
+func (s *outputRoomEventsStatements) selectSyncEvents(start, end int64, limit, offset int64) ([][]byte, error) {
 	var rows *sql.Rows
 	var err error
 
 	if start < 0 {
 		if end < 0 {
-			rows, err = s.selectAllSyncEventsStmt.QueryContext(ctx, limit, offset)
+			rows, err = s.selectAllSyncEventsStmt.QueryContext(context.TODO(), limit, offset)
 		} else {
-			rows, err = s.selectSyncEventsUpperStmt.QueryContext(ctx, end, limit, offset)
+			rows, err = s.selectSyncEventsUpperStmt.QueryContext(context.TODO(), end, limit, offset)
 		}
 	} else {
 		if end < 0 {
-			rows, err = s.selectSyncEventsLowerStmt.QueryContext(ctx, start, limit, offset)
+			rows, err = s.selectSyncEventsLowerStmt.QueryContext(context.TODO(), start, limit, offset)
 		} else {
-			rows, err = s.selectSyncEventsRangeStmt.QueryContext(ctx, end, limit, offset)
+			rows, err = s.selectSyncEventsRangeStmt.QueryContext(context.TODO(), end, limit, offset)
 		}
 	}
 

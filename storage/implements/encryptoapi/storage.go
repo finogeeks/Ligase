@@ -20,13 +20,11 @@ package encryptoapi
 import (
 	"context"
 	"database/sql"
-	"time"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -55,11 +53,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if dataBase.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
-
-	dataBase.db.SetMaxOpenConns(30)
-	dataBase.db.SetMaxIdleConns(30)
-	dataBase.db.SetConnMaxLifetime(time.Minute * 3)
-
 	if err = dataBase.deviceKeyStatements.prepare(dataBase); err != nil {
 		return nil, err
 	}
@@ -81,48 +74,28 @@ func (d *Database) SetGauge(qryDBGauge mon.LabeledGauge) {
 }
 
 // WriteOutputEvents implements OutputRoomEventWriter
-func (d *Database) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *Database) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 
 func (d *Database) RecoverCache() {
-	span, ctx := common.StartSobSomSpan(context.Background(), "RecoverCache")
-	defer span.Finish()
-	err := d.deviceKeyStatements.recoverDeviceKey(ctx)
+	err := d.deviceKeyStatements.recoverDeviceKey()
 	if err != nil {
 		log.Errorf("deviceKeyStatements.recoverDeviceKey error %v", err)
 	}
 
-	err = d.oneTimeKeyStatements.recoverOneTimeKey(ctx)
+	err = d.oneTimeKeyStatements.recoverOneTimeKey()
 	if err != nil {
 		log.Errorf("oneTimeKeyStatements.recoverOneTimeKey error %v", err)
 	}
 
-	err = d.alStatements.recoverAls(ctx)
+	err = d.alStatements.recoverAls()
 	if err != nil {
 		log.Errorf("alStatements.recoverAls error %v", err)
 	}

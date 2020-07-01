@@ -18,13 +18,12 @@ import (
 	"context"
 
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 )
 
 func SendInvite(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -35,7 +34,7 @@ func SendInvite(
 		return gomatrixserverlib.RespInvite{Code: 400}
 	}
 
-	fedResp, err := fedClient.SendInvite(ctx, destination, event)
+	fedResp, err := fedClient.SendInvite(context.Background(), destination, event)
 	if err != nil {
 		log.Errorf("federation SendInvite error %v", err)
 	}

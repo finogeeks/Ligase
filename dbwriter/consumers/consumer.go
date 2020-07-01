@@ -18,7 +18,6 @@
 package consumers
 
 import (
-	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,9 +26,10 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/dbtypes"
-	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/json-iterator/go"
+
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	jsoniter "github.com/json-iterator/go"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -118,7 +118,7 @@ func (s *DBEventDataConsumer) Start() error {
 	return nil
 }
 
-func (s *DBEventDataConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *DBEventDataConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output dbtypes.DBEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("dbevent: message parse failure", log.KeysAndValues{"error", err})
@@ -136,13 +136,8 @@ func (s *DBEventDataConsumer) OnMessage(ctx context.Context, topic string, parti
 	val, ok := s.consumerRepo.Load(category)
 	if ok {
 		consumer := val.(ConsumerInterface)
-		consumer.OnMessage(ctx, &output)
+		consumer.OnMessage(&output)
 	}
-}
 
-func (s *DBEventDataConsumer) CommitMessage(rawMsg []interface{}) {
-	err := s.channel.Commit(rawMsg)
-	if err != nil {
-		log.Errorf("DBEVentDataConsumer commit error %v", err)
-	}
+	return
 }

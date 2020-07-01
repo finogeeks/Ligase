@@ -18,7 +18,6 @@
 package consumers
 
 import (
-	"context"
 	"fmt"
 	"github.com/finogeeks/ligase/common"
 	"github.com/gomodule/redigo/redis"
@@ -36,15 +35,13 @@ func init() {
 }
 
 type DeviceDBEvCacheConsumer struct {
-	pool PoolProviderInterface
-	//msgChan chan *dbtypes.DBEvent
-	msgChan chan common.ContextMsg
+	pool    PoolProviderInterface
+	msgChan chan *dbtypes.DBEvent
 }
 
-func (s *DeviceDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *DeviceDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
 	var res error
-	for msg := range msgChan {
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
@@ -77,7 +74,7 @@ func (s *DeviceDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
 // NewDeviceDBEvCacheConsumer creates a new DBUpdateData consumer. Call Start() to begin consuming from room servers.
 func NewDeviceDBEvCacheConsumer() ConsumerInterface {
 	s := new(DeviceDBEvCacheConsumer)
-	s.msgChan = make(chan common.ContextMsg, 1024)
+	s.msgChan = make(chan *dbtypes.DBEvent, 1024)
 
 	return s
 }
@@ -93,8 +90,8 @@ func (s *DeviceDBEvCacheConsumer) Start() {
 	go s.startWorker(s.msgChan)
 }
 
-func (s *DeviceDBEvCacheConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
-	s.msgChan <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+func (s *DeviceDBEvCacheConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
+	s.msgChan <- dbEv
 	return nil
 }
 

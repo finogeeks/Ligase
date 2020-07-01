@@ -16,6 +16,7 @@ package model
 
 import (
 	"github.com/finogeeks/ligase/storage/implements/accounts"
+	"github.com/finogeeks/ligase/storage/implements/appservice"
 	"github.com/finogeeks/ligase/storage/implements/devices"
 	"github.com/finogeeks/ligase/storage/implements/encryptoapi"
 	"github.com/finogeeks/ligase/storage/implements/keydb"

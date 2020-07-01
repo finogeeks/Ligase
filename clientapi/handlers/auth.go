@@ -15,15 +15,14 @@
 package handlers
 
 import (
-	"context"
-	"github.com/finogeeks/ligase/plugins/message/internals"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/plugins/message/internals"
 )
 
 type AuthHandler struct {
 }
 
-func (auth *AuthHandler) ProcessInputMsg(ctx context.Context, msg *internals.InputMsg) {
+func (auth *AuthHandler) ProcessInputMsg(msg *internals.InputMsg) {
 	log.Infof("AuthHandler recv msg:%08x", msg.MsgType)
 	switch msg.MsgType {
 	case internals.MSG_GET_LOGIN:

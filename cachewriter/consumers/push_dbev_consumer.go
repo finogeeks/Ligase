@@ -18,12 +18,10 @@
 package consumers
 
 import (
-	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/gomodule/redigo/redis"
 	"time"
 )
@@ -34,15 +32,13 @@ func init() {
 
 // DBEventDataConsumer consumes db events for roomserver.
 type PushDBEvCacheConsumer struct {
-	pool PoolProviderInterface
-	//msgChan chan *dbtypes.DBEvent
-	msgChan chan common.ContextMsg
+	pool    PoolProviderInterface
+	msgChan chan *dbtypes.DBEvent
 }
 
-func (s *PushDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *PushDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
 	var res error
-	for msg := range msgChan {
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
@@ -78,7 +74,7 @@ func (s *PushDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
 
 func NewPushDBEvCacheConsumer() ConsumerInterface {
 	s := new(PushDBEvCacheConsumer)
-	s.msgChan = make(chan common.ContextMsg, 1024)
+	s.msgChan = make(chan *dbtypes.DBEvent, 1024)
 
 	return s
 }
@@ -94,8 +90,8 @@ func (s *PushDBEvCacheConsumer) Start() {
 	go s.startWorker(s.msgChan)
 }
 
-func (s *PushDBEvCacheConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
-	s.msgChan <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+func (s *PushDBEvCacheConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
+	s.msgChan <- dbEv
 	return nil
 }
 

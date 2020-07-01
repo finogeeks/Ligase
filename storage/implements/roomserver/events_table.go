@@ -21,8 +21,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/lib/pq"
 )
 
@@ -96,7 +96,7 @@ const selectRoomBackfillNIDUnLimitedSQL = "SELECT event_nid FROM roomserver_even
 const selectRoomBackfillForwardNIDSQL = "SELECT event_nid FROM roomserver_events WHERE room_nid = $1 and domain = $2 and event_nid > $3 order by event_nid asc limit $4"
 const selectRoomBackfillForwardNIDUnLimitedSQL = "SELECT event_nid FROM roomserver_events WHERE room_nid = $1 and domain = $2 and event_nid > $3 order by event_nid asc"
 
-const selectRoomEventsByDomainOffsetSQL = "SELECT event_nid FROM roomserver_events WHERE room_nid = $1 AND domain = $2 AND offsets >= $3 order by offsets limit $4"
+const selectEventNidForBackfillSQL = `SELECT event_nid FROM roomserver_events WHERE room_nid = $1 AND event_type_id = 'm.room.member' AND event_state_key_id like $2 ORDER BY event_nid LIMIT 1`
 
 const selectEventStateSnapshotNIDSQL = "SELECT state_snapshot_nid FROM roomserver_events WHERE event_id = $1"
 
@@ -139,7 +139,7 @@ type eventStatements struct {
 	selectRoomBackFillNIDSUnLimitedStmt        *sql.Stmt
 	selectRoomBackFillForwardNIDStmt           *sql.Stmt
 	selectRoomBackFillForwardNIDSUnLimitedStmt *sql.Stmt
-	selectRoomEventsByDomainOffsetStmt         *sql.Stmt
+	selectEventNidForBackfillStmt              *sql.Stmt
 	selectEventStateSnapshotNIDStmt            *sql.Stmt
 	selectRoomStateNIDByStateBlockNIDStmt      *sql.Stmt
 	updateRoomEventStmt                        *sql.Stmt
@@ -170,7 +170,7 @@ func (s *eventStatements) prepare(db *sql.DB, d *Database) (err error) {
 		{&s.selectRoomBackFillForwardNIDStmt, selectRoomBackfillForwardNIDSQL},
 		{&s.selectRoomBackFillForwardNIDSUnLimitedStmt, selectRoomBackfillForwardNIDUnLimitedSQL},
 		{&s.selectRoomBackFillForwardNIDSUnLimitedStmt, selectRoomBackfillForwardNIDUnLimitedSQL},
-		{&s.selectRoomEventsByDomainOffsetStmt, selectRoomEventsByDomainOffsetSQL},
+		{&s.selectEventNidForBackfillStmt, selectEventNidForBackfillSQL},
 		{&s.selectEventStateSnapshotNIDStmt, selectEventStateSnapshotNIDSQL},
 		{&s.selectRoomStateNIDByStateBlockNIDStmt, selectRoomStateNIDByStateBlockNIDSQL},
 		{&s.updateRoomEventStmt, updateRoomEventSQL},
@@ -307,7 +307,7 @@ func (s *eventStatements) insertEvent(
 			Domain:        domain,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_events")
+		s.db.WriteDBEvent(&update)
 		return eventNID, 0, nil
 	}
 
@@ -376,7 +376,7 @@ func (s *eventStatements) updateRoomEvent(
 			Domain:   domain,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEventWithTbl(ctx, &update, "roomserver_events")
+		s.db.WriteDBEvent(&update)
 		return nil
 	}
 	return s.onUpdateRoomEvent(ctx, eventNID, roomNID, depth, domainOffset, domain)
@@ -537,21 +537,21 @@ func (s *eventStatements) selectBackFillEvForwardNIDUnLimited(ctx context.Contex
 	return res, nil
 }
 
-func (s *eventStatements) selectRoomEventsByDomainOffset(ctx context.Context, roomNID int64, domain string, domainOffset int64, limit int) ([]int64, error) {
-	rows, err := s.selectRoomEventsByDomainOffsetStmt.QueryContext(ctx, roomNID, domain, domainOffset, limit)
+func (s *eventStatements) selectEventNidForBackfill(ctx context.Context, roomNID int64, domain string) (int64, error) {
+	rows, err := s.selectEventNidForBackfillStmt.QueryContext(ctx, roomNID, "%"+domain)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	defer rows.Close()
-	var res []int64
+
+	var eventNID = int64(0)
 	for rows.Next() {
-		var nid int64
-		if err = rows.Scan(&nid); err != nil {
-			return nil, err
+		err = rows.Scan(&eventNID)
+		if err != nil {
+			return 0, err
 		}
-		res = append(res, nid)
 	}
-	return res, nil
+	return eventNID, nil
 }
 
 func (s *eventStatements) selectRoomMaxDomainOffset(ctx context.Context, roomNID int64) (domains, eventIDs []string, offsets []int64, err error) {

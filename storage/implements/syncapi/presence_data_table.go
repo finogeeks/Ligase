@@ -17,11 +17,10 @@ package syncapi
 import (
 	"context"
 	"database/sql"
-
 	"github.com/finogeeks/ligase/common"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/types"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -35,6 +34,7 @@ CREATE TABLE IF NOT EXISTS syncapi_presence_data_stream (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS syncapi_presence_data_stream_user_id ON syncapi_presence_data_stream(user_id);
+CREATE INDEX IF NOT EXISTS syncapi_presence_data_stream_id_idx ON syncapi_presence_data_stream(id ASC);
 `
 
 const insertPresenceDataStreamSQL = "" +
@@ -89,7 +89,7 @@ func (s *presenceDataStreamStatements) insertPresenceDataStream(
 			Content: content,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_presence_data_stream")
+		s.db.WriteDBEvent(&update)
 		return id, nil
 	} else {
 		err = s.insertPresenceDataStreamStmt.QueryRowContext(ctx, id, userID, content).Scan(&pos)

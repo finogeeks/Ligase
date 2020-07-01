@@ -59,6 +59,9 @@ func (f *FedDomains) GetDomainInfo(domain string) (FedDomainInfo, bool) {
 }
 
 func (f *FedDomains) GetAllDomainInfos() []FedDomainInfo {
+	if !f.loaded {
+		f.LoadCache()
+	}
 	ret := []FedDomainInfo{}
 	f.domains.Range(func(k, v interface{}) bool {
 		ret = append(ret, v.(FedDomainInfo))

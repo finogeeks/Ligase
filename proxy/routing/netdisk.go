@@ -28,11 +28,11 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/federation/fedreq/rpc"
-	"github.com/finogeeks/ligase/model/authtypes"
-	"github.com/finogeeks/ligase/model/mediatypes"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/model/mediatypes"
+	"github.com/finogeeks/ligase/federation/fedreq/rpc"
 )
 
 const contentUri = "mxc://%s/%s"

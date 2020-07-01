@@ -15,31 +15,29 @@
 package consumers
 
 import (
-	"context"
 	"math"
 	"sort"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncserver/extra"
 )
 
 type SyncServer struct {
-	db       model.SyncAPIDatabase
-	slot     uint32
-	chanSize int
-	//msgChan        []chan *syncapitypes.SyncServerRequest
-	msgChan        []chan common.ContextMsg
+	db             model.SyncAPIDatabase
+	slot           uint32
+	chanSize       int
+	msgChan        []chan *syncapitypes.SyncServerRequest
 	cfg            *config.Dendrite
 	compressLength int64
 
@@ -123,30 +121,28 @@ func (s *SyncServer) SetSettings(settings *common.Settings) {
 }
 
 func (s *SyncServer) Start() {
-	s.msgChan = make([]chan common.ContextMsg, s.slot)
+	s.msgChan = make([]chan *syncapitypes.SyncServerRequest, s.slot)
 	for i := uint32(0); i < s.slot; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, s.chanSize)
+		s.msgChan[i] = make(chan *syncapitypes.SyncServerRequest, s.chanSize)
 		go s.startWorker(s.msgChan[i])
 	}
 }
 
-func (s *SyncServer) startWorker(channel chan common.ContextMsg) {
-	for data := range channel {
-		msg := data.Msg.(*syncapitypes.SyncServerRequest)
-		s.processSync(data.Ctx, msg)
+func (s *SyncServer) startWorker(channel chan *syncapitypes.SyncServerRequest) {
+	for msg := range channel {
+		s.processSync(msg)
 	}
 }
 
 func (s *SyncServer) OnSyncRequest(
-	ctx context.Context,
 	req *syncapitypes.SyncServerRequest,
 ) {
 	hash := common.CalcStringHashCode(req.UserID)
 	slot := hash % s.slot
-	s.msgChan[slot] <- common.ContextMsg{Ctx: ctx, Msg: req}
+	s.msgChan[slot] <- req
 }
 
-func (s *SyncServer) processSync(ctx context.Context, req *syncapitypes.SyncServerRequest) {
+func (s *SyncServer) processSync(req *syncapitypes.SyncServerRequest) {
 	defer func() {
 		if e := recover(); e != nil {
 			stack := common.PanicTrace(4)
@@ -156,32 +152,32 @@ func (s *SyncServer) processSync(ctx context.Context, req *syncapitypes.SyncServ
 	//bytes, _ := json.Marshal(*req)
 	log.Infof("SyncServer.processSync received request traceid:%s slot:%d rslot:%d user %s device %s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID)
 	if req.IsFullSync {
-		s.fullSyncLoading(ctx, req)
+		s.fullSyncLoading(req)
 	} else {
-		s.incrementSyncLoading(ctx, req)
+		s.incrementSyncLoading(req)
 	}
 
 	if req.LoadReady {
 		switch req.RequestType {
 		case "load":
-			s.responseLoad(ctx, req, true)
+			s.responseLoad(req, true)
 		case "sync":
 			if req.IsFullSync { //full sync
-				s.processFullSync(ctx, req)
+				s.processFullSync(req)
 			} else {
-				s.processIncrementSync(ctx, req)
+				s.processIncrementSync(req)
 			}
 		}
 
 	} else {
 		switch req.RequestType {
 		case "load":
-			s.responseLoad(ctx, req, false)
+			s.responseLoad(req, false)
 		}
 	}
 }
 
-func (s *SyncServer) processFullSync(ctx context.Context, req *syncapitypes.SyncServerRequest) {
+func (s *SyncServer) processFullSync(req *syncapitypes.SyncServerRequest) {
 	response := syncapitypes.SyncServerResponse{}
 	response.Rooms.Join = make(map[string]syncapitypes.JoinResponse)
 	response.Rooms.Invite = make(map[string]syncapitypes.InviteResponse)
@@ -191,26 +187,26 @@ func (s *SyncServer) processFullSync(ctx context.Context, req *syncapitypes.Sync
 	receiptMaxPos := req.MaxReceiptOffset
 
 	for _, roomInfo := range req.JoinRooms {
-		resp, pos, _ := s.buildRoomJoinResp(ctx, req, roomInfo.RoomID, roomInfo.Start, roomInfo.End)
+		resp, pos, _ := s.buildRoomJoinResp(req, roomInfo.RoomID, roomInfo.Start, roomInfo.End)
 		response.MaxRoomOffset[roomInfo.RoomID] = pos
 		response.Rooms.Join[roomInfo.RoomID] = *resp
 	}
 
 	for _, roomInfo := range req.InviteRooms {
-		resp, pos := s.buildRoomInviteResp(ctx, req, roomInfo.RoomID, req.UserID)
+		resp, pos := s.buildRoomInviteResp(req, roomInfo.RoomID, req.UserID)
 		response.MaxRoomOffset[roomInfo.RoomID] = pos
 		response.Rooms.Invite[roomInfo.RoomID] = *resp
 	}
 
 	if req.IsHuman {
-		s.addReceipt(ctx, req, receiptMaxPos, &response)
+		s.addReceipt(req, receiptMaxPos, &response)
 		s.addUnreadCount(&response, req.UserID)
 	}
 
 	s.responseSync(req, &response)
 }
 
-func (s *SyncServer) processIncrementSync(ctx context.Context, req *syncapitypes.SyncServerRequest) {
+func (s *SyncServer) processIncrementSync(req *syncapitypes.SyncServerRequest) {
 	response := syncapitypes.SyncServerResponse{}
 	response.Rooms.Join = make(map[string]syncapitypes.JoinResponse)
 	response.Rooms.Invite = make(map[string]syncapitypes.InviteResponse)
@@ -221,7 +217,7 @@ func (s *SyncServer) processIncrementSync(ctx context.Context, req *syncapitypes
 	newUserMap := make(map[string]bool)
 
 	for _, roomInfo := range req.JoinRooms {
-		resp, pos, users := s.buildRoomJoinResp(ctx, req, roomInfo.RoomID, roomInfo.Start, roomInfo.End)
+		resp, pos, users := s.buildRoomJoinResp(req, roomInfo.RoomID, roomInfo.Start, roomInfo.End)
 		log.Infof("SyncServer.processIncrementSync buildRoomJoinResp traceid:%s slot:%d rslot:%d user:%s device:%s roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
 		if (pos > 0 && roomInfo.End > pos) && req.IsHuman == true {
 			// event missing
@@ -238,7 +234,7 @@ func (s *SyncServer) processIncrementSync(ctx context.Context, req *syncapitypes
 	}
 
 	for _, roomInfo := range req.InviteRooms {
-		resp, pos := s.buildRoomInviteResp(ctx, req, roomInfo.RoomID, req.UserID)
+		resp, pos := s.buildRoomInviteResp(req, roomInfo.RoomID, req.UserID)
 		log.Infof("SyncServer.processIncrementSync buildRoomInviteResp traceid:%s slot:%d rslot:%d user:%s device:%s roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
 		if roomInfo.End > pos && req.IsHuman == true {
 			// event missing
@@ -250,7 +246,7 @@ func (s *SyncServer) processIncrementSync(ctx context.Context, req *syncapitypes
 	}
 
 	for _, roomInfo := range req.LeaveRooms {
-		resp, pos := s.buildRoomLeaveResp(ctx, req, roomInfo.RoomID, req.UserID, roomInfo.Start)
+		resp, pos := s.buildRoomLeaveResp(req, roomInfo.RoomID, req.UserID, roomInfo.Start)
 		log.Infof("SyncServer.processIncrementSync buildRoomLeaveResp traceid:%s slot:%d rslot:%d user:%s device:%s roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
 		if roomInfo.End > pos && req.IsHuman == true {
 			// event missing
@@ -262,7 +258,7 @@ func (s *SyncServer) processIncrementSync(ctx context.Context, req *syncapitypes
 	}
 
 	if req.IsHuman {
-		s.addReceipt(ctx, req, receiptMaxPos, &response)
+		s.addReceipt(req, receiptMaxPos, &response)
 		s.addUnreadCount(&response, req.UserID)
 	}
 
@@ -273,7 +269,7 @@ func (s *SyncServer) processIncrementSync(ctx context.Context, req *syncapitypes
 	s.responseSync(req, &response)
 }
 
-func (s *SyncServer) responseLoad(ctx context.Context, req *syncapitypes.SyncServerRequest, ready bool) {
+func (s *SyncServer) responseLoad(req *syncapitypes.SyncServerRequest, ready bool) {
 	res := syncapitypes.SyncServerResponse{
 		Ready: ready,
 	}
@@ -303,23 +299,23 @@ func (s *SyncServer) responseSync(req *syncapitypes.SyncServerRequest, resp *syn
 	s.rpcClient.PubObj(req.Reply, result)
 }
 
-func (s *SyncServer) fullSyncLoading(ctx context.Context, req *syncapitypes.SyncServerRequest) {
+func (s *SyncServer) fullSyncLoading(req *syncapitypes.SyncServerRequest) {
 	start := time.Now().UnixNano()
 
-	s.receiptDataStreamRepo.LoadRoomLatest(ctx, req.JoinedRooms)
+	s.receiptDataStreamRepo.LoadRoomLatest(req.JoinedRooms)
 
 	for _, roomInfo := range req.JoinRooms {
-		s.rsTimeline.LoadStates(ctx, roomInfo.RoomID, false)
-		s.rsTimeline.LoadStreamStates(ctx, roomInfo.RoomID, false)
-		s.roomHistory.LoadHistory(ctx, roomInfo.RoomID, false)
-		s.roomHistory.GetRoomMinStream(ctx, roomInfo.RoomID)
+		s.rsTimeline.LoadStates(roomInfo.RoomID, false)
+		s.rsTimeline.LoadStreamStates(roomInfo.RoomID, false)
+		s.roomHistory.LoadHistory(roomInfo.RoomID, false)
+		s.roomHistory.GetRoomMinStream(roomInfo.RoomID)
 
-		s.receiptDataStreamRepo.LoadHistory(ctx, roomInfo.RoomID, false)
-		s.userReceiptRepo.LoadHistory(ctx, req.UserID, roomInfo.RoomID, false)
+		s.receiptDataStreamRepo.LoadHistory(roomInfo.RoomID, false)
+		s.userReceiptRepo.LoadHistory(req.UserID, roomInfo.RoomID, false)
 	}
 
 	for _, roomInfo := range req.InviteRooms {
-		s.rsTimeline.LoadStates(ctx, roomInfo.RoomID, false)
+		s.rsTimeline.LoadStates(roomInfo.RoomID, false)
 	}
 
 	loadStart := time.Now().Unix()
@@ -327,26 +323,26 @@ func (s *SyncServer) fullSyncLoading(ctx context.Context, req *syncapitypes.Sync
 		loaded := true
 
 		for _, roomInfo := range req.JoinRooms {
-			if ok := s.rsTimeline.CheckStateLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.rsTimeline.CheckStateLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
-			if ok := s.rsTimeline.CheckStreamLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.rsTimeline.CheckStreamLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
-			if ok := s.roomHistory.CheckLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.roomHistory.CheckLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
 
-			if ok := s.receiptDataStreamRepo.CheckLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.receiptDataStreamRepo.CheckLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
-			if ok := s.userReceiptRepo.CheckLoadReady(ctx, req.UserID, roomInfo.RoomID, false); !ok {
+			if ok := s.userReceiptRepo.CheckLoadReady(req.UserID, roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
 		}
 
 		for _, roomInfo := range req.InviteRooms {
-			if ok := s.rsTimeline.CheckStateLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.rsTimeline.CheckStateLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
 		}
@@ -372,12 +368,12 @@ func (s *SyncServer) fullSyncLoading(ctx context.Context, req *syncapitypes.Sync
 	}
 }
 
-func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes.SyncServerRequest) {
+func (s *SyncServer) incrementSyncLoading(req *syncapitypes.SyncServerRequest) {
 	start := time.Now().UnixNano()
 
-	s.roomHistory.LoadRoomLatest(ctx, req.JoinRooms)
-	s.roomHistory.LoadRoomLatest(ctx, req.InviteRooms)
-	s.roomHistory.LoadRoomLatest(ctx, req.LeaveRooms)
+	s.roomHistory.LoadRoomLatest(req.JoinRooms)
+	s.roomHistory.LoadRoomLatest(req.InviteRooms)
+	s.roomHistory.LoadRoomLatest(req.LeaveRooms)
 	ms := "joins:"
 	for _, room := range req.JoinRooms {
 		ms += room.RoomID + ","
@@ -392,15 +388,15 @@ func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes
 	}
 	log.Infof("SyncServer.incrementSyncLoading membership traceid:%s slot:%d rslot:%d user:%s devID:%s ms:%s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, ms)
 	if req.IsHuman {
-		s.receiptDataStreamRepo.LoadRoomLatest(ctx, req.JoinedRooms)
+		s.receiptDataStreamRepo.LoadRoomLatest(req.JoinedRooms)
 	}
 	for _, roomInfo := range req.JoinRooms {
 		lastoffset := s.roomHistory.GetRoomLastOffset(roomInfo.RoomID)
 		if lastoffset >= roomInfo.Start {
-			s.rsTimeline.LoadStates(ctx, roomInfo.RoomID, false)
-			s.rsTimeline.LoadStreamStates(ctx, roomInfo.RoomID, false)
-			s.roomHistory.LoadHistory(ctx, roomInfo.RoomID, false)
-			s.roomHistory.GetRoomMinStream(ctx, roomInfo.RoomID)
+			s.rsTimeline.LoadStates(roomInfo.RoomID, false)
+			s.rsTimeline.LoadStreamStates(roomInfo.RoomID, false)
+			s.roomHistory.LoadHistory(roomInfo.RoomID, false)
+			s.roomHistory.GetRoomMinStream(roomInfo.RoomID)
 		} else {
 			req.LoadReady = false
 			log.Warnf("SyncServer.incrementSyncLoading join load not ready, traceid:%s slot:%d rslot:%d user:%s devID:%s roomID:%s lastoffset:%d start:%d", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, roomInfo.RoomID, lastoffset, roomInfo.Start)
@@ -411,8 +407,8 @@ func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes
 	if req.IsHuman {
 		for _, roomID := range req.JoinedRooms {
 			if s.receiptDataStreamRepo.GetRoomLastOffset(roomID) > req.ReceiptOffset {
-				s.receiptDataStreamRepo.LoadHistory(ctx, roomID, false)
-				s.userReceiptRepo.LoadHistory(ctx, req.UserID, roomID, false)
+				s.receiptDataStreamRepo.LoadHistory(roomID, false)
+				s.userReceiptRepo.LoadHistory(req.UserID, roomID, false)
 			}
 		}
 	}
@@ -420,7 +416,7 @@ func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes
 	for _, roomInfo := range req.InviteRooms {
 		lastoffset := s.roomHistory.GetRoomLastOffset(roomInfo.RoomID)
 		if lastoffset >= roomInfo.Start {
-			s.rsTimeline.LoadStates(ctx, roomInfo.RoomID, false)
+			s.rsTimeline.LoadStates(roomInfo.RoomID, false)
 		} else {
 			req.LoadReady = false
 			log.Warnf("SyncServer.incrementSyncLoading invite load not ready, traceid:%s slot:%d rslot:%d user:%s devID:%s roomID:%s lastoffset:%d start:%d", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, roomInfo.RoomID, lastoffset, roomInfo.Start)
@@ -431,10 +427,10 @@ func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes
 	for _, roomInfo := range req.LeaveRooms {
 		lastoffset := s.roomHistory.GetRoomLastOffset(roomInfo.RoomID)
 		if lastoffset >= roomInfo.Start {
-			s.rsTimeline.LoadStates(ctx, roomInfo.RoomID, false)
-			s.rsTimeline.LoadStreamStates(ctx, roomInfo.RoomID, false)
-			s.roomHistory.LoadHistory(ctx, roomInfo.RoomID, false)
-			s.roomHistory.GetRoomMinStream(ctx, roomInfo.RoomID)
+			s.rsTimeline.LoadStates(roomInfo.RoomID, false)
+			s.rsTimeline.LoadStreamStates(roomInfo.RoomID, false)
+			s.roomHistory.LoadHistory(roomInfo.RoomID, false)
+			s.roomHistory.GetRoomMinStream(roomInfo.RoomID)
 		} else {
 			req.LoadReady = false
 			log.Warnf("SyncServer.incrementSyncLoading invite load not ready, traceid:%s slot:%d rslot:%d user:%s devID:%s roomID:%s lastoffset:%d start:%d", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, roomInfo.RoomID, lastoffset, roomInfo.Start)
@@ -448,25 +444,25 @@ func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes
 		loaded := true
 		for _, roomInfo := range req.JoinRooms {
 			if s.roomHistory.GetRoomLastOffset(roomInfo.RoomID) > roomInfo.Start {
-				if ok := s.rsTimeline.CheckStateLoadReady(ctx, roomInfo.RoomID, false); !ok {
+				if ok := s.rsTimeline.CheckStateLoadReady(roomInfo.RoomID, false); !ok {
 					loaded = false
 				}
-				if ok := s.rsTimeline.CheckStreamLoadReady(ctx, roomInfo.RoomID, false); !ok {
+				if ok := s.rsTimeline.CheckStreamLoadReady(roomInfo.RoomID, false); !ok {
 					loaded = false
 				}
-				if ok := s.roomHistory.CheckLoadReady(ctx, roomInfo.RoomID, false); !ok {
+				if ok := s.roomHistory.CheckLoadReady(roomInfo.RoomID, false); !ok {
 					loaded = false
 				}
 			}
 
 			if req.IsHuman {
 				if s.receiptDataStreamRepo.GetRoomLastOffset(roomInfo.RoomID) > req.ReceiptOffset {
-					if ok := s.receiptDataStreamRepo.CheckLoadReady(ctx, roomInfo.RoomID, false); !ok {
+					if ok := s.receiptDataStreamRepo.CheckLoadReady(roomInfo.RoomID, false); !ok {
 						loaded = false
 					} else {
 
 					}
-					if ok := s.userReceiptRepo.CheckLoadReady(ctx, req.UserID, roomInfo.RoomID, false); !ok {
+					if ok := s.userReceiptRepo.CheckLoadReady(req.UserID, roomInfo.RoomID, false); !ok {
 						loaded = false
 					}
 				}
@@ -474,19 +470,19 @@ func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes
 		}
 
 		for _, roomInfo := range req.InviteRooms {
-			if ok := s.rsTimeline.CheckStateLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.rsTimeline.CheckStateLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
 		}
 
 		for _, roomInfo := range req.LeaveRooms {
-			if ok := s.rsTimeline.CheckStateLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.rsTimeline.CheckStateLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
-			if ok := s.rsTimeline.CheckStreamLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.rsTimeline.CheckStreamLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
-			if ok := s.roomHistory.CheckLoadReady(ctx, roomInfo.RoomID, false); !ok {
+			if ok := s.roomHistory.CheckLoadReady(roomInfo.RoomID, false); !ok {
 				loaded = false
 			}
 		}
@@ -512,8 +508,7 @@ func (s *SyncServer) incrementSyncLoading(ctx context.Context, req *syncapitypes
 	}
 }
 
-func (s *SyncServer) addReceipt(ctx context.Context, req *syncapitypes.SyncServerRequest,
-	maxPos int64, response *syncapitypes.SyncServerResponse) {
+func (s *SyncServer) addReceipt(req *syncapitypes.SyncServerRequest, maxPos int64, response *syncapitypes.SyncServerResponse) {
 	if !s.receiptDataStreamRepo.ExistsReceipt(req.ReceiptOffset, req.UserID) {
 		response.MaxReceiptOffset = req.ReceiptOffset
 		return
@@ -528,7 +523,7 @@ func (s *SyncServer) addReceipt(ctx context.Context, req *syncapitypes.SyncServe
 		if s.receiptDataStreamRepo.GetRoomLastOffset(roomID) <= req.ReceiptOffset {
 			continue
 		}
-		rdsTimeLine := s.receiptDataStreamRepo.GetHistory(ctx, roomID)
+		rdsTimeLine := s.receiptDataStreamRepo.GetHistory(roomID)
 		if rdsTimeLine != nil {
 			_, feedUp := rdsTimeLine.GetFeedRange()
 			if feedUp > req.ReceiptOffset {
@@ -536,9 +531,9 @@ func (s *SyncServer) addReceipt(ctx context.Context, req *syncapitypes.SyncServe
 
 				// full sync请求，如果当前用户最新消息未读，应返回用户上次读到的offset
 				if req.IsFullSync {
-					uOffset := s.userReceiptRepo.GetLatestOffset(ctx, req.UserID, roomID)
+					uOffset := s.userReceiptRepo.GetLatestOffset(req.UserID, roomID)
 					if uOffset < lastOffset && uOffset > req.ReceiptOffset {
-						selfReceipt := s.userReceiptRepo.GetLatestReceipt(ctx, req.UserID, roomID)
+						selfReceipt := s.userReceiptRepo.GetLatestReceipt(req.UserID, roomID)
 						if selfReceipt != nil {
 							err := json.Unmarshal(selfReceipt, &selfReceiptEvent)
 							if err != nil {
@@ -620,15 +615,15 @@ func (s *SyncServer) addUnreadCount(response *syncapitypes.SyncServerResponse, u
 	return
 }
 
-func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.SyncServerRequest, roomID string, reqStart, reqEnd int64) (*syncapitypes.JoinResponse, int64, []string) {
+func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, roomID string, reqStart, reqEnd int64) (*syncapitypes.JoinResponse, int64, []string) {
 	log.Infof("SyncServer.buildRoomJoinResp traceid:%s user:%s device:%s roomID:%s reqStart:%d reqEnd:%d", req.TraceID, req.UserID, req.DeviceID, roomID, reqStart, reqEnd)
 	//再加载一遍，避免数据遗漏
-	s.rsTimeline.LoadStates(ctx, roomID, true)
-	s.rsTimeline.LoadStreamStates(ctx, roomID, true)
-	s.roomHistory.LoadHistory(ctx, roomID, true)
-	s.receiptDataStreamRepo.LoadHistory(ctx, roomID, true)
-	s.userReceiptRepo.LoadHistory(ctx, req.UserID, roomID, true)
-	minStream := s.roomHistory.GetRoomMinStream(ctx, roomID)
+	s.rsTimeline.LoadStates(roomID, true)
+	s.rsTimeline.LoadStreamStates(roomID, true)
+	s.roomHistory.LoadHistory(roomID, true)
+	s.receiptDataStreamRepo.LoadHistory(roomID, true)
+	s.userReceiptRepo.LoadHistory(req.UserID, roomID, true)
+	minStream := s.roomHistory.GetRoomMinStream(roomID)
 
 	jr := syncapitypes.NewJoinResponse()
 	jr.Timeline.Limited = false
@@ -643,7 +638,7 @@ func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.Sy
 		return jr, maxPos, []string{}
 	}
 
-	history := s.roomHistory.GetHistory(ctx, roomID)
+	history := s.roomHistory.GetHistory(roomID)
 	if history == nil {
 		log.Errorf("SyncServer.buildRoomJoinResp roomHistory.GetHistory nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
 		jr.Timeline.Limited = true
@@ -673,7 +668,7 @@ func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.Sy
 
 	feeds, start, end, low, up := history.GetAllFeedsReverse()
 
-	log.Infof("SyncServer buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s load room-timeline start:%d end:%d low:%d up:%d", req.TraceID, roomID, req.UserID, req.DeviceID, start, end, low, up)
+	log.Infof("SyncServer buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s load room-timeline start:%d end:%d low:%d up:%d len(feeds):%d", req.TraceID, roomID, req.UserID, req.DeviceID, start, end, low, up, len(feeds))
 
 	firstTimeLine := int64(-1)
 	firstTs := int64(-1)
@@ -721,7 +716,9 @@ func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.Sy
 		feed := feeds[i]
 		if feed != nil {
 			stream := feed.(*feedstypes.StreamEvent)
+			log.Infof("only for test SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s, offset:%d", req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetOffset())
 			if stream.GetOffset() < reqStart {
+				log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s break offset:%d", req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetOffset())
 				break
 			}
 
@@ -761,6 +758,8 @@ func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.Sy
 								req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetEv().EventID, stream.GetEv().EventNID, idx)
 						}
 					}
+				} else {
+					log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s skip event offset:%d for visibity", req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetOffset())
 				}
 			}
 
@@ -770,6 +769,7 @@ func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.Sy
 				} else {
 					jr.Timeline.Limited = false
 				}
+				log.Infof("SyncServer.buildRoomJoinResp traceid:%s break roomID:%s user:%s device:%s limit:%s eventType:%s stream.Offset:%d minStream:%d", req.TraceID, roomID, req.UserID, req.DeviceID, stream.Offset, minStream)
 				break
 			}
 
@@ -778,16 +778,16 @@ func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.Sy
 			history.Console()
 		}
 	}
-
+	log.Infof("SyncServer.buildRoomJoinResp traceid:%s before sort buildJoinRoomResp user:%s room:%s firsttimeLine:%d get msgevent len:%d firstTimeLine:%d", req.TraceID, req.UserID, roomID, firstTimeLine, len(msgEvent), firstTimeLine)
 	for i := 0; i < len(msgEvent)/2; i++ {
 		tmp := msgEvent[i]
 		msgEvent[i] = msgEvent[len(msgEvent)-i-1]
 		msgEvent[len(msgEvent)-i-1] = tmp
 	}
-	log.Infof("SyncServer.buildRoomJoinResp traceid:%s buildJoinRoomResp user:%s room:%s firsttimeLine:%d get msgevent len:%d", req.TraceID, req.UserID, roomID, firstTimeLine, len(msgEvent))
+	log.Infof("SyncServer.buildRoomJoinResp traceid:%s after sort buildJoinRoomResp user:%s room:%s firsttimeLine:%d get msgevent len:%d firstTimeLine:%d", req.TraceID, req.UserID, roomID, firstTimeLine, len(msgEvent), firstTimeLine)
 	var stateEvent []gomatrixserverlib.ClientEvent
 	stateEvent = []gomatrixserverlib.ClientEvent{}
-	states := s.rsTimeline.GetStates(ctx, roomID)
+	states := s.rsTimeline.GetStates(roomID)
 
 	if states != nil {
 		realEnd := reqEnd
@@ -871,13 +871,12 @@ func (s *SyncServer) buildRoomJoinResp(ctx context.Context, req *syncapitypes.Sy
 	return jr, maxPos, users
 }
 
-func (s *SyncServer) buildRoomInviteResp(ctx context.Context,
-	req *syncapitypes.SyncServerRequest, roomID, user string) (*syncapitypes.InviteResponse, int64) {
+func (s *SyncServer) buildRoomInviteResp(req *syncapitypes.SyncServerRequest, roomID, user string) (*syncapitypes.InviteResponse, int64) {
 	ir := syncapitypes.NewInviteResponse()
 	maxPos := int64(-1)
-	s.rsTimeline.LoadStates(ctx, roomID, true)
+	s.rsTimeline.LoadStates(roomID, true)
 
-	states := s.rsTimeline.GetStates(ctx, roomID)
+	states := s.rsTimeline.GetStates(roomID)
 	if states != nil {
 		feeds, _, _, _, _ := states.GetAllFeeds()
 		endIdx := len(feeds) - 1
@@ -926,12 +925,12 @@ func (s *SyncServer) buildRoomInviteResp(ctx context.Context,
 }
 
 //对于leave，理论上只要返回leave事件即可，其余消息属于多余
-func (s *SyncServer) buildRoomLeaveResp(ctx context.Context, req *syncapitypes.SyncServerRequest, roomID, user string, reqStart int64) (*syncapitypes.LeaveResponse, int64) {
+func (s *SyncServer) buildRoomLeaveResp(req *syncapitypes.SyncServerRequest, roomID, user string, reqStart int64) (*syncapitypes.LeaveResponse, int64) {
 	lv := syncapitypes.NewLeaveResponse()
 	maxPos := int64(-1)
-	s.rsTimeline.LoadStates(ctx, roomID, true)
-	s.rsTimeline.LoadStreamStates(ctx, roomID, true)
-	s.roomHistory.LoadHistory(ctx, roomID, true)
+	s.rsTimeline.LoadStates(roomID, true)
+	s.rsTimeline.LoadStreamStates(roomID, true)
+	s.roomHistory.LoadHistory(roomID, true)
 
 	rs := s.rsCurState.GetRoomState(roomID)
 	if rs == nil {
@@ -942,7 +941,7 @@ func (s *SyncServer) buildRoomLeaveResp(ctx context.Context, req *syncapitypes.S
 		return lv, maxPos
 	}
 
-	history := s.roomHistory.GetHistory(ctx, roomID)
+	history := s.roomHistory.GetHistory(roomID)
 	if history == nil {
 		log.Errorf("SyncServer.buildRoomLeaveResp roomHistory.GetHistory nil roomID %s user %s device %s since %d roomLatest %d", roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
 		lv.Timeline.Limited = true
@@ -974,7 +973,7 @@ func (s *SyncServer) buildRoomLeaveResp(ctx context.Context, req *syncapitypes.S
 	limit := req.Limit
 	var msgEvent []gomatrixserverlib.ClientEvent
 	msgEvent = []gomatrixserverlib.ClientEvent{}
-	minStream := s.roomHistory.GetRoomMinStream(ctx, roomID)
+	minStream := s.roomHistory.GetRoomMinStream(roomID)
 
 	visibilityTime := s.settings.GetMessageVisilibityTime()
 	nowTs := time.Now().Unix()

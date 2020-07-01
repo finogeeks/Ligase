@@ -22,7 +22,7 @@ import (
 
 const (
 	DEBUG_LEVEL_DEBUG = "debug"
-	DEBUG_LEVEL_PROD = "prod"
+	DEBUG_LEVEL_Prod  = "prod"
 )
 
 type KafkaCommonCfg struct {
@@ -38,27 +38,14 @@ type DomainCfg struct {
 	Domains []string
 }
 
-type LockCfg struct {
-	Timeout int
-	Wait    int
-	Force   bool
-}
-
-type DistLockCfg struct {
-	LockInstance     LockCfg
-	LockRoomState    LockCfg
-	LockRoomStateExt LockCfg
-}
-
 type DebugCfg struct {
 	DebugLevel string
 }
 
 type CommonCfg struct {
-	Kafka    KafkaCommonCfg
-	Domain   DomainCfg
-	DistLock DistLockCfg
-	Debug    DebugCfg
+	Kafka  KafkaCommonCfg
+	Domain DomainCfg
+	Debug  DebugCfg
 }
 
 var AdapterCfg CommonCfg
@@ -136,26 +123,6 @@ func CheckSameDomain(domains []string) bool {
 		}
 	}
 	return true
-}
-
-func GetDistLockCfg() DistLockCfg {
-	return AdapterCfg.DistLock
-}
-
-func SetDistLockItemCfg(item string, timeout, wait int, force bool) {
-	lockCfg := LockCfg{
-		Timeout: timeout,
-		Wait:    wait,
-		Force:   force,
-	}
-	switch item {
-	case "instance":
-		AdapterCfg.DistLock.LockInstance = lockCfg
-	case "room_state":
-		AdapterCfg.DistLock.LockRoomState = lockCfg
-	case "room_state_ext":
-		AdapterCfg.DistLock.LockRoomStateExt = lockCfg
-	}
 }
 
 func SetDebugLevel(debugLevel string) {

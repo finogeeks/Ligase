@@ -15,11 +15,10 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/syncserver/consumers"
 	"github.com/nats-io/go-nats"
 )
@@ -28,9 +27,8 @@ type ReceiptRpcConsumer struct {
 	rpcClient       *common.RpcClient
 	receiptConsumer *consumers.ReceiptConsumer
 	chanSize        uint32
-	//msgChan         []chan *types.ReceiptContent
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan         []chan *types.ReceiptContent
+	cfg             *config.Dendrite
 }
 
 func NewReceiptRpcConsumer(
@@ -48,7 +46,7 @@ func NewReceiptRpcConsumer(
 	return s
 }
 
-func (s *ReceiptRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *ReceiptRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -59,7 +57,7 @@ func (s *ReceiptRpcConsumer) GetTopic() string {
 func (s *ReceiptRpcConsumer) Clean() {
 }
 
-func (s *ReceiptRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *ReceiptRpcConsumer) cb(msg *nats.Msg) {
 	var result types.ReceiptContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc receipt cb error %v", err)
@@ -67,25 +65,24 @@ func (s *ReceiptRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	}
 	if common.IsRelatedRequest(result.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		idx := common.CalcStringHashCode(result.RoomID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *ReceiptRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.ReceiptContent)
-		s.receiptConsumer.OnReceipt(msg.Ctx, data)
+func (s *ReceiptRpcConsumer) startWorker(msgChan chan *types.ReceiptContent) {
+	for data := range msgChan {
+		s.receiptConsumer.OnReceipt(data)
 	}
 }
 
 func (s *ReceiptRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.ReceiptContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.ReceiptContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }

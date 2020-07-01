@@ -15,20 +15,18 @@
 package consumers
 
 import (
-	"context"
-	"sync"
-
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/common/config"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
+	"sync"
 )
 
 var regMu sync.RWMutex
 var newHandler = make(map[int64]func() ConsumerInterface)
 
 type ConsumerInterface interface {
-	OnMessage(context.Context, *dbtypes.DBEvent) error
+	OnMessage(*dbtypes.DBEvent) error
 	Prepare(*config.Dendrite)
 	Report(monitor.LabeledGauge)
 	Start()

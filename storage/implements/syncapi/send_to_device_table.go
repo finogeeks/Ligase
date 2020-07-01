@@ -17,12 +17,11 @@ package syncapi
 import (
 	"context"
 	"database/sql"
-
 	"github.com/finogeeks/ligase/common"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 // we treat send to device as abbrev as STD in the context below.
@@ -34,7 +33,7 @@ CREATE TABLE IF NOT EXISTS syncapi_send_to_device (
 	sender TEXT NOT NULL,
 	event_type TEXT NOT NULL,
 	target_device_id TEXT NOT NULL,
-	target_user_id TEXT NOT NULL,
+	target_user_id TEXT NOT NULL,	
 	event_json TEXT NOT NULL,
 	identifier TEXT  NOT NULL DEFAULT '',
 CONSTRAINT syncapi_send_to_device_unique UNIQUE (id, target_device_id, target_user_id)
@@ -117,7 +116,7 @@ func (s *stdEventsStatements) insertStdEvent(
 			Identifier:   identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(targetUID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_send_to_device")
+		s.db.WriteDBEvent(&update)
 		return nil
 	} else {
 		_, err = s.insertStdEventStmt.ExecContext(
@@ -198,7 +197,7 @@ func (s *stdEventsStatements) deleteStdEvent(
 			TargetUID:    userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_send_to_device")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteStdEventStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID, id)
@@ -229,7 +228,7 @@ func (s *stdEventsStatements) deleteMacStdEvent(
 			TargetUID:    userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_send_to_device")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteMacStdEventStmt
 		_, err := stmt.ExecContext(ctx, userID, identifier, deviceID)
@@ -259,7 +258,7 @@ func (s *stdEventsStatements) deleteDeviceStdEvent(
 			TargetUID:    userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_send_to_device")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		stmt := s.deleteDeviceStdEventStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID)

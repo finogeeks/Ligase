@@ -16,15 +16,14 @@ package rpc
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/nats-io/go-nats"
 )
 
@@ -71,8 +70,8 @@ func (cb *DownloadCB) GetTopic() string {
 	return cb.id
 }
 
-func (cb *DownloadCB) GetCB() common.MsgHandlerWithContext {
-	return func(ctx context.Context, msg *nats.Msg) {
+func (cb *DownloadCB) GetCB() nats.MsgHandler {
+	return func(msg *nats.Msg) {
 		cb.ch <- msg.Data
 	}
 }

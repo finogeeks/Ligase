@@ -16,16 +16,15 @@ package repos
 
 import (
 	"context"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"sync"
 	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/feedstypes"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/feedstypes"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -69,8 +68,8 @@ func (tl *RoomStateTimeLineRepo) SetMonitor(queryHitCounter mon.LabeledCounter) 
 	tl.QueryHitCounter = queryHitCounter
 }
 
-func (tl *RoomStateTimeLineRepo) DelEv(ctx context.Context, roomID string, removedEventIDs []string) {
-	states := tl.GetStates(ctx, roomID)
+func (tl *RoomStateTimeLineRepo) DelEv(roomID string, removedEventIDs []string) {
+	states := tl.GetStates(roomID)
 
 	if states != nil {
 		feeds, _, _, _, _ := states.GetAllFeeds()
@@ -91,10 +90,10 @@ func (tl *RoomStateTimeLineRepo) DelEv(ctx context.Context, roomID string, remov
 }
 
 //kafka 消费数据，load设置为true
-func (tl *RoomStateTimeLineRepo) AddEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
+func (tl *RoomStateTimeLineRepo) AddEv(ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
 	if load == true { //
 		if ev.Type != "m.room.create" {
-			tl.LoadStates(ctx, ev.RoomID, true)
+			tl.LoadStates(ev.RoomID, true)
 		} else {
 			// 如果syncwriter比这里syncserver快，timeline中feed了之后，又向db取数据，导致会部分事件重复
 			tl.stateReady.Store(ev.RoomID, true)
@@ -137,10 +136,9 @@ func (tl *RoomStateTimeLineRepo) AddEv(ctx context.Context, ev *gomatrixserverli
 	}
 }
 
-func (tl *RoomStateTimeLineRepo) AddStreamEv(ctx context.Context,
-	ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
+func (tl *RoomStateTimeLineRepo) AddStreamEv(ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
 	if load == true && ev.Type != "m.room.create" { //
-		tl.LoadStreamStates(ctx, ev.RoomID, true)
+		tl.LoadStreamStates(ev.RoomID, true)
 	}
 
 	if common.IsStateClientEv(ev) {
@@ -153,20 +151,20 @@ func (tl *RoomStateTimeLineRepo) AddStreamEv(ctx context.Context,
 	}
 }
 
-func (tl *RoomStateTimeLineRepo) AddBackfillEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
+func (tl *RoomStateTimeLineRepo) AddBackfillEv(ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
 	if load == true && ev.Type != "m.room.create" { //
-		tl.LoadStreamStates(ctx, ev.RoomID, true)
+		tl.LoadStreamStates(ev.RoomID, true)
 	}
 	if common.IsStateClientEv(ev) {
 		tl.rsRepo.onEvent(ev, offset, true)
 	}
 }
 
-func (tl *RoomStateTimeLineRepo) loadStates(ctx context.Context, roomID string) {
+func (tl *RoomStateTimeLineRepo) loadStates(roomID string) {
 	defer tl.stateLoading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000
-	evs, offsets, err := tl.persist.GetStateEventsForRoom(ctx, roomID)
+	evs, offsets, err := tl.persist.GetStateEventsForRoom(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed RoomStateTimeLineRepo load room %s state spend:%d ms err: %v", roomID, spend, err)
@@ -178,17 +176,17 @@ func (tl *RoomStateTimeLineRepo) loadStates(ctx context.Context, roomID string) 
 		log.Infof("load db succ RoomStateTimeLineRepo.loadStates finished %s spend:%d ms", roomID, spend)
 	}
 	for idx := range evs {
-		tl.AddEv(ctx, &evs[idx], offsets[idx], false)
+		tl.AddEv(&evs[idx], offsets[idx], false)
 	}
 
 	tl.stateReady.Store(roomID, true)
 }
 
-func (tl *RoomStateTimeLineRepo) loadStateStreams(ctx context.Context, roomID string) {
+func (tl *RoomStateTimeLineRepo) loadStateStreams(roomID string) {
 	defer tl.streamLoading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000
-	evs, offsets, err := tl.persist.GetStateEventsStreamForRoom(ctx, roomID)
+	evs, offsets, err := tl.persist.GetStateEventsStreamForRoom(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed RoomStateTimeLineRepo load room %s state stream spend:%d ms err: %v", roomID, spend, err)
@@ -200,19 +198,19 @@ func (tl *RoomStateTimeLineRepo) loadStateStreams(ctx context.Context, roomID st
 		log.Infof("load db succ RoomStateTimeLineRepo.loadStateStreams finished %s spend:%d ms", roomID, spend)
 	}
 	for idx := range evs {
-		tl.AddStreamEv(ctx, &evs[idx], offsets[idx], false)
+		tl.AddStreamEv(&evs[idx], offsets[idx], false)
 	}
 	tl.streamReady.Store(roomID, true)
 }
 
-func (tl *RoomStateTimeLineRepo) LoadStates(ctx context.Context, roomID string, sync bool) {
+func (tl *RoomStateTimeLineRepo) LoadStates(roomID string, sync bool) {
 	if _, ok := tl.stateReady.Load(roomID); !ok {
 		if _, ok := tl.stateLoading.Load(roomID); !ok {
 			tl.stateLoading.Store(roomID, true)
 			if sync == false {
-				go tl.loadStates(ctx, roomID)
+				go tl.loadStates(roomID)
 			} else {
-				tl.loadStates(ctx, roomID)
+				tl.loadStates(roomID)
 			}
 
 			tl.QueryHitCounter.WithLabelValues("db", "RoomStateTimeLineRepo", "LoadStates").Add(1)
@@ -220,25 +218,25 @@ func (tl *RoomStateTimeLineRepo) LoadStates(ctx context.Context, roomID string, 
 			if sync == false {
 				return
 			}
-			tl.CheckStateLoadReady(ctx, roomID, true)
+			tl.CheckStateLoadReady(roomID, true)
 		}
 	} else {
 		//加载完成又被内存置换，需要重新加载
 		res := tl.repo.getTimeLine(roomID)
 		if res == nil {
 			tl.stateReady.Delete(roomID)
-			tl.LoadStates(ctx, roomID, sync)
+			tl.LoadStates(roomID, sync)
 		} else {
 			tl.QueryHitCounter.WithLabelValues("cache", "RoomStateTimeLineRepo", "LoadStates").Add(1)
 		}
 	}
 }
 
-func (tl *RoomStateTimeLineRepo) CheckStateLoadReady(ctx context.Context, roomID string, sync bool) bool {
+func (tl *RoomStateTimeLineRepo) CheckStateLoadReady(roomID string, sync bool) bool {
 	_, ok := tl.stateReady.Load(roomID)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadStates(ctx, roomID, false)
+			tl.LoadStates(roomID, false)
 		}
 		return ok
 	}
@@ -249,7 +247,7 @@ func (tl *RoomStateTimeLineRepo) CheckStateLoadReady(ctx context.Context, roomID
 			break
 		}
 
-		tl.LoadStates(ctx, roomID, false)
+		tl.LoadStates(roomID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -264,19 +262,19 @@ func (tl *RoomStateTimeLineRepo) CheckStateLoadReady(ctx context.Context, roomID
 	return ok
 }
 
-func (tl *RoomStateTimeLineRepo) GetStates(ctx context.Context, roomID string) *feedstypes.TimeLines {
-	tl.LoadStates(ctx, roomID, true)
+func (tl *RoomStateTimeLineRepo) GetStates(roomID string) *feedstypes.TimeLines {
+	tl.LoadStates(roomID, true)
 	return tl.repo.getTimeLine(roomID)
 }
 
-func (tl *RoomStateTimeLineRepo) LoadStreamStates(ctx context.Context, roomID string, sync bool) {
+func (tl *RoomStateTimeLineRepo) LoadStreamStates(roomID string, sync bool) {
 	if _, ok := tl.streamReady.Load(roomID); !ok {
 		if _, ok := tl.streamLoading.Load(roomID); !ok {
 			tl.streamLoading.Store(roomID, true)
 			if sync == false {
-				go tl.loadStateStreams(ctx, roomID)
+				go tl.loadStateStreams(roomID)
 			} else {
-				tl.loadStateStreams(ctx, roomID)
+				tl.loadStateStreams(roomID)
 			}
 
 			tl.QueryHitCounter.WithLabelValues("db", "RoomStateTimeLineRepo", "LoadStreamStates").Add(1)
@@ -284,7 +282,7 @@ func (tl *RoomStateTimeLineRepo) LoadStreamStates(ctx context.Context, roomID st
 			if sync == false {
 				return
 			}
-			tl.CheckStreamLoadReady(ctx, roomID, true)
+			tl.CheckStreamLoadReady(roomID, true)
 		}
 	} else {
 		//加载完成又被内存置换，需要重新加载
@@ -292,18 +290,18 @@ func (tl *RoomStateTimeLineRepo) LoadStreamStates(ctx context.Context, roomID st
 		if res == nil {
 			tl.rsRepo.removeRoomState(roomID)
 			tl.streamReady.Delete(roomID)
-			tl.LoadStreamStates(ctx, roomID, sync)
+			tl.LoadStreamStates(roomID, sync)
 		} else {
 			tl.QueryHitCounter.WithLabelValues("cache", "RoomStateTimeLineRepo", "LoadStreamStates").Add(1)
 		}
 	}
 }
 
-func (tl *RoomStateTimeLineRepo) CheckStreamLoadReady(ctx context.Context, roomID string, sync bool) bool {
+func (tl *RoomStateTimeLineRepo) CheckStreamLoadReady(roomID string, sync bool) bool {
 	_, ok := tl.streamReady.Load(roomID)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadStreamStates(ctx, roomID, false)
+			tl.LoadStreamStates(roomID, false)
 		}
 		return ok
 	}
@@ -314,7 +312,7 @@ func (tl *RoomStateTimeLineRepo) CheckStreamLoadReady(ctx context.Context, roomI
 			break
 		}
 
-		tl.LoadStreamStates(ctx, roomID, false)
+		tl.LoadStreamStates(roomID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -329,8 +327,8 @@ func (tl *RoomStateTimeLineRepo) CheckStreamLoadReady(ctx context.Context, roomI
 	return ok
 }
 
-func (tl *RoomStateTimeLineRepo) GetStateStreams(ctx context.Context, roomID string) *feedstypes.TimeLines {
-	tl.LoadStreamStates(ctx, roomID, true)
+func (tl *RoomStateTimeLineRepo) GetStateStreams(roomID string) *feedstypes.TimeLines {
+	tl.LoadStreamStates(roomID, true)
 	return tl.streamRepo.getTimeLine(roomID)
 }
 
@@ -340,11 +338,11 @@ func (tl *RoomStateTimeLineRepo) RemoveStateStreams(roomID string) {
 	tl.streamReady.Delete(roomID)
 }
 
-func (tl *RoomStateTimeLineRepo) GetStateEvents(ctx context.Context, roomID string, endPos int64) ([]*feedstypes.StreamEvent, []*gomatrixserverlib.ClientEvent) {
+func (tl *RoomStateTimeLineRepo) GetStateEvents(roomID string, endPos int64) ([]*feedstypes.StreamEvent, []*gomatrixserverlib.ClientEvent) {
 	streamEvs := []*feedstypes.StreamEvent{}
 	events := []*gomatrixserverlib.ClientEvent{}
 
-	streams := tl.GetStateStreams(ctx, roomID)
+	streams := tl.GetStateStreams(roomID)
 	if streams == nil {
 		return streamEvs, events
 	}
@@ -361,7 +359,7 @@ func (tl *RoomStateTimeLineRepo) GetStateEvents(ctx context.Context, roomID stri
 
 	if len(streamEvs) <= 0 {
 		// get from db
-		evs, offsets, err := tl.persist.GetStateEventsStreamForRoomBeforePos(ctx, roomID, endPos)
+		evs, offsets, err := tl.persist.GetStateEventsStreamForRoomBeforePos(context.TODO(), roomID, endPos)
 		if err != nil {
 			log.Errorf("RoomStateTimeLineRepo load room %s state err: %v", roomID, err)
 			return streamEvs, events

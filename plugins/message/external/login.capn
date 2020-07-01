@@ -1,0 +1,30 @@
+using Go = import "/go.capnp";
+
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+@0xd2a718af8a61f4a1;
+
+struct FlowCapn { 
+   type    @0:   Text; 
+   stages  @1:   List(Text); 
+} 
+
+struct GetLoginRequestCapn { 
+   isAdmin  @0:   Bool; 
+} 
+
+struct GetLoginResponseCapn { 
+   flows  @0:   List(FlowCapn); 
+} 
+
+struct PostLoginResponseCapn { 
+   userID       @0:   Text; 
+   accessToken  @1:   Text; 
+   homeServer   @2:   Text; 
+   deviceID     @3:   Text; 
+} 
+
+struct UserIdentifierCapn { 
+   userType  @0:   Text; 
+} 

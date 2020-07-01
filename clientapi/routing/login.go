@@ -19,8 +19,6 @@ package routing
 
 import (
 	"context"
-	"fmt"
-	"github.com/finogeeks/ligase/model/authtypes"
 	"net/http"
 	"strings"
 
@@ -31,10 +29,10 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -64,24 +62,13 @@ func providerLogin(
 			return http.StatusUnauthorized, jsonerror.Unknown("password incorrect")
 		}
 	}
-	devID := &r.DeviceID
-	account, allow, e := checkCreateAccount(cfg, accountDB, userID, *devID)
-	if e != nil {
-		return http.StatusInternalServerError, jsonerror.Unknown("failed to check create account: " + e.Error())
-	}
-	if !allow {
-		return http.StatusUnauthorized, jsonerror.Unknown(fmt.Sprintf("account has to max count: %d", cfg.LicenseItem.TotalUsers))
-	}
-	appServiceID := "virtual"
-	if (account != nil && account.AppServiceID == "actual") || *devID != "" {
-		appServiceID = "actual"
-	}
 
-	_, err := accountDB.CreateAccountWithCheck(ctx, account, userID, "", appServiceID, "")
+	_, err := accountDB.CreateAccount(ctx, userID, "", "", "")
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to create account: " + err.Error())
 	}
 
+	devID := &r.DeviceID
 	domain, _ := common.DomainFromID(userID)
 	if r.DeviceID == "" {
 		devID = nil
@@ -100,11 +87,11 @@ func providerLogin(
 	mac := common.GetDeviceMac(deviceID)
 
 	//异步删db
-	err = encryptDB.DeleteMacKeys(ctx, deviceID, userID, mac)
+	err = encryptDB.DeleteMacKeys(context.TODO(), deviceID, userID, mac)
 	if err != nil {
 		log.Errorf("Login remove device keys error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
-	err = syncDB.DeleteMacStdMessage(ctx, mac, userID, deviceID)
+	err = syncDB.DeleteMacStdMessage(context.TODO(), mac, userID, deviceID)
 	if err != nil {
 		log.Errorf("Login remove std message error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
@@ -150,29 +137,6 @@ func providerLogin(
 	}
 }
 
-func checkCreateAccount(cfg config.Dendrite, accountDB model.AccountsDatabase, userId, deviceId string) (*authtypes.Account, bool, error) {
-	account, err := accountDB.GetAccount(context.Background(), userId)
-	if err != nil {
-		return nil, false, err
-	}
-	if cfg.LicenseItem.TotalUsers <= 1 || deviceId == "" {
-		return account, true, nil
-	}
-	totalCount, err := accountDB.GetActualTotal(context.Background())
-	if err != nil {
-		return account, false, err
-	}
-	if int64(totalCount) < cfg.LicenseItem.TotalUsers {
-		return account, true, nil
-	} else {
-		if account != nil {
-			return account, account.AppServiceID == "actual", nil
-		} else {
-			return account, false, nil
-		}
-	}
-}
-
 func pubLoginToken(userID string, deviceID string, rpcClient *common.RpcClient) {
 	content := types.FilterTokenContent{
 		UserID:     userID,
@@ -202,6 +166,13 @@ func LoginPost(
 	tokenFilter *filter.Filter,
 	rpcClient *common.RpcClient,
 ) (int, core.Coder) {
+	// var r external.PostLoginRequest
+	// resErr := httputil.UnmarshalJSONRequest(req, &r)
+	// if resErr != nil {
+	// 	return *resErr
+	// }
+	//util.GetLogger(req.Context()).WithField("user", r.User).Info("Processing login request")
+
 	// r.User can either be a user ID or just the userID... or other things maybe.
 	localPart, domain, err := gomatrixserverlib.SplitID('@', req.User)
 	if err != nil {

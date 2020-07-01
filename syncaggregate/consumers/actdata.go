@@ -19,15 +19,14 @@ package consumers
 
 import (
 	"context"
-
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/storage/model"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/repos"
 )
 
 type ActDataConsumer struct {
@@ -35,9 +34,8 @@ type ActDataConsumer struct {
 	db                   model.SyncAPIDatabase
 	clientDataStreamRepo *repos.ClientDataStreamRepo
 	chanSize             uint32
-	//msgChan              []chan *types.ActDataStreamUpdate
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan              []chan *types.ActDataStreamUpdate
+	cfg                  *config.Dendrite
 }
 
 func NewActDataConsumer(
@@ -69,17 +67,16 @@ func (s *ActDataConsumer) SetClientDataStreamRepo(clientDataStreamRepo *repos.Cl
 	return s
 }
 
-func (s *ActDataConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.ActDataStreamUpdate)
-		s.onMessage(msg.Ctx, data)
+func (s *ActDataConsumer) startWorker(msgChan chan *types.ActDataStreamUpdate) {
+	for data := range msgChan {
+		s.onMessage(data)
 	}
 }
 
 func (s *ActDataConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.ActDataStreamUpdate, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.ActDataStreamUpdate, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
@@ -87,7 +84,7 @@ func (s *ActDataConsumer) Start() error {
 	return nil
 }
 
-func (s *ActDataConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *ActDataConsumer) OnMessage(topic string, partition int32, data []byte) {
 	// Parse out the event JSON
 	var output types.ActDataStreamUpdate
 	if err := json.Unmarshal(data, &output); err != nil {
@@ -98,20 +95,20 @@ func (s *ActDataConsumer) OnMessage(ctx context.Context, topic string, partition
 
 	if common.IsRelatedRequest(output.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		idx := common.CalcStringHashCode(output.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &output}
+		s.msgChan[idx] <- &output
 	}
 
 	return
 }
 
-func (s *ActDataConsumer) onMessage(ctx context.Context, output *types.ActDataStreamUpdate) {
+func (s *ActDataConsumer) onMessage(output *types.ActDataStreamUpdate) {
 	if output.StreamType != "" {
 		log.Infow("sync client data stream consumer received data", log.KeysAndValues{
 			"userID", output.UserID, "roomID", output.RoomID, "dataType", output.DataType, "streamType", output.StreamType,
 		})
 
 		syncStreamPos, err := s.db.UpsertClientDataStream(
-			ctx, output.UserID, output.RoomID, output.DataType, output.StreamType,
+			context.TODO(), output.UserID, output.RoomID, output.DataType, output.StreamType,
 		)
 		if err != nil {
 			log.Errorw("could not save account data stream", log.KeysAndValues{
@@ -119,7 +116,7 @@ func (s *ActDataConsumer) onMessage(ctx context.Context, output *types.ActDataSt
 			})
 		}
 
-		s.clientDataStreamRepo.AddClientDataStream(ctx, output, int64(syncStreamPos))
+		s.clientDataStreamRepo.AddClientDataStream(output, int64(syncStreamPos))
 	} else {
 		log.Errorw("sync client data stream consumer received data with nil stream", log.KeysAndValues{
 			"userID", output.UserID, "roomID", output.RoomID, "dataType", output.DataType})

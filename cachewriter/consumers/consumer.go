@@ -18,7 +18,6 @@
 package consumers
 
 import (
-	"context"
 	"math/rand"
 	"sync"
 	"time"
@@ -64,7 +63,7 @@ func NewDBEventCacheConsumer(
 		for i := 0; i < s.poolSize; i++ {
 			addr := cfg.Redis.Uris[i]
 			s.pools[i] = &redis.Pool{
-				MaxIdle:     200,
+				MaxIdle:     10,
 				MaxActive:   200,
 				Wait:        true,
 				IdleTimeout: 240 * time.Second,
@@ -104,7 +103,7 @@ func (s *DBEventCacheConsumer) Start() error {
 	return nil
 }
 
-func (s *DBEventCacheConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *DBEventCacheConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output dbtypes.DBEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("dbevent: message parse failure", log.KeysAndValues{"error", err})
@@ -116,6 +115,6 @@ func (s *DBEventCacheConsumer) OnMessage(ctx context.Context, topic string, part
 	val, ok := s.consumerRepo.Load(category)
 	if ok {
 		consumer := val.(ConsumerInterface)
-		consumer.OnMessage(ctx, &output)
+		consumer.OnMessage(&output)
 	}
 }

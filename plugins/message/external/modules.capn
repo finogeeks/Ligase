@@ -1,0 +1,291 @@
+@0xd8e21d1e4f76a364;
+using Go = import "/go.capnp";
+using import "./device.capn".DeviceCapn;
+using import "./register.capn".AuthDataCapn;
+$Go.package("external");
+$Go.import("github.com/finogeeks/ligase/plugins/message/external");
+
+struct DelDevicesByIDRequestCapn {
+   deviceId  @0:   Text;
+   auth      @1:   AuthDataCapn;
+}
+
+struct DelPushrulesByIDRequestCapn {
+   scope   @0:   Text;
+   kind    @1:   Text;
+   ruleID  @2:   Text;
+}
+
+struct DelRoomsTagsByIDRequestCapn {
+   userId  @0:   Text;
+   roomId  @1:   Text;
+   tag     @2:   Text;
+}
+
+struct GetDevicesByIDRequestCapn {
+   deviceId  @0:   Text;
+}
+
+struct GetDevicesResponseCapn {
+   devices  @0:   List(DeviceCapn);
+}
+
+struct GetKeysChangesRequestCapn {
+   from  @0:   Text;
+   to    @1:   Text;
+}
+
+struct GetKeysChangesResponseCapn {
+   changed  @0:   List(Text);
+   left     @1:   List(Text);
+}
+
+struct GetMediaDownloadByFileNameRequestCapn {
+   serverName   @0:   Text;
+   mediaID      @1:   Text;
+   fileName     @2:   Text;
+   allowRemote  @3:   Text;
+}
+
+struct GetMediaDownloadRequestCapn {
+   serverName   @0:   Text;
+   mediaID      @1:   Text;
+   allowRemote  @2:   Text;
+}
+
+struct GetMediaPreviewURLRequestCapn {
+   uRL  @0:   Text;
+   ts   @1:   Int64;
+}
+
+struct GetMediaThumbnailRequestCapn {
+   serverName   @0:   Text;
+   mediaID      @1:   Text;
+   width        @2:   Int64;
+   height       @3:   Int64;
+   method       @4:   Int64;
+   allowRemote  @5:   Text;
+}
+
+struct GetNotificationsRequestCapn {
+   from   @0:   Text;
+   limit  @1:   Int64;
+   only   @2:   Text;
+}
+
+struct GetPushersResponseCapn {
+   pusher  @0:   List(PusherCapn);
+}
+
+struct GetPushrulesActionsByIDRequestCapn {
+   scope   @0:   Text;
+   kind    @1:   Text;
+   ruleID  @2:   Text;
+}
+
+struct GetPushrulesActionsByIDResponseCapn {
+   actions  @0:   List(Text);
+}
+
+struct GetPushrulesByIDRequestCapn {
+   scope   @0:   Text;
+   kind    @1:   Text;
+   ruleID  @2:   Text;
+}
+
+struct GetPushrulesEnabledByIDRequestCapn {
+   scope   @0:   Text;
+   kind    @1:   Text;
+   ruleID  @2:   Text;
+}
+
+struct GetPushrulesEnabledByIDResponseCapn {
+   enabled  @0:   Bool;
+}
+
+struct GetRoomEventContextRequestCapn {
+   roomID   @0:   Text;
+   eventID  @1:   Text;
+   limit    @2:   Int64;
+}
+
+struct GetRoomsTagsByIDRequestCapn {
+   userId  @0:   Text;
+   roomId  @1:   Text;
+}
+
+struct GetTurnServerResponseCapn {
+   userName  @0:   Text;
+   password  @1:   Text;
+   uris      @2:   List(Text);
+   tTL       @3:   Int64;
+}
+
+struct GetUserPresenceListRequestCapn {
+   userID  @0:   Text;
+}
+
+struct GetUserPresenceRequestCapn {
+   userID  @0:   Text;
+}
+
+struct GetUserPresenceResponseCapn {
+   presence         @0:   Text;
+   lastActiveAgo    @1:   Int64;
+   status           @2:   Text;
+   currentlyActive  @3:   Bool;
+}
+
+struct PostDevicesDelRequestCapn {
+   devices  @0:   List(Text);
+   auth     @1:   AuthDataCapn;
+}
+
+struct PostMediaUploadRequestCapn {
+   fileName     @0:   Text;
+   contentType  @1:   Text;
+}
+
+struct PostMediaUploadResponseCapn {
+   contentURI  @0:   Text;
+}
+
+struct PostRoomReadMarkersRequestCapn {
+   roomID       @0:   Text;
+   receiptType  @1:   Text;
+   fullyRead    @2:   Text;
+   read         @3:   Text;
+}
+
+struct PostRoomReceiptRequestCapn {
+   roomID       @0:   Text;
+   receiptType  @1:   Text;
+   eventID      @2:   Text;
+}
+
+struct PostSetPushersRequestCapn {
+   pushkey            @0:   Text;
+   kind               @1:   Text;
+   appID              @2:   Text;
+   appDisplayName     @3:   Text;
+   deviceDisplayName  @4:   Text;
+   profileTag         @5:   Text;
+   lang               @6:   Text;
+   data               @7:   PusherDataCapn;
+   append             @8:   Bool;
+}
+
+struct PostUserPresenceListRequestCapn {
+   userID  @0:   Text;
+   invite  @1:   List(Text);
+   drop    @2:   List(Text);
+}
+
+struct PushConditionCapn {
+   kind     @0:   Text;
+   key      @1:   Text;
+   pattern  @2:   Text;
+   is       @3:   Text;
+}
+
+struct PusherCapn {
+   pushkey            @0:   Text;
+   kind               @1:   Text;
+   appID              @2:   Text;
+   appDisplayName     @3:   Text;
+   deviceDisplayName  @4:   Text;
+   profileTag         @5:   Text;
+   lang               @6:   Text;
+   data               @7:   PusherDataCapn;
+}
+
+struct PusherDataCapn {
+   uRL      @0:   Text;
+   format   @1:   Text;
+   pushType @2:  Text;
+   pushChannel @3: Text;
+}
+
+struct PutDevicesByIDRequestCapn {
+   deviceId     @0:   Text;
+   displayName  @1:   Text;
+}
+
+struct PutPushrulesActionsByIDRequestCapn {
+   scope    @0:   Text;
+   kind     @1:   Text;
+   ruleID   @2:   Text;
+   actions  @3:   List(Text);
+}
+
+struct PutPushrulesByIDRequestCapn {
+   actions     @0:   List(Text);
+   conditions  @1:   List(PushConditionCapn);
+   pattern     @2:   Text;
+   scope       @3:   Text;
+   kind        @4:   Text;
+   ruleID      @5:   Text;
+   before      @6:   Text;
+   after       @7:   Text;
+}
+
+struct PutPushrulesEnabledByIDRequestCapn {
+   scope    @0:   Text;
+   kind     @1:   Text;
+   ruleID   @2:   Text;
+   enabled  @3:   Bool;
+}
+
+struct PutRoomAccountDataRequestCapn {
+   userId  @0:   Text;
+   roomID  @1:   Text;
+   type    @2:   Text;
+   content @3:   Data;
+}
+
+struct PutRoomUserTypingRequestCapn {
+   userID   @0:   Text;
+   roomID   @1:   Text;
+   typing   @2:   Bool;
+   timeOut  @3:   Int64;
+}
+
+struct PutRoomsTagsByIDRequestCapn {
+   userId  @0:   Text;
+   roomId  @1:   Text;
+   tag     @2:   Text;
+   order   @3:   Float32;
+   content @4:   Data;
+}
+
+struct PutUserAccountDataRequestCapn {
+   userId  @0:   Text;
+   type    @1:   Text;
+   content @2:   Data;
+}
+
+struct PutUserPresenceRequestCapn {
+   userID    @0:   Text;
+   presence  @1:   Text;
+   status    @2:   Text;
+}
+
+struct TagCapn {
+   order  @0:   Float32;
+}
+
+struct UnsignedDeviceInfoCapn {
+   deviceDisplayName  @0:   Text;
+}
+
+struct GetDevicesByIDResponseCapn {
+   deviceID @0:   Text;
+   displayName @1:   Text;
+   lastSeenIP  @2:   Text;
+   lastSeenTS  @3:   Int64;
+}
+
+struct GetMediaPreviewURLResponseCapn {
+   size     @0:   Int64;
+   image    @1:   Text;
+}

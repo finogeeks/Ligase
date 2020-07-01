@@ -23,10 +23,10 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/storage/model"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -72,7 +72,7 @@ func (s *OutputRoomEventConsumer) Start() error {
 }
 
 // OnMessage is called when the sync server receives a new event from the room server output log.
-func (s *OutputRoomEventConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *OutputRoomEventConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		// If the message was invalid, log it and move on to the next message in the stream
@@ -87,7 +87,7 @@ func (s *OutputRoomEventConsumer) OnMessage(ctx context.Context, topic string, p
 	ev := output.NewRoomEvent.Event
 	log.Infow("publicroomapi received event from roomserver", log.KeysAndValues{"event_id", ev.EventID, "room_id", ev.RoomID, "type", ev.Type})
 	if s.isCare(&ev) {
-		s.db.UpdateRoomFromEvent(ctx, ev)
+		s.db.UpdateRoomFromEvent(context.TODO(), ev)
 	}
 }
 

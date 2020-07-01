@@ -1146,3 +1146,7 @@ func (res *PostQueryClientKeysResponse) Decode(input []byte) error {
 func (res *PostClaimClientKeysResponse) Decode(input []byte) error {
 	return json.Unmarshal(input, res)
 }
+
+func (res *DismissRoomResponse) Decode(input []byte) error {
+	return json.Unmarshal(input, res)
+}

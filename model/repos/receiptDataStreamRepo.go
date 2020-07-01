@@ -20,12 +20,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
-
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -80,11 +78,7 @@ func (tl *ReceiptDataStreamRepo) startFlush() error {
 		for {
 			select {
 			case <-t.C:
-				func() {
-					span, ctx := common.StartSobSomSpan(context.Background(), "ReceiptDataStreamRepo.startFlush")
-					defer span.Finish()
-					tl.flush(ctx)
-				}()
+				tl.flush()
 				t.Reset(time.Millisecond * time.Duration(tl.delay))
 			}
 		}
@@ -105,9 +99,9 @@ func (tl *ReceiptDataStreamRepo) SetRsCurState(rsCurState *RoomCurStateRepo) {
 	tl.roomCurState = rsCurState
 }
 
-func (tl *ReceiptDataStreamRepo) AddReceiptDataStream(ctx context.Context, dataStream *types.ReceiptStream, offset int64) {
+func (tl *ReceiptDataStreamRepo) AddReceiptDataStream(dataStream *types.ReceiptStream, offset int64) {
 	roomID := dataStream.RoomID
-	tl.LoadHistory(ctx, roomID, true)
+	tl.LoadHistory(roomID, true)
 
 	tl.addReceiptDataStream(dataStream, offset, false)
 
@@ -158,14 +152,14 @@ func (tl *ReceiptDataStreamRepo) addReceiptDataStream(dataStream *types.ReceiptS
 	tl.setRoomLatest(roomID, offset)
 }
 
-func (tl *ReceiptDataStreamRepo) LoadHistory(ctx context.Context, roomID string, sync bool) {
+func (tl *ReceiptDataStreamRepo) LoadHistory(roomID string, sync bool) {
 	if _, ok := tl.ready.Load(roomID); !ok {
 		if _, ok := tl.loading.Load(roomID); !ok {
 			tl.loading.Store(roomID, true)
 			if sync == false {
-				go tl.loadHistory(ctx, roomID)
+				go tl.loadHistory(roomID)
 			} else {
-				tl.loadHistory(ctx, roomID)
+				tl.loadHistory(roomID)
 			}
 
 			tl.queryHitCounter.WithLabelValues("db", "ReceiptDataStreamRepo", "LoadHistory").Add(1)
@@ -173,7 +167,7 @@ func (tl *ReceiptDataStreamRepo) LoadHistory(ctx context.Context, roomID string,
 			if sync == false {
 				return
 			} else {
-				tl.CheckLoadReady(ctx, roomID, true)
+				tl.CheckLoadReady(roomID, true)
 			}
 		}
 	} else {
@@ -181,7 +175,7 @@ func (tl *ReceiptDataStreamRepo) LoadHistory(ctx context.Context, roomID string,
 	}
 }
 
-func (tl *ReceiptDataStreamRepo) LoadRoomLatest(ctx context.Context, rooms []string) {
+func (tl *ReceiptDataStreamRepo) LoadRoomLatest(rooms []string) {
 	var loadRooms []string
 	for _, roomID := range rooms {
 		_, ok := tl.roomLatest.Load(roomID)
@@ -192,7 +186,7 @@ func (tl *ReceiptDataStreamRepo) LoadRoomLatest(ctx context.Context, rooms []str
 
 	if len(loadRooms) > 0 {
 		bs := time.Now().UnixNano() / 1000000
-		roomMap, err := tl.persist.GetRoomReceiptLastOffsets(ctx, loadRooms)
+		roomMap, err := tl.persist.GetRoomReceiptLastOffsets(context.TODO(), loadRooms)
 		spend := time.Now().UnixNano()/1000000 - bs
 		rooms := strings.Join(loadRooms, ",")
 		if err != nil {
@@ -223,11 +217,11 @@ func (tl *ReceiptDataStreamRepo) LoadRoomLatest(ctx context.Context, rooms []str
 	}
 }
 
-func (tl *ReceiptDataStreamRepo) CheckLoadReady(ctx context.Context, roomID string, sync bool) bool {
+func (tl *ReceiptDataStreamRepo) CheckLoadReady(roomID string, sync bool) bool {
 	_, ok := tl.ready.Load(roomID)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadHistory(ctx, roomID, false)
+			tl.LoadHistory(roomID, false)
 		}
 		return ok
 	}
@@ -238,7 +232,7 @@ func (tl *ReceiptDataStreamRepo) CheckLoadReady(ctx context.Context, roomID stri
 			break
 		}
 
-		tl.LoadHistory(ctx, roomID, false)
+		tl.LoadHistory(roomID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -253,11 +247,11 @@ func (tl *ReceiptDataStreamRepo) CheckLoadReady(ctx context.Context, roomID stri
 	return ok
 }
 
-func (tl *ReceiptDataStreamRepo) loadHistory(ctx context.Context, roomID string) {
+func (tl *ReceiptDataStreamRepo) loadHistory(roomID string) {
 	defer tl.loading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000
-	streams, offsets, err := tl.persist.GetHistoryReceiptDataStream(ctx, roomID)
+	streams, offsets, err := tl.persist.GetHistoryReceiptDataStream(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed ReceiptDataStreamRepo load history %s spend:%d ms err: %v", roomID, spend, err)
@@ -278,9 +272,9 @@ func (tl *ReceiptDataStreamRepo) loadHistory(ctx context.Context, roomID string)
 	tl.ready.Store(roomID, true)
 }
 
-func (tl *ReceiptDataStreamRepo) GetHistory(ctx context.Context, roomID string) *feedstypes.TimeLines {
+func (tl *ReceiptDataStreamRepo) GetHistory(roomID string) *feedstypes.TimeLines {
 	if _, ok := tl.ready.Load(roomID); !ok {
-		tl.LoadHistory(ctx, roomID, true)
+		tl.LoadHistory(roomID, true)
 	}
 
 	if item, ok := tl.container.Load(roomID); ok {
@@ -347,7 +341,7 @@ func (tl *ReceiptDataStreamRepo) GetUserLatestOffset(userID string) int64 {
 	return 0
 }
 
-func (tl *ReceiptDataStreamRepo) flush(ctx context.Context) {
+func (tl *ReceiptDataStreamRepo) flush() {
 	log.Infof("ReceiptDataStreamRepo start flush")
 	tl.updatedRoom.Range(func(key, _ interface{}) bool {
 		tl.updatedRoom.Delete(key)
@@ -362,7 +356,7 @@ func (tl *ReceiptDataStreamRepo) flush(ctx context.Context) {
 						stream := feed.(*feedstypes.ReceiptDataStream)
 						if !stream.Written {
 							err := tl.persist.UpsertReceiptDataStream(
-								ctx, stream.Offset, stream.DataStream.ReceiptOffset, stream.DataStream.RoomID, string(stream.DataStream.Content),
+								context.TODO(), stream.Offset, stream.DataStream.ReceiptOffset, stream.DataStream.RoomID, string(stream.DataStream.Content),
 							)
 							if err != nil {
 								log.Errorw("ReceiptDataStreamRepo flushToDB could not save receipt stream data", log.KeysAndValues{

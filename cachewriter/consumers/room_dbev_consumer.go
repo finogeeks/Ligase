@@ -20,12 +20,11 @@ package consumers
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"time"
 
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -34,23 +33,20 @@ func init() {
 
 // DBEventDataConsumer consumes db events for roomserver.
 type RoomDBEvCacheConsumer struct {
-	pool PoolProviderInterface
-	//msgChan []chan *dbtypes.DBEvent
-	msgChan []chan common.ContextMsg
+	pool    PoolProviderInterface
+	msgChan []chan *dbtypes.DBEvent
 }
 
-func (s *RoomDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *RoomDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
 		data := output.RoomDBEvents
 		switch key {
 		case dbtypes.EventInsertKey:
-			res = s.onEventInsert(ctx, *data.EventInsert)
+			res = s.onEventInsert(context.TODO(), *data.EventInsert)
 			/*
 				case dbtypes.EventJsonInsertKey:
 					res = s.onEventJsonInsert(context.TODO(), *data.EventJsonInsert)
@@ -74,7 +70,7 @@ func (s *RoomDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
 					res = s.onEventMembershipForgetUpdate(context.TODO(), *data.EventMembershipForgetUpdate)
 			*/
 		case dbtypes.SettingUpsertKey:
-			res = s.onEventSettingUpsert(ctx, *data.SettingsInsert)
+			res = s.onEventSettingUpsert(context.TODO(), *data.SettingsInsert)
 		default:
 			res = nil
 			//log.Infow("dbevent: ignoring unknown output type", log.KeysAndValues{"key", output.Key})
@@ -93,9 +89,9 @@ func (s *RoomDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
 func NewRoomDBEvCacheConsumer() ConsumerInterface {
 	s := new(RoomDBEvCacheConsumer)
 
-	s.msgChan = make([]chan common.ContextMsg, 10)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 10)
 	for i := uint64(0); i < 10; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 16384)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 16384)
 		go s.startWorker(s.msgChan[i])
 	}
 
@@ -117,7 +113,7 @@ func (s *RoomDBEvCacheConsumer) Start() {
 	}
 }
 
-func (s *RoomDBEvCacheConsumer) OnMessage(ctx context.Context, dbev *dbtypes.DBEvent) error {
+func (s *RoomDBEvCacheConsumer) OnMessage(dbev *dbtypes.DBEvent) error {
 	chanid := 0
 	switch dbev.Key {
 	case dbtypes.EventJsonInsertKey:
@@ -137,7 +133,7 @@ func (s *RoomDBEvCacheConsumer) OnMessage(ctx context.Context, dbev *dbtypes.DBE
 		return nil
 	}
 
-	s.msgChan[chanid] <- common.ContextMsg{Ctx: ctx, Msg: dbev}
+	s.msgChan[chanid] <- dbev
 	return nil
 }
 

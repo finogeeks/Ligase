@@ -18,13 +18,12 @@
 package consumers
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -79,7 +78,7 @@ func (s *ProfileConsumer) Start() error {
 	return nil
 }
 
-func (s *ProfileConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *ProfileConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output types.ProfileStreamUpdate
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("output profile consumer log: message parse failure", log.KeysAndValues{"error", err})

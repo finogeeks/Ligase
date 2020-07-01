@@ -19,8 +19,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const presenceSchema = `
@@ -65,18 +65,18 @@ func (s *presencesStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *presencesStatements) recoverPresences(ctx context.Context) error {
+func (s *presencesStatements) recoverPresences() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverPresencesStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverPresencesStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -85,7 +85,7 @@ func (s *presencesStatements) recoverPresences(ctx context.Context) error {
 	return nil
 }
 
-func (s *presencesStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *presencesStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -103,7 +103,7 @@ func (s *presencesStatements) processRecover(ctx context.Context, rows *sql.Rows
 		update.IsRecovery = true
 		update.PresenceDBEvents.PresencesInsert = &presencesInsert
 		update.SetUid(int64(common.CalcStringHashCode64(presencesInsert.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "presence_presences")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update presence cache error: %v", err2)
 			if err == nil {
@@ -129,7 +129,7 @@ func (s *presencesStatements) upsertPresences(
 			ExtStatusMsg: extStatusMsg,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "presence_presences")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		_, err := s.upsertPresencesStmt.ExecContext(ctx, userID, status, statusMsg, extStatusMsg)
 		return err

@@ -15,7 +15,6 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
@@ -24,8 +23,8 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/model/repos"
 	"github.com/nats-io/go-nats"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -35,9 +34,8 @@ type UnReadRpcConsumer struct {
 	rpcClient    *common.RpcClient
 	userTimeLine *repos.UserTimeLineRepo
 	chanSize     uint32
-	//msgChan      []chan *types.UnreadReqContent
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan      []chan *types.UnreadReqContent
+	cfg          *config.Dendrite
 }
 
 func NewUnReadRpcConsumer(
@@ -59,7 +57,7 @@ func (s *UnReadRpcConsumer) GetTopic() string {
 	return types.UnreadReqTopicDef
 }
 
-func (s *UnReadRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *UnReadRpcConsumer) cb(msg *nats.Msg) {
 	var result types.UnreadReqContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc unread cb error %v", err)
@@ -68,31 +66,30 @@ func (s *UnReadRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	if common.IsRelatedRequest(result.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *UnReadRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.UnreadReqContent)
-		s.processOnUnread(msg.Ctx, data.UserID, data.Reply)
+func (s *UnReadRpcConsumer) startWorker(msgChan chan *types.UnreadReqContent) {
+	for data := range msgChan {
+		s.processOnUnread(data.UserID, data.Reply)
 	}
 }
 
 func (s *UnReadRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.UnreadReqContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.UnreadReqContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *UnReadRpcConsumer) processOnUnread(ctx context.Context, userID, reply string) {
-	joinMap, err := s.userTimeLine.GetJoinRooms(ctx, userID)
+func (s *UnReadRpcConsumer) processOnUnread(userID, reply string) {
+	joinMap, err := s.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		resp := util.JSONResponse{
 			Code: http.StatusInternalServerError,

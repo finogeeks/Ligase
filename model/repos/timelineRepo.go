@@ -19,8 +19,8 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/feedstypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/feedstypes"
 )
 
 type TimeLineRepo struct {

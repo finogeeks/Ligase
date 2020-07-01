@@ -20,9 +20,8 @@ package consumers
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"github.com/finogeeks/ligase/syncserver/extra"
+	"time"
 
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/roomservertypes"
@@ -30,15 +29,14 @@ import (
 	jsoniter "github.com/json-iterator/go"
 
 	jsonRaw "encoding/json"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -59,9 +57,8 @@ type RoomEventFeedConsumer struct {
 	cfg                   *config.Dendrite
 	rpcClient             *common.RpcClient
 	chanSize              uint32
-	//msgChan               []chan roomserverapi.OutputEvent
-	msgChan []chan common.ContextMsg
-	idg     *uid.UidGenerator
+	msgChan               []chan roomserverapi.OutputEvent
+	idg                   *uid.UidGenerator
 }
 
 func NewRoomEventFeedConsumer(
@@ -119,23 +116,21 @@ func (s *RoomEventFeedConsumer) SetDisplayNameRepo(displayNameRepo *repos.Displa
 	return s
 }
 
-func (s *RoomEventFeedConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		data := msg.Msg.(roomserverapi.OutputEvent)
+func (s *RoomEventFeedConsumer) startWorker(msgChan chan roomserverapi.OutputEvent) {
+	for data := range msgChan {
 		switch data.Type {
 		case roomserverapi.OutputTypeNewRoomEvent:
-			s.onNewRoomEvent(ctx, data.NewRoomEvent)
+			s.onNewRoomEvent(context.TODO(), data.NewRoomEvent)
 		case roomserverapi.OutputBackfillRoomEvent:
-			s.onBackFillEvent(ctx, data.NewRoomEvent)
+			s.onBackFillEvent(context.TODO(), data.NewRoomEvent)
 		}
 	}
 }
 
 func (s *RoomEventFeedConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan roomserverapi.OutputEvent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 1024)
+		s.msgChan[i] = make(chan roomserverapi.OutputEvent, 1024)
 		go s.startWorker(s.msgChan[i])
 	}
 
@@ -143,7 +138,7 @@ func (s *RoomEventFeedConsumer) Start() error {
 	return nil
 }
 
-func (s *RoomEventFeedConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *RoomEventFeedConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("syncapi: message parse failure", log.KeysAndValues{"error", err})
@@ -158,13 +153,13 @@ func (s *RoomEventFeedConsumer) OnMessage(ctx context.Context, topic string, par
 			bytes, _ := json.Marshal(output.NewRoomEvent.Event)
 			log.Infow("sync server received event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID, "instance", s.cfg.MultiInstance.Instance, "data", string(bytes)})
 			idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
-			s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: output}
+			s.msgChan[idx] <- output
 		}
 	case roomserverapi.OutputBackfillRoomEvent:
 		if common.IsRelatedRequest(output.NewRoomEvent.Event.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 			log.Infow("sync writer received back fill event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID})
 			idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
-			s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: output}
+			s.msgChan[idx] <- output
 		}
 	default:
 		log.Debugw("syncapi: ignoring unknown output type", log.KeysAndValues{"type", output.Type})
@@ -200,14 +195,14 @@ func (s *RoomEventFeedConsumer) processStateEv(ev *gomatrixserverlib.ClientEvent
 	return *ev, nil
 }
 
-func (s *RoomEventFeedConsumer) processRedactEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent) {
+func (s *RoomEventFeedConsumer) processRedactEv(ev *gomatrixserverlib.ClientEvent) {
 	var redactEv gomatrixserverlib.ClientEvent
 
-	stream := s.roomHistoryTimeLine.GetStreamEv(ctx, ev.RoomID, ev.Redacts)
+	stream := s.roomHistoryTimeLine.GetStreamEv(ev.RoomID, ev.Redacts)
 	if stream != nil {
 		redactEv = *stream.Ev
 	} else {
-		evs, err := s.db.Events(ctx, []string{ev.Redacts})
+		evs, err := s.db.Events(context.TODO(), []string{ev.Redacts})
 		//log.Infof("redact redact:%s evs:%v, err:%v", ev.Redacts, evs, err)
 		if err == nil && len(evs) > 0 {
 			redactEv = evs[0]
@@ -256,12 +251,13 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	domain, _ := common.DomainFromID(ev.Sender)
 	if ev.Type != "m.room.create" {
 		bs := time.Now().UnixNano() / 1000000
-		s.roomStateTimeLine.GetStates(ctx, ev.RoomID)       //load state timeline& state
-		s.roomStateTimeLine.GetStateStreams(ctx, ev.RoomID) //load state stream timeline& state
-		s.roomHistoryTimeLine.LoadHistory(ctx, ev.RoomID, true)
-		s.receiptDataStreamRepo.LoadHistory(ctx, ev.RoomID, false)
-		preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ctx, ev.RoomID, domain)
+		s.roomStateTimeLine.GetStates(ev.RoomID)       //load state timeline& state
+		s.roomStateTimeLine.GetStateStreams(ev.RoomID) //load state stream timeline& state
+		s.roomHistoryTimeLine.LoadHistory(ev.RoomID, true)
+		s.receiptDataStreamRepo.LoadHistory(ev.RoomID, false)
+		preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ev.RoomID, domain)
 		if preOffset != -1 && preOffset+1 != ev.DomainOffset {
+			log.Infof("feedserver onNewRoomEvent SetRoomMinStream roomID:%s preOffset:%d domainOffset:%d eventOffset:%d", ev.RoomID, preOffset, ev.DomainOffset, ev.EventOffset)
 			s.roomHistoryTimeLine.SetRoomMinStream(ev.RoomID, ev.EventOffset)
 		}
 		spend := time.Now().UnixNano()/1000000 - bs
@@ -272,7 +268,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	if common.IsStateClientEv(&ev) == true { //state ev
 		ev, _ = s.processStateEv(&ev)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
-		s.processRedactEv(ctx, &ev)
+		s.processRedactEv(&ev)
 	}
 	log.Infof("feedserver onNewRoomEvent update unsigned roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
 	transId := ""
@@ -300,8 +296,8 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	membership := ""
 	if common.IsStateClientEv(&ev) == true { //state ev
 		log.Infof("feedserver onNewRoomEvent update state event roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
-		s.roomStateTimeLine.AddEv(ctx, &ev, ev.EventOffset, true)       //state 也会更新
-		s.roomStateTimeLine.AddStreamEv(ctx, &ev, ev.EventOffset, true) //保留state stream
+		s.roomStateTimeLine.AddEv(&ev, ev.EventOffset, true)       //state 也会更新
+		s.roomStateTimeLine.AddStreamEv(&ev, ev.EventOffset, true) //保留state stream
 
 		if ev.Type == "m.room.member" {
 			con := external.MemberContent{}
@@ -364,20 +360,13 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 								Destination: domain,
 								Content:     content,
 							}
-							func() {
-								span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.FedEduUpdate.Name)
-								defer span.Finish()
-								common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.FedEduUpdate.Name,
-									s.cfg.Kafka.Producer.FedEduUpdate.Underlying)
-								common.GetTransportMultiplexer().SendWithRetry(
-									s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
-									s.cfg.Kafka.Producer.FedEduUpdate.Name,
-									&core.TransportPubMsg{
-										Keys:    stateKeyData,
-										Obj:     edu,
-										Headers: common.InjectSpanToHeaderForSending(span),
-									})
-							}()
+							common.GetTransportMultiplexer().SendWithRetry(
+								s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
+								s.cfg.Kafka.Producer.FedEduUpdate.Name,
+								&core.TransportPubMsg{
+									Keys: stateKeyData,
+									Obj:  edu,
+								})
 						}
 					} else {
 						rs.GetJoinMap().Range(func(key, value interface{}) bool {
@@ -401,17 +390,12 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 									Destination: senderDomain,
 									Content:     content,
 								}
-								span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.FedEduUpdate.Name)
-								defer span.Finish()
-								common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.FedEduUpdate.Name,
-									s.cfg.Kafka.Producer.FedEduUpdate.Underlying)
 								common.GetTransportMultiplexer().SendWithRetry(
 									s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
 									s.cfg.Kafka.Producer.FedEduUpdate.Name,
 									&core.TransportPubMsg{
-										Keys:    []byte(key.(string)),
-										Obj:     edu,
-										Headers: common.InjectSpanToHeaderForSending(span),
+										Keys: []byte(key.(string)),
+										Obj:  edu,
 									})
 							}
 							return true
@@ -447,10 +431,10 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 		}
 	}
 	log.Infof("feedserver onNewRoomEvent add history timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
-	s.roomHistoryTimeLine.AddEv(ctx, &ev, ev.EventOffset, true) //更新room timeline
+	s.roomHistoryTimeLine.AddEv(&ev, ev.EventOffset, true) //更新room timeline
 
 	if s.cfg.CalculateReadCount {
-		s.pushConsumer.OnEvent(ctx, &ev, ev.EventOffset)
+		s.pushConsumer.OnEvent(&ev, ev.EventOffset)
 	}
 
 	return nil
@@ -477,16 +461,17 @@ func (s *RoomEventFeedConsumer) onBackFillEvent(
 ) error {
 	ev := msg.Event
 	domain, _ := common.DomainFromID(ev.Sender)
-	preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ctx, ev.RoomID, domain)
+	preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ev.RoomID, domain)
 	if preOffset <= ev.DomainOffset {
+		log.Infof("feedserver onBackFillEvent SetRoomMinStream roomID:%s preOffset:%d domainOffset:%d eventOffset:%d", ev.RoomID, preOffset, ev.DomainOffset, ev.EventOffset)
 		s.roomHistoryTimeLine.SetRoomMinStream(ev.RoomID, ev.EventOffset)
 	}
 
 	if common.IsStateClientEv(&ev) {
 		ev, _ = s.processStateEv(&ev)
-		s.roomStateTimeLine.AddBackfillEv(ctx, &ev, ev.EventOffset, true)
+		s.roomStateTimeLine.AddBackfillEv(&ev, ev.EventOffset, true)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
-		s.processRedactEv(ctx, &ev)
+		s.processRedactEv(&ev)
 	}
 
 	return nil

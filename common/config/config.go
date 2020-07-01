@@ -161,6 +161,7 @@ type Dendrite struct {
 			DeviceStateUpdate  ProducerConf `yaml:"output_device_state_update"`
 			SettingUpdate      ProducerConf `yaml:"setting_update"`
 			UserInfoUpdate     ProducerConf `yaml:"user_info_update"`
+			DismissRoom        ProducerConf `yaml:"dismiss_room"`
 		} `yaml:"producers"`
 		Consumer struct {
 			OutputRoomEventPublicRooms   ConsumerConf `yaml:"output_room_event_publicroom"`    // OutputRoomEventPublicRooms "public-rooms",
@@ -183,6 +184,7 @@ type Dendrite struct {
 			SetttngUpdateProxy         ConsumerConf `yaml:"setting_update_proxy"`
 			SettingUpdateContent       ConsumerConf `yaml:"setting_update_content"`
 			DownloadMedia              ConsumerConf `yaml:"download_media"`
+			DismissRoom                ConsumerConf `yaml:"dismiss_room"`
 		} `yaml:"consumers"`
 	} `yaml:"kafka"`
 
@@ -222,8 +224,7 @@ type Dendrite struct {
 	} `yaml:"nats"`
 	// Postgres Config
 	Database struct {
-		EnableBatch bool         `yaml:"enable_batch"`
-		CreateDB    DataBaseConf `yaml:"create_db"`
+		CreateDB DataBaseConf `yaml:"create_db"`
 		// The Account database stores the login details and account information
 		// for local users. It is accessed by the ClientAPI.
 		Account DataBaseConf `yaml:"account"`
@@ -451,7 +452,9 @@ type Dendrite struct {
 	} `yaml:"state_mgr"`
 
 	Encryption struct {
-		Mirror bool `yaml:"mirror"`
+		Enable bool   `yaml:"enable"`
+		Key    string `yaml:"key"`
+		Mirror bool   `yaml:"mirror"`
 	} `yaml:"encryption"`
 
 	NotaryService struct {
@@ -467,12 +470,6 @@ type Dendrite struct {
 		Services string `yaml:"services"`
 		MongoURL string `yaml:"mongo_url"`
 	} `yaml:"external_migration"`
-
-	DistLockCustom struct {
-		Instance     DistLockConf `yaml:"instance"`
-		RoomState    DistLockConf `yaml:"room_state"`
-		RoomStateExt DistLockConf `yaml:"room_state_ext"`
-	} `yaml:"dist_lock_custom"`
 
 	License     string `yaml:"license"`
 	LicenseItem LicenseConf
@@ -543,23 +540,11 @@ type ProducerConf struct {
 	Underlying string `yaml:"underlying"`
 	Name       string `yaml:"name"`
 	Inst       int    `yaml:"inst"` //producer instance number, default one instance
-
-	LingerMs *string `yaml:"linger_ms,omitempty"`
-}
-
-func (p *ProducerConf) LingerMsConf() *string {
-	return p.LingerMs
 }
 
 type DataBaseConf struct {
 	Driver    string `yaml:"driver"`
 	Addresses string `yaml:"addresses"`
-}
-
-type DistLockConf struct {
-	Timeout int  `yaml:"timeout"`
-	Wait    int  `yaml:"wait"`
-	Force   bool `yaml:"force"`
 }
 
 // A Path on the filesystem.
@@ -692,16 +677,8 @@ func loadConfig(
 	adapter.SetKafkaReplicaFactor(config.Kafka.CommonCfg.ReplicaFactor)
 	adapter.SetKafkaNumPartitions(config.Kafka.CommonCfg.NumPartitions)
 	adapter.SetKafkaNumProducers(config.Kafka.CommonCfg.NumProducers)
-	adapter.SetDistLockItemCfg("instance", config.DistLockCustom.Instance.Timeout, config.DistLockCustom.Instance.Wait, config.DistLockCustom.Instance.Force)
-	adapter.SetDistLockItemCfg("room_state", config.DistLockCustom.RoomState.Timeout, config.DistLockCustom.RoomState.Wait, config.DistLockCustom.RoomState.Force)
-	adapter.SetDistLockItemCfg("room_state_ext", config.DistLockCustom.RoomStateExt.Timeout, config.DistLockCustom.RoomStateExt.Wait, config.DistLockCustom.RoomStateExt.Force)
 	adapter.SetDebugLevel(config.DebugLevel)
-	config.parseLicense()
 	return nil
-}
-
-func (config *Dendrite) parseLicense() {
-
 }
 
 func (config *Dendrite) GetDBConfig(name string) (driver string, createAddr string, addr string, persistUnderlying string, persistName string, async bool) {

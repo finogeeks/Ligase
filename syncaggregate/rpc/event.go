@@ -23,8 +23,8 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/nats-io/go-nats"
 
@@ -36,9 +36,8 @@ type EventRpcConsumer struct {
 	userTimeLine *repos.UserTimeLineRepo
 	db           model.SyncAPIDatabase
 	chanSize     uint32
-	//msgChan      []chan *types.EventContent
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan      []chan *types.EventContent
+	cfg          *config.Dendrite
 }
 
 func NewEventRpcConsumer(
@@ -62,7 +61,7 @@ func (s *EventRpcConsumer) GetTopic() string {
 	return types.EventTopicDef
 }
 
-func (s *EventRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *EventRpcConsumer) cb(msg *nats.Msg) {
 	var result types.EventContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc event cb error %v", err)
@@ -71,32 +70,31 @@ func (s *EventRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	if common.IsRelatedRequest(result.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *EventRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.EventContent)
-		s.processOnEvent(msg.Ctx, data.EventID, data.UserID, data.Reply)
+func (s *EventRpcConsumer) startWorker(msgChan chan *types.EventContent) {
+	for data := range msgChan {
+		s.processOnEvent(data.EventID, data.UserID, data.Reply)
 	}
 }
 
 func (s *EventRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.EventContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.EventContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *EventRpcConsumer) processOnEvent(ctx context.Context, eventID, userID, reply string) {
+func (s *EventRpcConsumer) processOnEvent(eventID, userID, reply string) {
 	//TODO 可见性校验
-	event, _, err := s.db.StreamEvents(ctx, []string{eventID})
+	event, _, err := s.db.StreamEvents(context.TODO(), []string{eventID})
 	if err != nil {
 		resp := util.JSONResponse{
 			Code: http.StatusInternalServerError,
@@ -108,7 +106,7 @@ func (s *EventRpcConsumer) processOnEvent(ctx context.Context, eventID, userID, 
 
 	if len(event) > 0 {
 		roomID := event[0].RoomID
-		joined, err := s.userTimeLine.GetJoinRooms(ctx, userID)
+		joined, err := s.userTimeLine.GetJoinRooms(userID)
 		if err != nil {
 			resp := util.JSONResponse{
 				Code: http.StatusInternalServerError,

@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"net/http"
 
@@ -68,7 +67,7 @@ func (ReqGetRoomStateByType) FillRequest(coder core.Coder, req *http.Request, va
 func (ReqGetRoomStateByType) NewResponse(code int) core.Coder {
 	return make(internals.JSONMap)
 }
-func (ReqGetRoomStateByType) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomStateByType) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomStateByTypeRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -79,7 +78,7 @@ func (ReqGetRoomStateByType) Process(ctx context.Context, consumer interface{}, 
 	evType := req.EventType
 	stateKey := ""
 
-	states := c.rsTimeline.GetStateStreams(ctx, roomID)
+	states := c.rsTimeline.GetStateStreams(roomID)
 	if states != nil {
 		rs := c.rsCurState.GetRoomState(roomID)
 		if rs == nil {

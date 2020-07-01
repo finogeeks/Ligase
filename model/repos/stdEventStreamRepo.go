@@ -17,18 +17,17 @@ package repos
 import (
 	"context"
 	"fmt"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"sync"
 	"time"
-
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -67,11 +66,7 @@ func (tl *STDEventStreamRepo) startFlush() error {
 		for {
 			select {
 			case <-t.C:
-				func() {
-					span, ctx := common.StartSobSomSpan(context.Background(), "STDEventStreamRepo.startFlush")
-					defer span.Finish()
-					tl.flush(ctx)
-				}()
+				tl.flush()
 				t.Reset(time.Millisecond * time.Duration(tl.delay))
 			}
 		}
@@ -88,8 +83,8 @@ func (tl *STDEventStreamRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
 	tl.queryHitCounter = queryHitCounter
 }
 
-func (tl *STDEventStreamRepo) AddSTDEventStream(ctx context.Context, dataStream *types.StdEvent, targetUserID, targetDeviceID string) {
-	tl.LoadHistory(ctx, targetUserID, targetDeviceID, true)
+func (tl *STDEventStreamRepo) AddSTDEventStream(dataStream *types.StdEvent, targetUserID, targetDeviceID string) {
+	tl.LoadHistory(targetUserID, targetDeviceID, true)
 	offset, _ := tl.idg.Next()
 	bytes, _ := json.Marshal(dataStream)
 	log.Infof("STDEventStreamRepo.AddSTDEventStream offset:%d targetUserID %s targetDeviceID %s content %s", offset, targetUserID, targetDeviceID, string(bytes))
@@ -113,11 +108,11 @@ func (tl *STDEventStreamRepo) addSTDEventStream(dataStream *types.StdEvent, offs
 	}
 }
 
-func (tl *STDEventStreamRepo) loadHistory(ctx context.Context, targetUserID, targetDeviceID string) {
+func (tl *STDEventStreamRepo) loadHistory(targetUserID, targetDeviceID string) {
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
 	defer tl.loading.Delete(key)
 	bs := time.Now().UnixNano() / 1000000
-	streams, offsets, err := tl.persist.GetHistoryStdStream(ctx, targetUserID, targetDeviceID, 100)
+	streams, offsets, err := tl.persist.GetHistoryStdStream(context.TODO(), targetUserID, targetDeviceID, 100)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed STDEventStreamRepo load user:%s dev:%s history spend:%d ms err: %v", targetUserID, targetDeviceID, spend, err)
@@ -155,16 +150,16 @@ func (tl *STDEventStreamRepo) loadHistory(ctx context.Context, targetUserID, tar
 	tl.ready.Store(key, true)
 }
 
-func (tl *STDEventStreamRepo) LoadHistory(ctx context.Context, targetUserID, targetDeviceID string, sync bool) {
+func (tl *STDEventStreamRepo) LoadHistory(targetUserID, targetDeviceID string, sync bool) {
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
 
 	if _, ok := tl.ready.Load(key); !ok {
 		if _, ok := tl.loading.Load(key); !ok {
 			tl.loading.Store(key, true)
 			if sync == false {
-				go tl.loadHistory(ctx, targetUserID, targetDeviceID)
+				go tl.loadHistory(targetUserID, targetDeviceID)
 			} else {
-				tl.loadHistory(ctx, targetUserID, targetDeviceID)
+				tl.loadHistory(targetUserID, targetDeviceID)
 			}
 
 			tl.queryHitCounter.WithLabelValues("db", "STDEventStreamRepo", "LoadHistory").Add(1)
@@ -172,13 +167,13 @@ func (tl *STDEventStreamRepo) LoadHistory(ctx context.Context, targetUserID, tar
 			if sync == false {
 				return
 			}
-			tl.CheckLoadReady(ctx, targetUserID, targetDeviceID, true)
+			tl.CheckLoadReady(targetUserID, targetDeviceID, true)
 		}
 	} else {
 		res := tl.repo.getTimeLine(key)
 		if res == nil {
 			tl.ready.Delete(key)
-			tl.LoadHistory(ctx, targetUserID, targetDeviceID, sync)
+			tl.LoadHistory(targetUserID, targetDeviceID, sync)
 		} else {
 			tl.queryHitCounter.WithLabelValues("cache", "STDEventStreamRepo", "LoadHistory").Add(1)
 		}
@@ -187,19 +182,19 @@ func (tl *STDEventStreamRepo) LoadHistory(ctx context.Context, targetUserID, tar
 	return
 }
 
-func (tl *STDEventStreamRepo) GetHistory(ctx context.Context, targetUserID, targetDeviceID string) *feedstypes.TimeLines {
+func (tl *STDEventStreamRepo) GetHistory(targetUserID, targetDeviceID string) *feedstypes.TimeLines {
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
-	tl.LoadHistory(ctx, targetUserID, targetDeviceID, true)
+	tl.LoadHistory(targetUserID, targetDeviceID, true)
 	return tl.repo.getTimeLine(key)
 }
 
-func (tl *STDEventStreamRepo) CheckLoadReady(ctx context.Context, targetUserID, targetDeviceID string, sync bool) bool {
+func (tl *STDEventStreamRepo) CheckLoadReady(targetUserID, targetDeviceID string, sync bool) bool {
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
 
 	_, ok := tl.ready.Load(key)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadHistory(ctx, targetUserID, targetDeviceID, false)
+			tl.LoadHistory(targetUserID, targetDeviceID, false)
 		}
 		return ok
 	}
@@ -210,7 +205,7 @@ func (tl *STDEventStreamRepo) CheckLoadReady(ctx context.Context, targetUserID, 
 			break
 		}
 
-		tl.LoadHistory(ctx, targetUserID, targetDeviceID, false)
+		tl.LoadHistory(targetUserID, targetDeviceID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -225,8 +220,8 @@ func (tl *STDEventStreamRepo) CheckLoadReady(ctx context.Context, targetUserID, 
 	return ok
 }
 
-func (tl *STDEventStreamRepo) ExistsSTDEventUpdate(ctx context.Context, position int64, targetUserID, targetDeviceID string) bool {
-	stdTimeLine := tl.GetHistory(ctx, targetUserID, targetDeviceID)
+func (tl *STDEventStreamRepo) ExistsSTDEventUpdate(position int64, targetUserID, targetDeviceID string) bool {
+	stdTimeLine := tl.GetHistory(targetUserID, targetDeviceID)
 	if stdTimeLine == nil {
 		key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
 		tl.repo.setDefault(key)
@@ -241,7 +236,7 @@ func (tl *STDEventStreamRepo) ExistsSTDEventUpdate(ctx context.Context, position
 	return false
 }
 
-func (tl *STDEventStreamRepo) flush(ctx context.Context) {
+func (tl *STDEventStreamRepo) flush() {
 	log.Infof("STDEventStreamRepo start flush")
 	tl.updatedKey.Range(func(key, _ interface{}) bool {
 		tl.updatedKey.Delete(key)
@@ -276,7 +271,7 @@ func (tl *STDEventStreamRepo) flush(ctx context.Context) {
 								Event:    jsonBuffer,
 								EventTyp: stream.DataStream.Type,
 							}
-							err = tl.persist.InsertStdMessage(ctx, ev, stream.TargetUserID, stream.TargetDeviceID, common.GetDeviceMac(stream.TargetDeviceID), stream.Offset)
+							err = tl.persist.InsertStdMessage(context.TODO(), ev, stream.TargetUserID, stream.TargetDeviceID, common.GetDeviceMac(stream.TargetDeviceID), stream.Offset)
 							if err != nil {
 								log.Errorf("syncMng.addSendToDevice InsertStdMessage TargetUserID %s TargetDeviceID %s error %v", stream.TargetUserID, stream.TargetDeviceID, err)
 							} else {

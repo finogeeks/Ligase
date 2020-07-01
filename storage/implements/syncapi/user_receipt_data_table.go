@@ -17,10 +17,9 @@ package syncapi
 import (
 	"context"
 	"database/sql"
-
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const userReceiptDataSchema = `
@@ -31,7 +30,7 @@ CREATE TABLE IF NOT EXISTS syncapi_user_receipt_data (
     room_id TEXT NOT NULL,
 	user_id TEXT NOT NULL,
 	content TEXT NOT NULL,
-
+ 
     CONSTRAINT syncapi_user_receipt_data_unique UNIQUE (user_id, room_id)
 );
 
@@ -81,7 +80,7 @@ func (s *userReceiptDataStatements) insertUserReceiptData(
 			EvtOffset: evtOffset,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		s.db.WriteDBEventWithTbl(ctx, &update, "syncapi_user_receipt_data")
+		s.db.WriteDBEvent(&update)
 		return nil
 	} else {
 		_, err = s.insertUserReceiptDataStmt.ExecContext(ctx, evtOffset, roomID, userID, content)

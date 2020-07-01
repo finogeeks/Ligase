@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"io/ioutil"
 	"net/http"
 
@@ -23,11 +22,11 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -64,7 +63,7 @@ func (ReqPutSendToDevice) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqPutSendToDevice) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqPutSendToDevice) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutSendToDevice) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutSendToDeviceRequest)
 
@@ -98,7 +97,7 @@ func (ReqPutSendToDevice) Process(ctx context.Context, consumer interface{}, msg
 							continue
 						}
 
-						c.stdEventTimeline.AddSTDEventStream(ctx, &dataStream, uid, val.ID)
+						c.stdEventTimeline.AddSTDEventStream(&dataStream, uid, val.ID)
 					}
 				} else {
 					/*dev := cache.GetDeviceByDeviceID(deviceID, uid)
@@ -114,7 +113,7 @@ func (ReqPutSendToDevice) Process(ctx context.Context, consumer interface{}, msg
 					}*/
 
 					//log.Errorf("add sendToDevice event pos %d sender %s type %s uid %s device %s", pos, device.UserID, eventType, uid, deviceID)
-					c.stdEventTimeline.AddSTDEventStream(ctx, &dataStream, uid, deviceID)
+					c.stdEventTimeline.AddSTDEventStream(&dataStream, uid, deviceID)
 				}
 			}
 		}

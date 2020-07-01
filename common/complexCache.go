@@ -17,8 +17,8 @@ package common
 import (
 	"context"
 
-	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -128,7 +128,6 @@ func (c *ComplexCache) SetDisplayName(
 }
 
 func (c *ComplexCache) GetProfileByUserID(
-	ctx context.Context,
 	userID string,
 ) (string, string, error) {
 	displayName, avatarURL, ok := c.cache.GetProfileLessByUserID(userID)
@@ -140,7 +139,7 @@ func (c *ComplexCache) GetProfileByUserID(
 	// trylock
 
 	// get from DB
-	profile, err := c.accountDB.GetProfileByUserID(ctx, userID)
+	profile, err := c.accountDB.GetProfileByUserID(context.TODO(), userID)
 	if err != nil {
 		// set empty cache for nonexistent user
 		profile.DisplayName = ""
@@ -160,7 +159,6 @@ func (c *ComplexCache) GetProfileByUserID(
 }
 
 func (c *ComplexCache) GetAvatarURL(
-	ctx context.Context,
 	userID string,
 ) (string, error) {
 	avatarURL, ok := c.cache.GetAvatarURLByUser(userID)
@@ -172,7 +170,7 @@ func (c *ComplexCache) GetAvatarURL(
 	// trylock
 
 	// get from DB
-	profile, err := c.accountDB.GetProfileByUserID(ctx, userID)
+	profile, err := c.accountDB.GetProfileByUserID(context.TODO(), userID)
 	if err != nil {
 		// set empty cache for nonexistent user
 		profile.DisplayName = ""
@@ -192,7 +190,6 @@ func (c *ComplexCache) GetAvatarURL(
 }
 
 func (c *ComplexCache) GetDisplayName(
-	ctx context.Context,
 	userID string,
 ) (string, error) {
 	displayName, ok := c.cache.GetDisplayNameByUser(userID)
@@ -204,7 +201,7 @@ func (c *ComplexCache) GetDisplayName(
 	// trylock
 
 	// get from DB
-	profile, err := c.accountDB.GetProfileByUserID(ctx, userID)
+	profile, err := c.accountDB.GetProfileByUserID(context.TODO(), userID)
 	if err != nil {
 		// set empty cache for nonexistent user
 		profile.DisplayName = ""

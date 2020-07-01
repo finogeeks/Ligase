@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 
@@ -24,12 +23,12 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -60,7 +59,7 @@ func (ReqGetRoomInitialSync) FillRequest(coder core.Coder, req *http.Request, va
 func (ReqGetRoomInitialSync) NewResponse(code int) core.Coder {
 	return new(syncapitypes.RoomInfo)
 }
-func (ReqGetRoomInitialSync) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomInitialSync) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomInitialSyncRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -69,7 +68,7 @@ func (ReqGetRoomInitialSync) Process(ctx context.Context, consumer interface{}, 
 	roomID := req.RoomID
 	userID := device.UserID
 
-	states := c.rsTimeline.GetStateStreams(ctx, roomID)
+	states := c.rsTimeline.GetStateStreams(roomID)
 	if states == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room state")
 	}
@@ -88,7 +87,7 @@ func (ReqGetRoomInitialSync) Process(ctx context.Context, consumer interface{}, 
 		limitOffset = val.(int64)
 	}
 
-	tl := c.rsTimeline.GetStates(ctx, roomID)
+	tl := c.rsTimeline.GetStates(roomID)
 	if tl == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room state")
 	}
@@ -132,7 +131,7 @@ func (ReqGetRoomInitialSync) Process(ctx context.Context, consumer interface{}, 
 		}
 	}
 
-	tl = c.rmHsTimeline.GetHistory(ctx, roomID)
+	tl = c.rmHsTimeline.GetHistory(roomID)
 	if tl == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room history")
 	}

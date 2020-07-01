@@ -15,18 +15,17 @@
 package rpc
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	syncapi "github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/go-nats"
 )
 
@@ -34,9 +33,8 @@ type JoinedRoomRpcConsumer struct {
 	rpcClient    *common.RpcClient
 	userTimeLine *repos.UserTimeLineRepo
 	chanSize     uint32
-	//msgChan      []chan *types.JoinedRoomContent
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan      []chan *types.JoinedRoomContent
+	cfg          *config.Dendrite
 }
 
 func NewJoinedRoomRpcConsumer(
@@ -58,7 +56,7 @@ func (s *JoinedRoomRpcConsumer) GetTopic() string {
 	return types.JoinedRoomTopicDef
 }
 
-func (s *JoinedRoomRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *JoinedRoomRpcConsumer) cb(msg *nats.Msg) {
 	var result types.JoinedRoomContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc joined room cb error %v", err)
@@ -68,33 +66,32 @@ func (s *JoinedRoomRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	if common.IsRelatedRequest(result.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
 func (s *JoinedRoomRpcConsumer) startWorker(i uint32) {
 	idx := i
-	for msg := range s.msgChan[idx] {
-		data := msg.Msg.(*types.JoinedRoomContent)
-		s.processOnJoinedRoom(msg.Ctx, data.UserID, data.Reply)
+	for data := range s.msgChan[idx] {
+		s.processOnJoinedRoom(data.UserID, data.Reply)
 	}
 }
 
 func (s *JoinedRoomRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.JoinedRoomContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.JoinedRoomContent, 512)
 		go s.startWorker(i)
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *JoinedRoomRpcConsumer) processOnJoinedRoom(ctx context.Context, userID, reply string) {
+func (s *JoinedRoomRpcConsumer) processOnJoinedRoom(userID, reply string) {
 	resp := syncapi.JoinedRoomsResp{}
-	joinRooms, err := s.userTimeLine.GetJoinRooms(ctx, userID)
+	joinRooms, err := s.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		resp := util.JSONResponse{
 			Code: http.StatusInternalServerError,

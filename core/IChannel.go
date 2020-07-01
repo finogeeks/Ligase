@@ -15,7 +15,6 @@
 package core
 
 import (
-	"context"
 	"errors"
 	"log"
 	"sync"
@@ -30,13 +29,12 @@ type IChannel interface {
 	SetDir(dir int)
 	GetDir() int
 	SetHandler(handler IChannelConsumer)
-	Commit(rawMsg []interface{}) error
 
-	Send(topic string, partition int32, keys, bytes []byte, headers map[string]string) error
-	SendAndRecv(topic string, partition int32, keys, bytes []byte, headers map[string]string) error
-	SendWithRetry(topic string, partition int32, keys, bytes []byte, headers map[string]string) error
-	SendAndRecvWithRetry(topic string, partition int32, keys, bytes []byte, headers map[string]string) error
-	SendRecv(topic string, bytes []byte, timeout int, headers map[string]string) ([]byte, error)
+	Send(topic string, partition int32, keys, bytes []byte) error
+	SendAndRecv(topic string, partition int32, keys, bytes []byte) error
+	SendWithRetry(topic string, partition int32, keys, bytes []byte) error
+	SendAndRecvWithRetry(topic string, partition int32, keys, bytes []byte) error
+	SendRecv(topic string, bytes []byte, timeout int) ([]byte, error)
 	PreStart(broker string, statsInterval int)
 	Start()
 	Stop()
@@ -44,7 +42,7 @@ type IChannel interface {
 }
 
 type IChannelConsumer interface {
-	OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{})
+	OnMessage(topic string, partition int32, data []byte)
 }
 
 const CHANNEL_PUB = 0

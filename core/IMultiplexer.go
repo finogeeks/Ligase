@@ -88,7 +88,6 @@ type TransportPubMsg struct {
 	Obj       interface{}
 	Timeout   int
 	Inst      int
-	Headers   map[string]string
 }
 
 func (msg *TransportPubMsg) Encode() ([]byte, error) {

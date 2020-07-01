@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 const migDevicesSchema = `
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS mig_device_devices (
 	access_token TEXT NOT NULL PRIMARY KEY,
 	device_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-	mig_access_token TEXT NOT NULL
+	mig_access_token TEXT NOT NULL 
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS mig_device_user_id_idx ON mig_device_devices(user_id, device_id);
@@ -80,18 +80,18 @@ func (s *migDevicesStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *migDevicesStatements) recoverMigDevice(ctx context.Context) error {
+func (s *migDevicesStatements) recoverMigDevice() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverMigDeviceStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverMigDeviceStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -100,7 +100,7 @@ func (s *migDevicesStatements) recoverMigDevice(ctx context.Context) error {
 	return nil
 }
 
-func (s *migDevicesStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *migDevicesStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -122,7 +122,7 @@ func (s *migDevicesStatements) processRecover(ctx context.Context, rows *sql.Row
 			MigAccessToken: deviceInsert.MigAccessToken,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(deviceInsert.AccessToken)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "mig_device_devices")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update migDevice cache error: %v", err2)
 			if err == nil {
@@ -148,7 +148,7 @@ func (s *migDevicesStatements) insertMigDevice(
 			MigAccessToken: mig_access_token,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(access_token)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "mig_device_devices")
+		return s.db.WriteDBEvent(&update)
 	} else {
 		_, err := s.insertMigDeviceStmt.ExecContext(ctx, access_token, mig_access_token, deviceID, userID)
 		return err

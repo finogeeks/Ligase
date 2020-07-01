@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"net/http"
@@ -24,13 +23,13 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrix"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/gomatrix"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 func init() {
@@ -73,7 +72,7 @@ func (ReqGetInitialSync) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqGetInitialSync) NewResponse(code int) core.Coder {
 	return new(ResponseInitialSync)
 }
-func (ReqGetInitialSync) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetInitialSync) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
@@ -98,7 +97,7 @@ func (ReqGetInitialSync) Process(ctx context.Context, consumer interface{}, msg 
 		Since:       req.Since,
 	}
 
-	code, syncData := c.sm.OnSyncRequest(ctx, &httpReq, device)
+	code, syncData := c.sm.OnSyncRequest(&httpReq, device)
 
 	resp := &ResponseInitialSync{}
 	resp.End = syncData.NextBatch

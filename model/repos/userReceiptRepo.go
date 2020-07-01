@@ -17,14 +17,12 @@ package repos
 import (
 	"context"
 	"fmt"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/storage/model"
 	"sync"
 	"time"
-
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/types"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/storage/model"
 )
 
 type UserReceiptRepo struct {
@@ -56,11 +54,7 @@ func (tl *UserReceiptRepo) startFlush() error {
 		for {
 			select {
 			case <-t.C:
-				func() {
-					span, ctx := common.StartSobSomSpan(context.Background(), "UserReceiptRepo.startFlush")
-					defer span.Finish()
-					tl.flush(ctx)
-				}()
+				tl.flush()
 				t.Reset(time.Millisecond * time.Duration(tl.delay))
 			}
 		}
@@ -83,15 +77,15 @@ func (tl *UserReceiptRepo) AddUserReceipt(receipt *types.UserReceipt) {
 	tl.updated.Store(key, true)
 }
 
-func (tl *UserReceiptRepo) LoadHistory(ctx context.Context, userID, roomID string, sync bool) {
+func (tl *UserReceiptRepo) LoadHistory(userID, roomID string, sync bool) {
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 	if _, ok := tl.ready.Load(key); !ok {
 		if _, ok := tl.loading.Load(key); !ok {
 			tl.loading.Store(key, true)
 			if sync == false {
-				go tl.loadHistory(ctx, userID, roomID)
+				go tl.loadHistory(userID, roomID)
 			} else {
-				tl.loadHistory(ctx, userID, roomID)
+				tl.loadHistory(userID, roomID)
 			}
 
 			tl.queryHitCounter.WithLabelValues("db", "UserReceiptRepo", "LoadHistory").Add(1)
@@ -99,7 +93,7 @@ func (tl *UserReceiptRepo) LoadHistory(ctx context.Context, userID, roomID strin
 			if sync == false {
 				return
 			} else {
-				tl.CheckLoadReady(ctx, userID, roomID, true)
+				tl.CheckLoadReady(userID, roomID, true)
 			}
 		}
 	} else {
@@ -107,13 +101,13 @@ func (tl *UserReceiptRepo) LoadHistory(ctx context.Context, userID, roomID strin
 	}
 }
 
-func (tl *UserReceiptRepo) CheckLoadReady(ctx context.Context, userID, roomID string, sync bool) bool {
+func (tl *UserReceiptRepo) CheckLoadReady(userID, roomID string, sync bool) bool {
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 
 	_, ok := tl.ready.Load(key)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadHistory(ctx, userID, roomID, false)
+			tl.LoadHistory(userID, roomID, false)
 		}
 		return ok
 	}
@@ -124,7 +118,7 @@ func (tl *UserReceiptRepo) CheckLoadReady(ctx context.Context, userID, roomID st
 			break
 		}
 
-		tl.LoadHistory(ctx, userID, roomID, false)
+		tl.LoadHistory(userID, roomID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -139,12 +133,12 @@ func (tl *UserReceiptRepo) CheckLoadReady(ctx context.Context, userID, roomID st
 	return ok
 }
 
-func (tl *UserReceiptRepo) loadHistory(ctx context.Context, userID, roomID string) {
+func (tl *UserReceiptRepo) loadHistory(userID, roomID string) {
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 	defer tl.loading.Delete(key)
 
 	bs := time.Now().UnixNano() / 1000000
-	evtOffset, content, err := tl.persist.GetUserHistoryReceiptData(ctx, roomID, userID)
+	evtOffset, content, err := tl.persist.GetUserHistoryReceiptData(context.TODO(), roomID, userID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed UserReceiptRepo load history roomID:%s user:%s spend:%d ms err: %v", roomID, userID, spend, err)
@@ -168,11 +162,11 @@ func (tl *UserReceiptRepo) loadHistory(ctx context.Context, userID, roomID strin
 
 }
 
-func (tl *UserReceiptRepo) GetLatestOffset(ctx context.Context, userID, roomID string) int64 {
+func (tl *UserReceiptRepo) GetLatestOffset(userID, roomID string) int64 {
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 
 	if _, ok := tl.ready.Load(key); !ok {
-		tl.LoadHistory(ctx, userID, roomID, true)
+		tl.LoadHistory(userID, roomID, true)
 	}
 
 	if val, ok := tl.receipt.Load(key); ok {
@@ -184,11 +178,11 @@ func (tl *UserReceiptRepo) GetLatestOffset(ctx context.Context, userID, roomID s
 	return 0
 }
 
-func (tl *UserReceiptRepo) GetLatestReceipt(ctx context.Context, userID, roomID string) []byte {
+func (tl *UserReceiptRepo) GetLatestReceipt(userID, roomID string) []byte {
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 
 	if _, ok := tl.ready.Load(key); !ok {
-		tl.LoadHistory(ctx, userID, roomID, true)
+		tl.LoadHistory(userID, roomID, true)
 	}
 
 	if val, ok := tl.receipt.Load(key); ok {
@@ -200,7 +194,7 @@ func (tl *UserReceiptRepo) GetLatestReceipt(ctx context.Context, userID, roomID 
 	return nil
 }
 
-func (tl *UserReceiptRepo) flush(ctx context.Context) {
+func (tl *UserReceiptRepo) flush() {
 	log.Infof("UserReceiptRepo start flush")
 	tl.updated.Range(func(key, _ interface{}) bool {
 		tl.updated.Delete(key)
@@ -209,7 +203,7 @@ func (tl *UserReceiptRepo) flush(ctx context.Context) {
 			receipt := item.(*types.UserReceipt)
 			if !receipt.Written {
 				receipt.Written = true
-				tl.flushToDB(ctx, receipt.RoomID, receipt.UserID, receipt.Content, receipt.EvtOffset)
+				tl.flushToDB(receipt.RoomID, receipt.UserID, receipt.Content, receipt.EvtOffset)
 			}
 		}
 
@@ -218,8 +212,8 @@ func (tl *UserReceiptRepo) flush(ctx context.Context) {
 	log.Infof("UserReceiptRepo finished flush")
 }
 
-func (tl *UserReceiptRepo) flushToDB(ctx context.Context, roomID, userID string, content []byte, offset int64) {
-	err := tl.persist.UpsertUserReceiptData(ctx, roomID, userID, string(content), offset)
+func (tl *UserReceiptRepo) flushToDB(roomID, userID string, content []byte, offset int64) {
+	err := tl.persist.UpsertUserReceiptData(context.TODO(), roomID, userID, string(content), offset)
 	if err != nil {
 		log.Errorw("UserReceiptRepo flushToDB could not save user receipt data", log.KeysAndValues{
 			"roomID", roomID, "userID", userID, "error", err,

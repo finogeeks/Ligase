@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"net/http"
@@ -63,7 +62,7 @@ func (ReqGetEvents) FillRequest(coder core.Coder, req *http.Request, vars map[st
 func (ReqGetEvents) NewResponse(code int) core.Coder {
 	return new(syncapitypes.PaginationChunk)
 }
-func (r ReqGetEvents) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (r ReqGetEvents) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
@@ -80,7 +79,7 @@ func (r ReqGetEvents) Process(ctx context.Context, consumer interface{}, msg cor
 		Since:       req.Since,
 	}
 
-	code, syncData := c.sm.OnSyncRequest(ctx, &httpReq, device)
+	code, syncData := c.sm.OnSyncRequest(&httpReq, device)
 
 	resp := new(syncapitypes.PaginationChunk)
 	resp.Start = from

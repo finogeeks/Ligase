@@ -15,7 +15,7 @@
 package entry
 
 import (
-	"github.com/finogeeks/ligase/bgmgr"
+	"github.com/finogeeks/ligase/bgmng"
 	"github.com/finogeeks/ligase/clientapi"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
@@ -43,13 +43,6 @@ func StartClientAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.OutputRoomFedEvent)
 
 	addConsumer(transportMultiplexer, kafka.Consumer.InputRoomEvent, base.Cfg.MultiInstance.Instance)
-
-	for _, v := range dbUpdateProducerName {
-		dbUpdates := kafka.Producer.DBUpdates
-		dbUpdates.Topic = dbUpdates.Topic + "_" + v
-		dbUpdates.Name = dbUpdates.Name + "_" + v
-		addProducer(transportMultiplexer, dbUpdates)
-	}
 
 	transportMultiplexer.PreStart()
 	cache := base.PrepareCache()
@@ -95,7 +88,7 @@ func StartClientAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	clientapi.SetupClientAPIComponent(
 		base, deviceDB, cache, accountDB, federation, nil,
-		rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, tokenFilter, idg, complexCache, serverConfDB,
+		rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, tokenFilter, idg, settings, feddomains, complexCache,
 	)
 
 	base.SetupAndServeHTTP(string(base.Cfg.Listen.ClientAPI))
@@ -170,28 +163,22 @@ func StartFixDBServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 	addProducer(transportMultiplexer, kafka.Producer.OutputRoomFedEvent)
 
-	for _, v := range dbUpdateProducerName {
-		dbUpdates := kafka.Producer.DBUpdates
-		dbUpdates.Topic = dbUpdates.Topic + "_" + v
-		dbUpdates.Name = dbUpdates.Name + "_" + v
-		addProducer(transportMultiplexer, dbUpdates)
-	}
-
 	transportMultiplexer.PreStart()
 	transportMultiplexer.Start()
 
 	roomserver.FixCorruptRooms(base)
 }
 
-func StartBgMgr(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
+func StartBgMng(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	deviceDB := base.CreateDeviceDB()
 	syncDB := base.CreateSyncDB()
 	encryptDB := base.CreateEncryptApiDB()
+	serverConfDB := base.CreateServerConfDB()
 	cache := base.PrepareCache()
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
 	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
 	rpcClient.Start(true)
 	tokenFilter := filter.GetFilterMng().Register("device", deviceDB)
 	tokenFilter.Load()
-	bgmgr.SetupBgMgrComponent(deviceDB, cache, encryptDB, syncDB, rpcClient, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
+	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
 }

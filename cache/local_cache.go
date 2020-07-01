@@ -15,8 +15,8 @@
 package cache
 
 import (
-	"github.com/finogeeks/ligase/model/service"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service"
 	"sync"
 	"sync/atomic"
 	"time"

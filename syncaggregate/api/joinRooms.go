@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"github.com/finogeeks/ligase/common"
 	"net/http"
@@ -24,10 +23,10 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -54,7 +53,7 @@ func (ReqGetJoinedRooms) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqGetJoinedRooms) NewResponse(code int) core.Coder {
 	return new(syncapitypes.JoinedRoomsResp)
 }
-func (ReqGetJoinedRooms) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetJoinedRooms) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
@@ -62,7 +61,7 @@ func (ReqGetJoinedRooms) Process(ctx context.Context, consumer interface{}, msg 
 	userID := device.UserID
 
 	resp := new(syncapitypes.JoinedRoomsResp)
-	joinRooms, err := c.userTimeLine.GetJoinRooms(ctx, userID)
+	joinRooms, err := c.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.NotFound(fmt.Sprintf("Could not find user joined rooms %s", userID))
 	}

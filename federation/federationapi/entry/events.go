@@ -20,11 +20,11 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -32,7 +32,8 @@ func init() {
 	Register(model.CMD_FED_STATE_IDS, QueryStateIDs)
 }
 
-func QueryEvent(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func QueryEvent(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+	ctx := context.TODO()
 	var reqParam external.GetEventRequest
 	reqParam.Decode(msg.Body)
 	qryEventReq := roomserverapi.QueryEventsByIDRequest{EventIDs: []string{reqParam.EventID}}
@@ -60,7 +61,8 @@ func QueryEvent(ctx context.Context, msg *model.GobMessage, cache service.Cache,
 	return &model.GobMessage{Body: body}, nil
 }
 
-func QueryStateIDs(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func QueryStateIDs(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+	ctx := context.TODO()
 	var reqParam external.GetStateIDsRequest
 	reqParam.Decode(msg.Body)
 

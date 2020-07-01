@@ -16,16 +16,15 @@ package repos
 
 import (
 	"context"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"sync"
 	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -63,9 +62,9 @@ func (tl *RoomHistoryTimeLineRepo) SetMonitor(queryHitCounter mon.LabeledCounter
 	tl.queryHitCounter = queryHitCounter
 }
 
-func (tl *RoomHistoryTimeLineRepo) AddEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
+func (tl *RoomHistoryTimeLineRepo) AddEv(ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
 	if load == true && ev.Type != "m.room.create" {
-		tl.LoadHistory(ctx, ev.RoomID, true)
+		tl.LoadHistory(ev.RoomID, true)
 	}
 
 	sev := new(feedstypes.StreamEvent)
@@ -80,11 +79,11 @@ func (tl *RoomHistoryTimeLineRepo) AddEv(ctx context.Context, ev *gomatrixserver
 	tl.setRoomLatest(ev.RoomID, offset)
 }
 
-func (tl *RoomHistoryTimeLineRepo) loadHistory(ctx context.Context, roomID string) {
+func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
 	defer tl.loading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000
-	evs, offsets, err := tl.persist.GetHistoryEvents(ctx, roomID, 30) //注意是倒序的event，需要排列下
+	evs, offsets, err := tl.persist.GetHistoryEvents(context.TODO(), roomID, 30) //注意是倒序的event，需要排列下
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed RoomHistoryTimeLineRepo load room:%s history spend:%d ms err:%v", roomID, spend, err)
@@ -107,21 +106,21 @@ func (tl *RoomHistoryTimeLineRepo) loadHistory(ctx context.Context, roomID strin
 	}
 
 	for idx := range evs {
-		tl.AddEv(ctx, &evs[idx], offsets[idx], false)
+		tl.AddEv(&evs[idx], offsets[idx], false)
 	}
 
 	tl.ready.Store(roomID, true)
 
 }
 
-func (tl *RoomHistoryTimeLineRepo) LoadHistory(ctx context.Context, roomID string, sync bool) {
+func (tl *RoomHistoryTimeLineRepo) LoadHistory(roomID string, sync bool) {
 	if _, ok := tl.ready.Load(roomID); !ok {
 		if _, ok := tl.loading.Load(roomID); !ok {
 			tl.loading.Store(roomID, true)
 			if sync == false {
-				go tl.loadHistory(ctx, roomID)
+				go tl.loadHistory(roomID)
 			} else {
-				tl.loadHistory(ctx, roomID)
+				tl.loadHistory(roomID)
 			}
 
 			tl.queryHitCounter.WithLabelValues("db", "RoomHistoryTimeLineRepo", "LoadHistory").Add(1)
@@ -129,24 +128,24 @@ func (tl *RoomHistoryTimeLineRepo) LoadHistory(ctx context.Context, roomID strin
 			if sync == false {
 				return
 			}
-			tl.CheckLoadReady(ctx, roomID, true)
+			tl.CheckLoadReady(roomID, true)
 		}
 	} else {
 		res := tl.repo.getTimeLine(roomID)
 		if res == nil {
 			tl.ready.Delete(roomID)
-			tl.LoadHistory(ctx, roomID, sync)
+			tl.LoadHistory(roomID, sync)
 		} else {
 			tl.queryHitCounter.WithLabelValues("db", "RoomHistoryTimeLineRepo", "LoadHistory").Add(1)
 		}
 	}
 }
 
-func (tl *RoomHistoryTimeLineRepo) CheckLoadReady(ctx context.Context, roomID string, sync bool) bool {
+func (tl *RoomHistoryTimeLineRepo) CheckLoadReady(roomID string, sync bool) bool {
 	_, ok := tl.ready.Load(roomID)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadHistory(ctx, roomID, false)
+			tl.LoadHistory(roomID, false)
 		}
 		return ok
 	}
@@ -157,7 +156,7 @@ func (tl *RoomHistoryTimeLineRepo) CheckLoadReady(ctx context.Context, roomID st
 			break
 		}
 
-		tl.LoadHistory(ctx, roomID, false)
+		tl.LoadHistory(roomID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -172,13 +171,13 @@ func (tl *RoomHistoryTimeLineRepo) CheckLoadReady(ctx context.Context, roomID st
 	return ok
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetHistory(ctx context.Context, roomID string) *feedstypes.TimeLines {
-	tl.LoadHistory(ctx, roomID, true)
+func (tl *RoomHistoryTimeLineRepo) GetHistory(roomID string) *feedstypes.TimeLines {
+	tl.LoadHistory(roomID, true)
 	return tl.repo.getTimeLine(roomID)
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetStreamEv(ctx context.Context, roomID, eventId string) *feedstypes.StreamEvent {
-	history := tl.GetHistory(ctx, roomID)
+func (tl *RoomHistoryTimeLineRepo) GetStreamEv(roomID, eventId string) *feedstypes.StreamEvent {
+	history := tl.GetHistory(roomID)
 	if history == nil {
 		return nil
 	}
@@ -199,8 +198,8 @@ func (tl *RoomHistoryTimeLineRepo) GetStreamEv(ctx context.Context, roomID, even
 	return sev
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetLastEvent(ctx context.Context, roomID string) *feedstypes.StreamEvent {
-	history := tl.GetHistory(ctx, roomID)
+func (tl *RoomHistoryTimeLineRepo) GetLastEvent(roomID string) *feedstypes.StreamEvent {
+	history := tl.GetHistory(roomID)
 	if history == nil {
 		return nil
 	}
@@ -224,13 +223,13 @@ func (tl *RoomHistoryTimeLineRepo) GetRoomLastOffset(roomID string) int64 {
 	return int64(-1)
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetRoomMinStream(ctx context.Context, roomID string) int64 {
+func (tl *RoomHistoryTimeLineRepo) GetRoomMinStream(roomID string) int64 {
 	if val, ok := tl.roomMinStream.Load(roomID); ok {
 		tl.queryHitCounter.WithLabelValues("cache", "RoomHistoryTimeLineRepo", "GetRoomMinStream").Add(1)
 		return val.(int64)
 	}
 	bs := time.Now().UnixNano() / 1000000
-	pos, err := tl.persist.SelectOutputMinStream(ctx, roomID)
+	pos, err := tl.persist.SelectOutputMinStream(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed RoomHistoryTimeLineRepo.SelectOutputMinStream roomID:%s spend:%d ms err %v", roomID, spend, err)
@@ -253,7 +252,7 @@ func (tl *RoomHistoryTimeLineRepo) SetRoomMinStream(roomID string, minStream int
 	tl.roomMinStream.Store(roomID, minStream)
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetDomainMaxStream(ctx context.Context, roomID, domain string) int64 {
+func (tl *RoomHistoryTimeLineRepo) GetDomainMaxStream(roomID, domain string) int64 {
 	for {
 		if val, ok := tl.domainMaxOffset.Load(roomID); !ok {
 			if _, loaded := tl.loadingDomainMaxOffset.LoadOrStore(roomID, true); loaded {
@@ -261,7 +260,7 @@ func (tl *RoomHistoryTimeLineRepo) GetDomainMaxStream(ctx context.Context, roomI
 				continue
 			} else {
 				defer tl.loadingDomainMaxOffset.Delete(roomID)
-				domains, offsets, err := tl.persist.SelectDomainMaxOffset(ctx, roomID)
+				domains, offsets, err := tl.persist.SelectDomainMaxOffset(context.TODO(), roomID)
 				if err != nil {
 					log.Errorf("RoomHistoryTimeLineRepo GetDomainMaxStream roomID %s err %v", roomID, err)
 					return -1
@@ -314,7 +313,7 @@ func (tl *RoomHistoryTimeLineRepo) setRoomLatest(roomID string, offset int64) {
 	}
 }
 
-func (tl *RoomHistoryTimeLineRepo) LoadRoomLatest(ctx context.Context, rooms []syncapitypes.SyncRoom) error {
+func (tl *RoomHistoryTimeLineRepo) LoadRoomLatest(rooms []syncapitypes.SyncRoom) error {
 	var loadRooms []string
 	for _, room := range rooms {
 		_, ok := tl.roomLatest.Load(room.RoomID)
@@ -325,7 +324,7 @@ func (tl *RoomHistoryTimeLineRepo) LoadRoomLatest(ctx context.Context, rooms []s
 
 	if len(loadRooms) > 0 {
 		bs := time.Now().UnixNano() / 1000000
-		roomMap, err := tl.persist.GetRoomLastOffsets(ctx, loadRooms)
+		roomMap, err := tl.persist.GetRoomLastOffsets(context.TODO(), loadRooms)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed RoomHistoryTimeLineRepo.LoadRoomLatest spend:%d ms err:%v", spend, err)

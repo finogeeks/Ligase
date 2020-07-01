@@ -83,10 +83,10 @@ func (r *JoinRoomsRepo) startTimer() {
 	}()
 }
 
-func (r *JoinRoomsRepo) GetData(ctx context.Context, roomID string) (*JoinRoomsData, error) {
+func (r *JoinRoomsRepo) GetData(roomID string) (*JoinRoomsData, error) {
 	var data *JoinRoomsData
 	if val, ok := r.repo.Load(roomID); !ok {
-		eventID, recvOffsets, err := r.db.SelectJoinedRooms(ctx, roomID)
+		eventID, recvOffsets, err := r.db.SelectJoinedRooms(context.TODO(), roomID)
 		if err != nil && !strings.Contains(err.Error(), "no rows in result set") {
 			return nil, err
 		}
@@ -117,16 +117,16 @@ func (r *JoinRoomsRepo) GetData(ctx context.Context, roomID string) (*JoinRoomsD
 	return data, nil
 }
 
-func (r *JoinRoomsRepo) AddData(ctx context.Context, data *JoinRoomsData) error {
+func (r *JoinRoomsRepo) AddData(data *JoinRoomsData) error {
 	r.repo.Store(data.RoomID, data)
 	data.lastActiveTime = time.Now().Unix()
-	return r.db.InsertJoinedRooms(ctx, data.RoomID, data.EventID)
+	return r.db.InsertJoinedRooms(context.TODO(), data.RoomID, data.EventID)
 }
 
-func (r *JoinRoomsRepo) UpdateData(ctx context.Context, data *JoinRoomsData) error {
+func (r *JoinRoomsRepo) UpdateData(data *JoinRoomsData) error {
 	r.repo.Store(data.RoomID, data)
 	data.lastActiveTime = time.Now().Unix()
 	recvOffsets, _ := json.Marshal(data.RecvOffsetsMap)
 	data.RecvOffsets = string(recvOffsets)
-	return r.db.UpdateJoinedRoomsRecvOffset(ctx, data.RoomID, data.RecvOffsets)
+	return r.db.UpdateJoinedRoomsRecvOffset(context.TODO(), data.RoomID, data.RecvOffsets)
 }

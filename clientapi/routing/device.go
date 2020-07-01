@@ -29,9 +29,10 @@ import (
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/json-iterator/go"
 )
@@ -97,6 +98,12 @@ func UpdateDeviceByID(
 		return http.StatusForbidden, jsonerror.Forbidden("device not owned by current user")
 	}
 
+	// defer req.Body.Close() // nolint: errcheck
+	// var r external.PutDeviceRequest
+	// if resErr := httputil.UnmarshalJSONRequest(req, &r); resErr != nil {
+	// 	return *resErr
+	// }
+	cache.UpdateLocalDevice(toDeviceID, userID, r.DisplayName)
 	if err := deviceDB.InsertDevice(ctx, userID, &toDeviceID, &r.DisplayName, dev.DeviceType, dev.Identifier); err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
@@ -104,11 +111,19 @@ func UpdateDeviceByID(
 	return http.StatusOK, nil
 }
 
+func buildDelRequestFlow() *external.DelDeviceAuthResponse {
+	f := &external.DelDeviceAuthResponse{}
+	s := external.Flow{"m.login.password", []string{"m.login.password"}}
+	f.Flows = append(f.Flows, s)
+	f.Session = util.RandomString(sessionIDLength)
+
+	return f
+}
+
 // DeleteDeviceByID handles Delete on /devices/{deviceID}
 // Deletes the given device, and invalidates any access token associated with it.
 //accountDB model.AccountsDatabase, deviceDB model.DeviceDatabase,
 func DeleteDeviceByID(
-	ctx context.Context,
 	delReq *external.DelDeviceRequest,
 	deviceID string,
 	cfg config.Dendrite,
@@ -119,6 +134,18 @@ func DeleteDeviceByID(
 	deviceDB model.DeviceDatabase,
 	rpcClient *common.RpcClient,
 ) (int, core.Coder) {
+	// var delReq external.DelDeviceRequest
+	// if reqErr := httputil.UnmarshalJSONRequest(req, &delReq); reqErr != nil {
+	// 	return util.JSONResponse{
+	// 		Code: 401,
+	// 		JSON: jsonerror.BadJSON("The request body could not be decoded into valid JSON. "),
+	// 	}
+	// }
+
+	//check para
+	//if delReq.Auth.Type == "" {
+	//	return http.StatusUnauthorized, buildDelRequestFlow()
+	//}
 
 	log.Infof("delete device, user %s device %s", delReq.Auth.User, deviceID)
 	//check auth
@@ -134,13 +161,12 @@ func DeleteDeviceByID(
 		}
 	}
 
-	LogoutDevice(ctx, delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+	LogoutDevice(delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
 
 	return http.StatusOK, nil
 }
 
 func DeleteDevices(
-	ctx context.Context,
 	req *external.PostDelDevicesRequest,
 	device *authtypes.Device,
 	cache service.Cache,
@@ -163,7 +189,7 @@ func DeleteDevices(
 					cache.SetPwdChangeDevcie(dev.ID, device.UserID)
 					hasPwdDevice = true
 				}
-				LogoutDevice(ctx, dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+				LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
 			}
 		}
 		if hasPwdDevice {
@@ -171,7 +197,7 @@ func DeleteDevices(
 		}
 	} else {
 		for _, deviceId := range req.Devices {
-			LogoutDevice(ctx, device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+			LogoutDevice(device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
 		}
 	}
 

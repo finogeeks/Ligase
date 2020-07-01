@@ -15,7 +15,6 @@
 package filter
 
 import (
-	"context"
 	"fmt"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"strings"
@@ -47,7 +46,7 @@ func (sf *SimpleFilter) Load() bool {
 		if sf.ready == true {
 			return true
 		}
-		if sf.loader.LoadSimpleFilterData(context.TODO(), sf) {
+		if sf.loader.LoadSimpleFilterData(sf) {
 			sf.ready = true
 			log.Infof("load data from db ok")
 		} else {

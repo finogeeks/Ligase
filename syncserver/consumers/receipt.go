@@ -18,19 +18,18 @@
 package consumers
 
 import (
-	"context"
 	goSync "sync"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	pushapi "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type ReceiptConsumer struct {
@@ -95,11 +94,11 @@ func (s *ReceiptConsumer) SetRsTimeline(rsTimeline *repos.RoomStateTimeLineRepo)
 }
 
 //it's a up to markers
-func (s *ReceiptConsumer) OnReceipt(ctx context.Context, req *types.ReceiptContent) {
+func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 	log.Infof("OnReceipt roomID %s receiptType %s eventID %s userID %s deviceID %s", req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID)
 	rs := s.roomCurState.GetRoomState(req.RoomID)
 	if rs == nil {
-		s.rsTimeline.LoadStreamStates(ctx, req.RoomID, true)
+		s.rsTimeline.LoadStreamStates(req.RoomID, true)
 		rs = s.roomCurState.GetRoomState(req.RoomID)
 		if rs == nil {
 			log.Warnf("OnReceipt RoomState empty roomID %s userID %s", req.RoomID, req.UserID)
@@ -113,7 +112,7 @@ func (s *ReceiptConsumer) OnReceipt(ctx context.Context, req *types.ReceiptConte
 	}
 
 	lastEventID := ""
-	stream := s.roomHistory.GetLastEvent(ctx, req.RoomID)
+	stream := s.roomHistory.GetLastEvent(req.RoomID)
 	if stream != nil {
 		lastEventID = stream.GetEv().EventID
 	}
@@ -128,7 +127,7 @@ func (s *ReceiptConsumer) OnReceipt(ctx context.Context, req *types.ReceiptConte
 	}
 
 	receiptOffSet := int64(-1)
-	stream = s.roomHistory.GetStreamEv(ctx, req.RoomID, req.EventID)
+	stream = s.roomHistory.GetStreamEv(req.RoomID, req.EventID)
 	if stream != nil {
 		receiptOffSet = stream.Offset
 	}
@@ -213,11 +212,7 @@ func (s *ReceiptConsumer) Start() error {
 		for {
 			select {
 			case <-t.C:
-				func() {
-					span, ctx := common.StartSobSomSpan(context.Background(), "ReceiptConsumer.Start")
-					defer span.Finish()
-					s.fireReceipt(ctx)
-				}()
+				s.fireReceipt()
 				t.Reset(time.Millisecond * time.Duration(s.delay))
 			}
 		}
@@ -226,18 +221,18 @@ func (s *ReceiptConsumer) Start() error {
 	return nil
 }
 
-func (s *ReceiptConsumer) fireReceipt(ctx context.Context) {
+func (s *ReceiptConsumer) fireReceipt() {
 	s.notifyRoom.Range(func(key, _ interface{}) bool {
 		s.notifyRoom.Delete(key)
 
 		roomID := key.(string)
 		log.Infof("-----OnReceipt fireReceipt roomID:%s", roomID)
-		s.fireRoomReceipt(ctx, roomID)
+		s.fireRoomReceipt(roomID)
 		return true
 	})
 }
 
-func (s *ReceiptConsumer) fireRoomReceipt(ctx context.Context, roomID string) {
+func (s *ReceiptConsumer) fireRoomReceipt(roomID string) {
 	res, _ := s.container.Load(roomID)
 	receipt := res.(*pushapi.RoomReceipt)
 	user := new(pushapi.ReceiptUser)
@@ -269,10 +264,10 @@ func (s *ReceiptConsumer) fireRoomReceipt(ctx context.Context, roomID string) {
 	}
 
 	offset, _ := s.idg.Next()
-	s.flushReceiptUpdate(ctx, roomID, eventJson, receipt.EvOffSet, offset)
+	s.flushReceiptUpdate(roomID, eventJson, receipt.EvOffSet, offset)
 }
 
-func (s *ReceiptConsumer) flushReceiptUpdate(ctx context.Context, roomID string, content []byte, evOffset, offset int64) {
+func (s *ReceiptConsumer) flushReceiptUpdate(roomID string, content []byte, evOffset, offset int64) {
 	var receipt pushapi.ReceiptContent
 	var receiptEvent gomatrixserverlib.ClientEvent
 
@@ -319,7 +314,7 @@ func (s *ReceiptConsumer) flushReceiptUpdate(ctx context.Context, roomID string,
 	receiptStream.Content = content
 	receiptStream.ReceiptOffset = evOffset
 
-	s.receiptRepo.AddReceiptDataStream(ctx, &receiptStream, offset)
+	s.receiptRepo.AddReceiptDataStream(&receiptStream, offset)
 	s.pubReceiptUpdate(roomID, offset)
 }
 

@@ -21,15 +21,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"time"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/publicroomstypes"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/dbtypes"
-	"github.com/finogeeks/ligase/model/publicroomstypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -59,10 +58,6 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 		return nil, err
 	}
 
-	public.db.SetMaxOpenConns(30)
-	public.db.SetMaxIdleConns(30)
-	public.db.SetConnMaxLifetime(time.Minute * 3)
-
 	schemas := []string{public.statements.getSchema()}
 	for _, sqlStr := range schemas {
 		_, err := public.db.Exec(sqlStr)
@@ -90,31 +85,13 @@ func (d *Database) SetIDGenerator(idg *uid.UidGenerator) {
 }
 
 // WriteOutputEvents implements OutputRoomEventWriter
-func (d *Database) WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic, d.underlying)
+func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
-		})
-}
-
-func (d *Database) WriteDBEventWithTbl(ctx context.Context, update *dbtypes.DBEvent, tbl string) error {
-	span, _ := common.StartSpanFromContext(ctx, d.topic+"_"+tbl)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, d.topic+"_"+tbl, d.underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
-		d.underlying,
-		d.topic+"_"+tbl,
-		&core.TransportPubMsg{
-			Keys:    []byte(update.GetEventKey()),
-			Obj:     update,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(update.GetTblName()),
+			Obj:  update,
 		})
 }
 

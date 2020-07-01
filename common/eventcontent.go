@@ -24,14 +24,16 @@ type CreateContent struct {
 	IsDirect *bool  `json:"is_direct,omitempty"`
 
 	//used by secrect group
-	EnableWatermark *bool `json:"enable_watermark,omitempty"`
-	Version         *int  `json:"version,omitempty"`
-	IsSecret        *bool `json:"is_secret,omitempty"`
-	EnableFavorite  *bool `json:"enable_favorite,omitempty"`
-	EnableSnapshot  *bool `json:"enable_snapshot,omitempty"`
-	EnableForward   *bool `json:"enable_forward,omitempty"`
-	IsChannel       *bool `json:"is_channel,omitempty"`
-	RoomType        *int  `json:"room_type"`
+	EnableWatermark    *bool `json:"enable_watermark,omitempty"`
+	Version            *int  `json:"version,omitempty"`
+	IsSecret           *bool `json:"is_secret,omitempty"`
+	EnableFavorite     *bool `json:"enable_favorite,omitempty"`
+	EnableSnapshot     *bool `json:"enable_snapshot,omitempty"`
+	EnableForward      *bool `json:"enable_forward,omitempty"`
+	IsChannel          *bool `json:"is_channel,omitempty"`
+	IsOrganizationRoom *bool `json:"is_organization_room,omitempty"`
+	IsGroupRoom        *bool `json:"is_group_room,omitempty"`
+	RoomType           *int  `json:"room_type"`
 }
 
 //type CreateContent map[string]interface{}

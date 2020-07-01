@@ -33,9 +33,9 @@ import (
 	"github.com/finogeeks/ligase/content/storage/model"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/model/mediatypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/mediatypes"
 )
 
 const kDefaultWorkerCount = 10
@@ -61,8 +61,6 @@ type DownloadConsumer struct {
 
 	maxWorkerCount int32
 	curWorkerCount int32
-
-	httpCli *http.Client
 }
 
 func NewConsumer(
@@ -88,16 +86,6 @@ func NewConsumer(
 			thumbnailMap:   make(map[string]DownloadInfo),
 			downloadMap:    make(map[string]DownloadInfo),
 			maxWorkerCount: int32(workerCount),
-			httpCli: &http.Client{
-				Transport: &http.Transport{
-					DialContext: (&net.Dialer{
-						Timeout: time.Second * 15,
-					}).DialContext,
-					MaxIdleConns:        100,
-					MaxIdleConnsPerHost: 100,
-					IdleConnTimeout:     time.Second * 90,
-				},
-			},
 		}
 		channel.SetHandler(s)
 
@@ -160,8 +148,6 @@ func (p *DownloadConsumer) workerProcessor() {
 			go p.workerProcessor()
 		}
 	}()
-	span, ctx := common.StartSobSomSpan(context.Background(), "DownloadConsumer.workerProcessor")
-	defer span.Finish()
 	for {
 		info, key, thumbnail, ok := func() (info DownloadInfo, key string, thumbnail, ok bool) {
 			p.getMutex.Lock()
@@ -176,7 +162,7 @@ func (p *DownloadConsumer) workerProcessor() {
 			break
 		}
 		domain, netdiskID, _ := p.repo.SplitKey(key)
-		err := p.download(ctx, info.userID, domain, netdiskID, thumbnail)
+		err := p.download(info.userID, domain, netdiskID, thumbnail)
 		if err != nil {
 			p.repo.RemoveDownloading(key)
 			if info.roomID != "" && info.eventID != "" {
@@ -189,7 +175,7 @@ func (p *DownloadConsumer) workerProcessor() {
 		} else {
 			p.repo.RemoveDownloading(key)
 			if info.roomID != "" && info.eventID != "" {
-				p.db.UpdateMediaDownload(ctx, info.roomID, info.eventID, true)
+				p.db.UpdateMediaDownload(context.TODO(), info.roomID, info.eventID, true)
 			}
 		}
 	}
@@ -281,7 +267,7 @@ func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdisk
 	p.startWorkerIfNeed()
 }
 
-func (p *DownloadConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var ev gomatrixserverlib.Event
 	err := json.Unmarshal(data, &ev)
 	if err != nil {
@@ -299,7 +285,7 @@ func (p *DownloadConsumer) OnMessage(ctx context.Context, topic string, partitio
 		return
 	}
 
-	p.db.InsertMediaDownload(ctx, ev.RoomID(), ev.EventID(), string(data))
+	p.db.InsertMediaDownload(context.TODO(), ev.RoomID(), ev.EventID(), string(data))
 	roomID := ev.RoomID()
 	userID := ev.Sender()
 	eventID := ev.EventID()
@@ -342,16 +328,16 @@ func (p *DownloadConsumer) parseEv(ev *gomatrixserverlib.Event) (domain, url, th
 	return
 }
 
-func (p *DownloadConsumer) download(ctx context.Context, userID, domain, netdiskID string, thumbnail bool) error {
+func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail bool) error {
 	log.Infof("federation Download netdisk %s from remote %s", netdiskID, domain)
 	destination, _ := p.feddomains.GetDomainHost(domain)
-	info, err := p.fedClient.LookupMediaInfo(ctx, destination, netdiskID, userID)
+	info, err := p.fedClient.LookupMediaInfo(context.TODO(), destination, netdiskID, userID)
 	if err != nil {
 		log.Errorf("federation Download get media info error: %v", err)
 		return errors.New("federation Download get media info error:" + err.Error())
 	}
 
-	err = p.fedClient.Download(ctx, destination, domain, netdiskID, "", "", "download", func(response *http.Response) error {
+	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, "", "", "download", func(response *http.Response) error {
 		if response == nil || response.Body == nil {
 			log.Errorf("download fed netdisk response nil")
 			return errors.New("download fed netdisk response nil")
@@ -400,7 +386,15 @@ func (p *DownloadConsumer) download(ctx context.Context, userID, domain, netdisk
 		headStr, _ = json.Marshal(newReq.Header)
 		log.Infof("fed download, header for net disk request: %s", string(headStr))
 
-		res, err := p.httpCli.Do(newReq)
+		transport := &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: time.Second * 15,
+			}).DialContext,
+			DisableKeepAlives: true, // fd will leak if set it false(default value)
+		}
+		client := &http.Client{Transport: transport}
+
+		res, err := client.Do(newReq)
 		if err != nil {
 			log.Errorf("fed download, upload file request error: %v", err)
 			return errors.New("fed download, upload file request error:" + err.Error())

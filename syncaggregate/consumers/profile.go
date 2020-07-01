@@ -24,10 +24,10 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -37,14 +37,13 @@ type ProfileConsumer struct {
 	channel            core.IChannel
 	presenceStreamRepo *repos.PresenceDataStreamRepo
 	chanSize           uint32
-	//msgChan            []chan *types.ProfileStreamUpdate
-	msgChan      []chan common.ContextMsg
-	userTimeLine *repos.UserTimeLineRepo
-	olRepo       *repos.OnlineUserRepo
-	cfg          *config.Dendrite
-	syncDB       model.SyncAPIDatabase
-	idg          *uid.UidGenerator
-	cache        service.Cache
+	msgChan            []chan *types.ProfileStreamUpdate
+	userTimeLine       *repos.UserTimeLineRepo
+	olRepo             *repos.OnlineUserRepo
+	cfg                *config.Dendrite
+	syncDB             model.SyncAPIDatabase
+	idg                *uid.UidGenerator
+	cache              service.Cache
 }
 
 func NewProfileConsumer(
@@ -86,17 +85,16 @@ func (s *ProfileConsumer) SetOnlineUserRepo(ol *repos.OnlineUserRepo) {
 	s.olRepo = ol
 }
 
-func (s *ProfileConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.ProfileStreamUpdate)
-		s.onMessage(msg.Ctx, data)
+func (s *ProfileConsumer) startWorker(msgChan chan *types.ProfileStreamUpdate) {
+	for data := range msgChan {
+		s.onMessage(data)
 	}
 }
 
 func (s *ProfileConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.ProfileStreamUpdate, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.ProfileStreamUpdate, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
@@ -104,7 +102,7 @@ func (s *ProfileConsumer) Start() error {
 	return nil
 }
 
-func (s *ProfileConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *ProfileConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output types.ProfileStreamUpdate
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("output profile consumer log: message parse failure", log.KeysAndValues{"error", err})
@@ -112,11 +110,11 @@ func (s *ProfileConsumer) OnMessage(ctx context.Context, topic string, partition
 	}
 
 	idx := common.CalcStringHashCode(output.UserID) % s.chanSize
-	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &output}
+	s.msgChan[idx] <- &output
 	return
 }
 
-func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileStreamUpdate) {
+func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
 	domain, _ := common.DomainFromID(output.UserID)
 	isSelfDomain := common.CheckValidDomain(domain, s.cfg.Matrix.ServerName)
 	isRelate := common.IsRelatedRequest(output.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite)
@@ -128,7 +126,7 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 	if isSelfDomain && isRelate && output.IsUpdateStauts {
 		if output.Presence.Presence == "offline" {
 			log.Infof("Profile offline user:%s device:%s", output.UserID, output.DeviceID)
-			s.olRepo.UpdateState(ctx, output.UserID, output.DeviceID, repos.OFFLINE_STATE)
+			s.olRepo.UpdateState(output.UserID, output.DeviceID, repos.OFFLINE_STATE)
 			if s.olRepo.IsUserOnline(output.UserID) && output.Presence.Presence == "offline" {
 				// 整合在线状态
 				deviceIDs, pos, ts := s.olRepo.GetRemainDevice(output.UserID)
@@ -166,17 +164,12 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 	if isSelfDomain && isRelate && output.IsMasterHndle {
 		stream := *output
 		stream.IsMasterHndle = false
-		span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.OutputProfileData.Name)
-		defer span.Finish()
-		common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.OutputProfileData.Name,
-			s.cfg.Kafka.Producer.OutputProfileData.Underlying)
 		common.GetTransportMultiplexer().SendWithRetry(
 			s.cfg.Kafka.Producer.OutputProfileData.Underlying,
 			s.cfg.Kafka.Producer.OutputProfileData.Name,
 			&core.TransportPubMsg{
-				Keys:    []byte(output.UserID),
-				Obj:     stream,
-				Headers: common.InjectSpanToHeaderForSending(span),
+				Keys: []byte(output.UserID),
+				Obj:  stream,
 			})
 	}
 
@@ -209,7 +202,7 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 
 	var pos int64
 	if isRelate {
-		offset, _ := s.syncDB.UpsertPresenceDataStream(ctx, output.UserID, string(eventJson))
+		offset, _ := s.syncDB.UpsertPresenceDataStream(context.TODO(), output.UserID, string(eventJson))
 		pos = int64(offset)
 	} else {
 		pos, _ = s.idg.Next()
@@ -219,7 +212,7 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 	presenceStream.UserID = output.UserID
 	presenceStream.Content = eventJson
 	log.Infow("sync profile stream consumer received data", log.KeysAndValues{"userID", output.UserID, "pos", pos, "eventJson", string(eventJson)})
-	s.presenceStreamRepo.AddPresenceDataStream(ctx, &presenceStream, pos, true)
+	s.presenceStreamRepo.AddPresenceDataStream(&presenceStream, pos, true)
 	if !isRelate || !isSelfDomain {
 		friendReverseMap := s.userTimeLine.GetFriendshipReverse(output.UserID)
 		if friendReverseMap != nil {
@@ -230,7 +223,7 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 		}
 	}
 
-	friendMap := s.userTimeLine.GetFriendShip(ctx, output.UserID, true)
+	friendMap := s.userTimeLine.GetFriendShip(output.UserID, true)
 	domainMap := make(map[string]bool)
 	if friendMap != nil {
 		friendMap.Range(func(key, _ interface{}) bool {
@@ -268,20 +261,13 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 				Destination: domain,
 				Content:     content,
 			}
-			func() {
-				span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.FedEduUpdate.Name)
-				defer span.Finish()
-				common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.FedEduUpdate.Name,
-					s.cfg.Kafka.Producer.FedEduUpdate.Underlying)
-				common.GetTransportMultiplexer().SendWithRetry(
-					s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
-					s.cfg.Kafka.Producer.FedEduUpdate.Name,
-					&core.TransportPubMsg{
-						Keys:    userIDData,
-						Obj:     edu,
-						Headers: common.InjectSpanToHeaderForSending(span),
-					})
-			}()
+			common.GetTransportMultiplexer().SendWithRetry(
+				s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
+				s.cfg.Kafka.Producer.FedEduUpdate.Name,
+				&core.TransportPubMsg{
+					Keys: userIDData,
+					Obj:  edu,
+				})
 		}
 	}
 }

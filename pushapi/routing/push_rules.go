@@ -26,13 +26,13 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -372,18 +372,12 @@ func PutPushRuleActions(
 	data.RoomID = ""
 	data.DataType = ""
 	data.StreamType = "pushRule"
-
-	span, _ := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(device.UserID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(device.UserID),
+			Obj:  data,
 		})
 
 	var defaultRule bool
@@ -529,18 +523,12 @@ func PutPushRuleEnabled(
 	data.RoomID = ""
 	data.DataType = ""
 	data.StreamType = "pushRule"
-
-	span, _ := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(device.UserID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(device.UserID),
+			Obj:  data,
 		})
 
 	return http.StatusOK, nil
@@ -721,18 +709,12 @@ func DeletePushRule(
 	data.RoomID = ""
 	data.DataType = ""
 	data.StreamType = "pushRule"
-
-	span, _ := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(device.UserID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(device.UserID),
+			Obj:  data,
 		})
 
 	return http.StatusOK, nil
@@ -893,17 +875,12 @@ func addPushRuleWithoutRelated(
 	data.RoomID = ""
 	data.DataType = ""
 	data.StreamType = "pushRule"
-	span, _ := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(userID),
+			Obj:  data,
 		})
 
 	return http.StatusOK, nil
@@ -968,17 +945,12 @@ func addPushRuleWithRelated(
 	data.DataType = ""
 	data.StreamType = "pushRule"
 
-	span, _ := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(userID),
+			Obj:  data,
 		})
 
 	return http.StatusOK, nil

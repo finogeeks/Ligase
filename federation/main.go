@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"syscall"
 
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
@@ -44,7 +45,6 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	_ "github.com/finogeeks/ligase/plugins"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	_ "github.com/finogeeks/ligase/storage/implements"
 	"github.com/finogeeks/ligase/storage/model"
 )
@@ -199,8 +199,7 @@ func startFedMonolith() {
 	}
 	fedDB := fdb.(fedmodel.FederationDatabase)
 
-	backfillRepo := fedrepos.NewBackfillRepo(fedDB, cache)
-	backfillRepo.LoadHistory()
+	backfillRepo := fedrepos.NewBackfillRepo(fedDB)
 	joinRoomsRepo := fedrepos.NewJoinRoomsRepo(fedDB)
 
 	rdb, err := common.GetDBInstance("roomserver", &cfg)
@@ -210,7 +209,7 @@ func startFedMonolith() {
 
 	roomserverDB := rdb.(model.RoomServerDatabase)
 
-	backfill := fedbackfill.NewFederationBackFill(&cfg, fedClient, feddomains, backfillRepo)
+	backfill := fedbackfill.NewFederationBackFill(&cfg, fedDB, fedClient, feddomains, backfillRepo)
 	val, ok := common.GetTransportMultiplexer().GetChannel(
 		kafka.Consumer.FedBackFill.Underlying,
 		kafka.Consumer.FedBackFill.Name,
@@ -260,7 +259,12 @@ func startFedMonolith() {
 	monitor := mon.GetInstance()
 	queryHitCounter := monitor.NewLabeledCounter("federation_query_hit", []string{"target", "repo", "func"})
 
-	repo := repos.NewRoomServerCurStateRepo(roomserverDB, cache, queryHitCounter)
+	repo := new(repos.RoomServerCurStateRepo)
+
+	repo.SetPersist(roomserverDB)
+	repo.SetDomain(cfg.GetServerName())
+	repo.SetCache(cache)
+	repo.SetMonitor(queryHitCounter)
 
 	cdb, err := common.GetDBInstance("server_conf", &cfg)
 	if err != nil {
@@ -270,15 +274,11 @@ func startFedMonolith() {
 	domain.GetDomainMngInstance(cache, serverConfDB, cfg.GetServerName(), cfg.GetServerFromDB(), idg)
 	checkDomainCfg(cfg)
 
-	sendRecRepo := fedrepos.NewSendRecRepo(fedDB, cache)
-	err = sendRecRepo.LoadRooms()
-	if err != nil {
-		log.Panicw("load send record", log.KeysAndValues{"error", err})
-	}
+	fedAPIEntry.SetRepo(repo)
 
-	sender := fedsender.NewFederationSender(&cfg, rpcClient, feddomains)
-	sender.SetRsRepo(repo)
-	sender.SetRecRepo(sendRecRepo)
+	sender := fedsender.NewFederationSender(&cfg, rpcClient, feddomains, fedDB)
+	sender.SetRepo(repo)
+	sender.Init()
 	sender.Start()
 
 	dispatch := fedsender.NewFederationDispatch(&cfg)

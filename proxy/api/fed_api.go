@@ -15,9 +15,10 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"io/ioutil"
+	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,12 +26,15 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/adapter"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
@@ -39,8 +43,6 @@ import (
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/proxy/bridge"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	dmodel "github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -55,6 +57,7 @@ type FedApiUserData struct {
 	CacheIn    service.Cache
 	KeyDB      dmodel.KeyDatabase
 	LocalCache service.LocalCache
+	Origin     string
 }
 
 func genMsgSeq(idg *uid.UidGenerator) string {
@@ -107,7 +110,7 @@ func (ReqGetFedVer) NewResponse(code int) core.Coder      { return new(model.Ver
 func (ReqGetFedVer) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	return nil
 }
-func (ReqGetFedVer) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedVer) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	log.Info("get federation version")
 	return http.StatusOK, model.GetVersion()
 }
@@ -130,7 +133,7 @@ func (ReqGetFedDirectory) FillRequest(coder core.Coder, req *http.Request, vars 
 	msg.RoomAlias = req.FormValue("room_alias")
 	return nil
 }
-func (ReqGetFedDirectory) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedDirectory) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.GetFedDirectoryRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -208,7 +211,7 @@ func (ReqGetFedProfile) FillRequest(coder core.Coder, req *http.Request, vars ma
 	msg.Field = req.FormValue("field")
 	return nil
 }
-func (ReqGetFedProfile) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedProfile) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*ReqGetFedProfileRequest)
 	cfg := ud.(*FedApiUserData).Cfg
 	idg := ud.(*FedApiUserData).Idg
@@ -301,7 +304,7 @@ func (ReqPutFedSend) FillRequest(coder core.Coder, req *http.Request, vars map[s
 	msg.TxnID = vars["txnID"]
 	return nil
 }
-func (ReqPutFedSend) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutFedSend) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*ReqPutFedSendRequest)
 	request := ud.(*FedApiUserData).Request
 	localCache := ud.(*FedApiUserData).LocalCache
@@ -370,7 +373,7 @@ func (ReqPutFedSend) Process(ctx context.Context, ud interface{}, msg core.Coder
 
 	//only for debug
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
-		delay := adapter.Random(0, 10)
+		delay := math.Max(0, 11-math.Pow(float64(rand.Intn(200)), 1/1.5))
 		log.Debugf("fed recv transationID:%s sleep %ds", req.TxnID, delay)
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
@@ -387,7 +390,7 @@ func (ReqPutFedSend) Process(ctx context.Context, ud interface{}, msg core.Coder
 
 	prod := ud.(*FedApiUserData).Cfg.Kafka.Producer.FedBridgeOut
 
-	err = common.GetTransportMultiplexer().SendWithRetry(
+	err = common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		prod.Underlying,
 		prod.Name,
 		&core.TransportPubMsg{
@@ -424,7 +427,7 @@ func (ReqPutFedInvite) FillRequest(coder core.Coder, req *http.Request, vars map
 	msg.EventID = vars["eventID"]
 	return nil
 }
-func (ReqPutFedInvite) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutFedInvite) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.PutFedInviteRequest)
 	request := ud.(*FedApiUserData).Request
 	idg := ud.(*FedApiUserData).Idg
@@ -506,7 +509,7 @@ func (ReqGetFedRoomState) FillRequest(coder core.Coder, req *http.Request, vars 
 	msg.EventID = req.FormValue("event_id")
 	return nil
 }
-func (ReqGetFedRoomState) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedRoomState) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*ReqGetFedRoomStateRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -581,7 +584,7 @@ func (ReqGetFedBackfill) FillRequest(coder core.Coder, req *http.Request, vars m
 	msg.Domain = req.FormValue("domain")
 	return nil
 }
-func (ReqGetFedBackfill) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedBackfill) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*ReqGetFedBackfillRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -604,6 +607,7 @@ func (ReqGetFedBackfill) Process(ctx context.Context, ud interface{}, msg core.C
 	backfill.BackFillIds = eventID
 	backfill.Dir = dir
 	backfill.Domain = req.Domain
+	backfill.Origin = ud.(*FedApiUserData).Origin
 	body, _ := backfill.Encode()
 	gobMsg.Body = body
 
@@ -656,7 +660,7 @@ func (ReqGetFedMissingEvents) FillRequest(coder core.Coder, req *http.Request, v
 	msg.RoomID = vars["roomId"]
 	return nil
 }
-func (ReqGetFedMissingEvents) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedMissingEvents) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	// req := msg.(*external.GetMissingEventsRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -733,17 +737,6 @@ func (r *ReqGetFedMediaInfoResponse) Decode(input []byte) error {
 	return json.Unmarshal(input, r)
 }
 
-var netdiskHttpCli = http.Client{
-	Transport: &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout: time.Second * 15,
-		}).DialContext,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100,
-		IdleConnTimeout:     time.Second * 90,
-	},
-}
-
 type ReqGetFedMediaInfo struct{}
 
 func (ReqGetFedMediaInfo) GetRoute() string {
@@ -765,7 +758,7 @@ func (ReqGetFedMediaInfo) FillRequest(coder core.Coder, req *http.Request, vars 
 	msg.UserID = vars["userID"]
 	return nil
 }
-func (ReqGetFedMediaInfo) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedMediaInfo) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*ReqGetFedMediaInfoRequest)
 	cfg := ud.(*FedApiUserData).Cfg
 
@@ -776,7 +769,15 @@ func (ReqGetFedMediaInfo) Process(ctx context.Context, ud interface{}, msg core.
 	}
 	request.Header.Set("X-Consumer-Custom-ID", req.UserID)
 
-	response, err := netdiskHttpCli.Do(request)
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: time.Second * 15,
+		}).DialContext,
+		DisableKeepAlives: true, // fd will leak if set it false(default value)
+	}
+	client := &http.Client{Transport: transport}
+
+	response, err := client.Do(request)
 	if err != nil {
 		log.Errorf("GetFedMediaInfo response error %v", err)
 		return http.StatusInternalServerError, jsonerror.Unknown("Internal Server Error. " + err.Error())
@@ -819,7 +820,7 @@ func (ReqGetFedMediaDownload) NewResponse(code int) core.Coder      { return nil
 func (ReqGetFedMediaDownload) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	return nil
 }
-func (ReqGetFedMediaDownload) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedMediaDownload) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	return 200, nil
 }
 
@@ -839,7 +840,7 @@ func (ReqPostNotaryNotice) NewResponse(code int) core.Coder {
 func (ReqPostNotaryNotice) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	return nil
 }
-func (ReqPostNotaryNotice) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostNotaryNotice) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	resp := external.ReqPostNotaryNoticeResponse{Ack: 1}
 
 	req := msg.(*external.ReqPostNotaryNoticeRequest)
@@ -912,7 +913,7 @@ func (ReqGetFedUserInfo) FillRequest(coder core.Coder, req *http.Request, vars m
 	msg.UserID = req.FormValue("user_id")
 	return nil
 }
-func (ReqGetFedUserInfo) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFedUserInfo) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*ReqGetFedUserInfoRequest)
 	cfg := ud.(*FedApiUserData).Cfg
 	idg := ud.(*FedApiUserData).Idg
@@ -968,7 +969,7 @@ func (ReqGetMakeJoin) FillRequest(coder core.Coder, req *http.Request, vars map[
 	msg.Ver = req.Form["ver"]
 	return nil
 }
-func (ReqGetMakeJoin) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetMakeJoin) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.GetMakeJoinRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1008,7 +1009,7 @@ func (ReqPutSendJoin) FillRequest(coder core.Coder, req *http.Request, vars map[
 	msg.EventID = vars["eventID"]
 	return nil
 }
-func (ReqPutSendJoin) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutSendJoin) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.PutSendJoinRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1021,7 +1022,6 @@ func (ReqPutSendJoin) Process(ctx context.Context, ud interface{}, msg core.Code
 	}
 	if req.Event.RoomID() == "" {
 	}
-
 	gobMsg := model.GobMessage{}
 	gobMsg.MsgSeq = genMsgSeq(idg)
 	gobMsg.Key = []byte(roomID)
@@ -1059,7 +1059,7 @@ func (ReqGetMakeLeave) FillRequest(coder core.Coder, req *http.Request, vars map
 	msg.UserID = vars["userID"]
 	return nil
 }
-func (ReqGetMakeLeave) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetMakeLeave) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.GetMakeLeaveRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1099,7 +1099,7 @@ func (ReqPutSendLeave) FillRequest(coder core.Coder, req *http.Request, vars map
 	msg.EventID = vars["eventID"]
 	return nil
 }
-func (ReqPutSendLeave) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutSendLeave) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.PutSendLeaveRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1147,7 +1147,7 @@ func (ReqGetEventAuth) FillRequest(coder core.Coder, req *http.Request, vars map
 	msg.EventID = vars["eventId"]
 	return nil
 }
-func (ReqGetEventAuth) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetEventAuth) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.GetEventAuthRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1187,7 +1187,7 @@ func (ReqPostQueryAuth) FillRequest(coder core.Coder, req *http.Request, vars ma
 	msg.EventID = vars["eventId"]
 	return nil
 }
-func (ReqPostQueryAuth) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostQueryAuth) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.PostQueryAuthRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1228,7 +1228,7 @@ func (ReqGetEvent) FillRequest(coder core.Coder, req *http.Request, vars map[str
 	msg.EventID = vars["eventId"]
 	return nil
 }
-func (ReqGetEvent) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetEvent) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.GetEventRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1268,7 +1268,7 @@ func (ReqGetStateIDs) FillRequest(coder core.Coder, req *http.Request, vars map[
 	msg.EventID = req.FormValue("event_id")
 	return nil
 }
-func (ReqGetStateIDs) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetStateIDs) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.GetStateIDsRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1314,7 +1314,7 @@ func (ReqGetPublicRooms) FillRequest(coder core.Coder, req *http.Request, vars m
 	msg.ThirdPartyInstanceID = req.FormValue("third_party_instance_id")
 	return nil
 }
-func (ReqGetPublicRooms) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPublicRooms) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.GetFedPublicRoomsRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1353,7 +1353,7 @@ func (ReqPostPublicRooms) NewResponse(code int) core.Coder {
 func (ReqPostPublicRooms) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	return nil
 }
-func (ReqPostPublicRooms) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostPublicRooms) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	// req := msg.(*external.PostFedPublicRoomsRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1396,7 +1396,7 @@ func (ReqPostQueryClientKeys) NewResponse(code int) core.Coder {
 func (ReqPostQueryClientKeys) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	return nil
 }
-func (ReqPostQueryClientKeys) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostQueryClientKeys) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	// req := msg.(*external.PostFedPublicRoomsRequest)
 	idg := ud.(*FedApiUserData).Idg
 
@@ -1439,7 +1439,7 @@ func (ReqPostClaimClientKeys) NewResponse(code int) core.Coder {
 func (ReqPostClaimClientKeys) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	return nil
 }
-func (ReqPostClaimClientKeys) Process(ctx context.Context, ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostClaimClientKeys) Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	// req := msg.(*external.PostFedPublicRoomsRequest)
 	idg := ud.(*FedApiUserData).Idg
 

@@ -18,14 +18,12 @@
 package consumers
 
 import (
-	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"time"
 
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 )
 
 func init() {
@@ -33,15 +31,13 @@ func init() {
 }
 
 type AccountDBEvCacheConsumer struct {
-	pool PoolProviderInterface
-	//msgChan chan *dbtypes.DBEvent
-	msgChan chan common.ContextMsg
+	pool    PoolProviderInterface
+	msgChan chan *dbtypes.DBEvent
 }
 
-func (s *AccountDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *AccountDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
 	var res error
-	for msg := range msgChan {
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
@@ -81,7 +77,7 @@ func (s *AccountDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
 
 func NewAccountDBEvCacheConsumer() ConsumerInterface {
 	s := new(AccountDBEvCacheConsumer)
-	s.msgChan = make(chan common.ContextMsg, 4096)
+	s.msgChan = make(chan *dbtypes.DBEvent, 4096)
 
 	return s
 }
@@ -97,8 +93,8 @@ func (s *AccountDBEvCacheConsumer) Start() {
 	go s.startWorker(s.msgChan)
 }
 
-func (s *AccountDBEvCacheConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
-	s.msgChan <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+func (s *AccountDBEvCacheConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
+	s.msgChan <- dbEv
 	return nil
 }
 

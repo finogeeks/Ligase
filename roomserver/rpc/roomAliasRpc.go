@@ -16,7 +16,6 @@ package rpc
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/model/types"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -36,10 +35,8 @@ type RoomAliasRpcConsumer struct {
 	UmsRepo   *repos.RoomServerUserMembershipRepo
 	Proc      roomserverapi.RoomserverAliasAPI
 
-	//msgChan1 chan *roomserverapi.RoomserverAliasRequest
-	msgChan1 chan common.ContextMsg
-	//msgChan2 chan *roomserverapi.RoomserverAliasRequest
-	msgChan2 chan common.ContextMsg
+	msgChan1 chan *roomserverapi.RoomserverAliasRequest
+	msgChan2 chan *roomserverapi.RoomserverAliasRequest
 }
 
 func NewRoomAliasRpcConsumer(
@@ -59,33 +56,31 @@ func NewRoomAliasRpcConsumer(
 		Proc:      proc,
 	}
 
-	s.msgChan1 = make(chan common.ContextMsg, 1024)
-	s.msgChan2 = make(chan common.ContextMsg, 1024)
+	s.msgChan1 = make(chan *roomserverapi.RoomserverAliasRequest, 1024)
+	s.msgChan2 = make(chan *roomserverapi.RoomserverAliasRequest, 1024)
 	return s
 }
 
 func (s *RoomAliasRpcConsumer) Start() error {
 	go func() {
-		for msg := range s.msgChan1 {
-			data := msg.Msg.(*roomserverapi.RoomserverAliasRequest)
+		for data := range s.msgChan1 {
 			if data.SetRoomAliasRequest != nil {
-				s.processSetRoomAlias(msg.Ctx, data.SetRoomAliasRequest, data.Reply)
+				s.processSetRoomAlias(data.SetRoomAliasRequest, data.Reply)
 			} else if data.RemoveRoomAliasRequest != nil {
-				s.processRemoveRoomAlias(msg.Ctx, data.RemoveRoomAliasRequest, data.Reply)
+				s.processRemoveRoomAlias(data.RemoveRoomAliasRequest, data.Reply)
 			} else if data.AllocRoomAliasRequest != nil {
-				s.processAllocRoomAlias(msg.Ctx, data.AllocRoomAliasRequest, data.Reply)
+				s.processAllocRoomAlias(data.AllocRoomAliasRequest, data.Reply)
 			}
 		}
 	}()
 
 	go func() {
-		for msg := range s.msgChan2 {
-			data := msg.Msg.(*roomserverapi.RoomserverAliasRequest)
-			s.processGetAliasRoomID(msg.Ctx, data.GetAliasRoomIDRequest, data.Reply)
+		for data := range s.msgChan2 {
+			s.processGetAliasRoomID(data.GetAliasRoomIDRequest, data.Reply)
 		}
 	}()
 
-	s.rpcClient.ReplyGrpWithContext(s.GetTopic(), types.ROOOMALIAS_RPC_GROUP, s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 	return nil
 }
 
@@ -93,7 +88,7 @@ func (s *RoomAliasRpcConsumer) GetTopic() string {
 	return s.cfg.Rpc.AliasTopic
 }
 
-func (s *RoomAliasRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *RoomAliasRpcConsumer) cb(msg *nats.Msg) {
 	var request roomserverapi.RoomserverAliasRequest
 	if err := json.Unmarshal(msg.Data, &request); err != nil {
 		log.Errorf("rpc roomserverqry unmarshal error %v", err)
@@ -102,52 +97,48 @@ func (s *RoomAliasRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	request.Reply = msg.Reply
 
 	if request.GetAliasRoomIDRequest != nil {
-		s.msgChan2 <- common.ContextMsg{Ctx: ctx, Msg: &request}
+		s.msgChan2 <- &request
 	} else {
-		s.msgChan1 <- common.ContextMsg{Ctx: ctx, Msg: &request}
+		s.msgChan1 <- &request
 	}
 }
 
 func (s *RoomAliasRpcConsumer) processSetRoomAlias(
-	ctx context.Context,
 	request *roomserverapi.SetRoomAliasRequest,
 	reply string,
 ) {
 	var response roomserverapi.SetRoomAliasResponse
 
-	s.Proc.SetRoomAlias(ctx, request, &response)
+	s.Proc.SetRoomAlias(context.Background(), request, &response)
 	s.rpcClient.PubObj(reply, response)
 }
 
 func (s *RoomAliasRpcConsumer) processGetAliasRoomID(
-	ctx context.Context,
 	request *roomserverapi.GetAliasRoomIDRequest,
 	reply string,
 ) {
 	var response roomserverapi.GetAliasRoomIDResponse
 
-	s.Proc.GetAliasRoomID(ctx, request, &response)
+	s.Proc.GetAliasRoomID(context.Background(), request, &response)
 	s.rpcClient.PubObj(reply, response)
 }
 
 func (s *RoomAliasRpcConsumer) processRemoveRoomAlias(
-	ctx context.Context,
 	request *roomserverapi.RemoveRoomAliasRequest,
 	reply string,
 ) {
 	var response roomserverapi.RemoveRoomAliasResponse
 
-	s.Proc.RemoveRoomAlias(ctx, request, &response)
+	s.Proc.RemoveRoomAlias(context.Background(), request, &response)
 	s.rpcClient.PubObj(reply, response)
 }
 
 func (s *RoomAliasRpcConsumer) processAllocRoomAlias(
-	ctx context.Context,
 	request *roomserverapi.SetRoomAliasRequest,
 	reply string,
 ) {
 	var response roomserverapi.SetRoomAliasResponse
 
-	s.Proc.AllocRoomAlias(ctx, request, &response)
+	s.Proc.AllocRoomAlias(context.Background(), request, &response)
 	s.rpcClient.PubObj(reply, response)
 }

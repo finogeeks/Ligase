@@ -15,21 +15,19 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/go-nats"
 )
 
 type SyncUnreadRpcConsumer struct {
-	rpcClient *common.RpcClient
-	chanSize  uint32
-	//msgChan       []chan *syncapitypes.SyncUnreadRequest
-	msgChan       []chan common.ContextMsg
+	rpcClient     *common.RpcClient
+	chanSize      uint32
+	msgChan       []chan *syncapitypes.SyncUnreadRequest
 	readCountRepo *repos.ReadCountRepo
 	cfg           *config.Dendrite
 }
@@ -49,7 +47,7 @@ func NewSyncUnreadRpcConsumer(
 	return s
 }
 
-func (s *SyncUnreadRpcConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *SyncUnreadRpcConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -60,7 +58,7 @@ func (s *SyncUnreadRpcConsumer) GetTopic() string {
 func (s *SyncUnreadRpcConsumer) Clean() {
 }
 
-func (s *SyncUnreadRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *SyncUnreadRpcConsumer) cb(msg *nats.Msg) {
 	var result syncapitypes.SyncUnreadRequest
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc unread cb error %v", err)
@@ -69,30 +67,29 @@ func (s *SyncUnreadRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	if common.IsRelatedSyncRequest(result.SyncInstance, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *SyncUnreadRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*syncapitypes.SyncUnreadRequest)
-		s.onUnreadRequest(msg.Ctx, data)
+func (s *SyncUnreadRpcConsumer) startWorker(msgChan chan *syncapitypes.SyncUnreadRequest) {
+	for data := range msgChan {
+		s.onUnreadRequest(data)
 	}
 }
 
 func (s *SyncUnreadRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *syncapitypes.SyncUnreadRequest, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *syncapitypes.SyncUnreadRequest, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *SyncUnreadRpcConsumer) onUnreadRequest(ctx context.Context, req *syncapitypes.SyncUnreadRequest) {
+func (s *SyncUnreadRpcConsumer) onUnreadRequest(req *syncapitypes.SyncUnreadRequest) {
 	count := int64(0)
 	for _, roomID := range req.JoinRooms {
 		unread, _ := s.readCountRepo.GetRoomReadCount(roomID, req.UserID)

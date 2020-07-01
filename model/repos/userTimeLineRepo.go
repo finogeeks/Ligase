@@ -20,16 +20,16 @@ import (
 	"sync"
 	"time"
 
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/skunkworks/util/cas"
 	"github.com/finogeeks/ligase/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/util/cas"
 )
 
 type UserRoomOffset struct {
@@ -133,13 +133,13 @@ func (tl *UserTimeLineRepo) addFriendShip(userID, friend string) (hasFriendship 
 	return v.(bool) && loaded
 }
 
-func (tl *UserTimeLineRepo) GetFriendShip(ctx context.Context, userID string, load bool) *sync.Map {
+func (tl *UserTimeLineRepo) GetFriendShip(userID string, load bool) *sync.Map {
 	if friendMap, ok := tl.friendShip.Load(userID); ok {
 		return friendMap.(*sync.Map)
 	}
 	if load {
-		tl.LoadUserFriendShip(ctx, userID)
-		return tl.GetFriendShip(ctx, userID, false)
+		tl.LoadUserFriendShip(userID)
+		return tl.GetFriendShip(userID, false)
 	}
 	return nil
 }
@@ -216,8 +216,8 @@ func (tl *UserTimeLineRepo) SetReceiptLatest(userID string, offset int64) {
 	}
 }
 
-func (tl *UserTimeLineRepo) AddP2PEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent, offset int64, user string) {
-	tl.loadUserHistory(ctx, user)
+func (tl *UserTimeLineRepo) AddP2PEv(ev *gomatrixserverlib.ClientEvent, offset int64, user string) {
+	tl.loadUserHistory(user)
 
 	stream := syncapitypes.UserTimeLineStream{
 		Offset:     offset,
@@ -242,7 +242,7 @@ func (tl *UserTimeLineRepo) AddP2PEv(ctx context.Context, ev *gomatrixserverlib.
 		}
 	}
 
-	err := tl.persist.InsertUserTimeLine(ctx, offset, ev.RoomID, ev.EventNID, user, stream.RoomState, time.Now().UnixNano()/1000000, ev.EventOffset)
+	err := tl.persist.InsertUserTimeLine(context.TODO(), offset, ev.RoomID, ev.EventNID, user, stream.RoomState, time.Now().UnixNano()/1000000, ev.EventOffset)
 	if err != nil {
 		log.Errorf("UserTimeLineRepo InsertUserTimeLine user %s room %s event %d err %v", user, ev.RoomID, ev.EventNID, err)
 	}
@@ -252,8 +252,8 @@ func (tl *UserTimeLineRepo) AddP2PEv(ctx context.Context, ev *gomatrixserverlib.
 		var userJoin *sync.Map
 		var userInvite *sync.Map
 
-		userJoin, _ = tl.GetJoinRooms(ctx, user)
-		userInvite, _ = tl.GetInviteRooms(ctx, user)
+		userJoin, _ = tl.GetJoinRooms(user)
+		userInvite, _ = tl.GetInviteRooms(user)
 
 		if user == *ev.StateKey {
 			switch membership {
@@ -283,12 +283,12 @@ func (tl *UserTimeLineRepo) AddP2PEv(ctx context.Context, ev *gomatrixserverlib.
 	tl.SetUserRoomLatset(user, sev.Ev.RoomID, sev.Ev.Offset, sev.Ev.RoomOffset)
 }
 
-func (tl *UserTimeLineRepo) LoadUserFriendShip(ctx context.Context, userID string) {
+func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 	if _, ok := tl.friendShip.Load(userID); ok {
 		tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "LoadUserFriendShip").Add(1)
 		return
 	}
-	joinRooms, err := tl.GetJoinRooms(ctx, userID)
+	joinRooms, err := tl.GetJoinRooms(userID)
 	if err == nil {
 		var joined []string
 		joinRooms.Range(func(key, value interface{}) bool {
@@ -297,7 +297,7 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(ctx context.Context, userID strin
 		})
 		if len(joined) > 0 {
 			bs := time.Now().UnixNano() / 1000000
-			friends, err := tl.persist.GetFriendShip(ctx, joined)
+			friends, err := tl.persist.GetFriendShip(context.TODO(), joined)
 			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {
 				log.Errorf("load db failed UserTimeLineRepo.LoadUserFriendShip user %s spend:%d ms err:%v", userID, spend, err)
@@ -322,12 +322,12 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(ctx context.Context, userID strin
 	tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "LoadUserFriendShip").Add(1)
 }
 
-func (tl *UserTimeLineRepo) GetJoinRooms(ctx context.Context, user string) (*sync.Map, error) {
+func (tl *UserTimeLineRepo) GetJoinRooms(user string) (*sync.Map, error) {
 	res := new(sync.Map)
 
 	if _, ok := tl.joinReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, _, err := tl.persist.GetRidsForUser(ctx, user)
+		rooms, _, err := tl.persist.GetRidsForUser(context.TODO(), user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetJoinRooms user %s spend:%d ms err:%v", user, spend, err)
@@ -357,8 +357,8 @@ func (tl *UserTimeLineRepo) GetJoinRooms(ctx context.Context, user string) (*syn
 	return res, nil
 }
 
-func (tl *UserTimeLineRepo) CheckIsJoinRoom(ctx context.Context, user, room string) (isJoin bool) {
-	joined, _ := tl.GetJoinRooms(ctx, user)
+func (tl *UserTimeLineRepo) CheckIsJoinRoom(user, room string) (isJoin bool) {
+	joined, _ := tl.GetJoinRooms(user)
 	isJoin = false
 	if joined != nil {
 		if _, ok := joined.Load(room); ok {
@@ -368,12 +368,12 @@ func (tl *UserTimeLineRepo) CheckIsJoinRoom(ctx context.Context, user, room stri
 	return
 }
 
-func (tl *UserTimeLineRepo) GetInviteRooms(ctx context.Context, user string) (*sync.Map, error) {
+func (tl *UserTimeLineRepo) GetInviteRooms(user string) (*sync.Map, error) {
 	res := new(sync.Map)
 
 	if _, ok := tl.inviteReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, _, err := tl.persist.GetInviteRidsForUser(ctx, user)
+		rooms, _, err := tl.persist.GetInviteRidsForUser(context.TODO(), user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms err:%v", user, spend, err)
@@ -408,11 +408,11 @@ func (tl *UserTimeLineRepo) CheckUserLoadingReady(user string) bool {
 	return ok
 }
 
-func (tl *UserTimeLineRepo) LoadHistory(ctx context.Context, user string, isHuman bool) {
+func (tl *UserTimeLineRepo) LoadHistory(user string, isHuman bool) {
 	if tl.CheckUserLoadingReady(user) == false {
 		if _, ok := tl.userMinPos.Load(user); !ok {
 			bs := time.Now().UnixNano() / 1000000
-			minPos, err := tl.persist.SelectUserTimeLineMinPos(ctx, user)
+			minPos, err := tl.persist.SelectUserTimeLineMinPos(context.TODO(), user)
 			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {
 				log.Errorf("load db failed UserTimeLineRepo.SelectUserTimeLineMinPos user %s spend:%d ms err %d", user, spend, err)
@@ -425,7 +425,7 @@ func (tl *UserTimeLineRepo) LoadHistory(ctx context.Context, user string, isHuma
 				}
 				tl.userMinPos.Store(user, minPos)
 			}
-			tl.loadUserHistory(ctx, user)
+			tl.loadUserHistory(user)
 		} else {
 			tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "SelectUserTimeLineMinPos").Add(1)
 		}
@@ -433,7 +433,7 @@ func (tl *UserTimeLineRepo) LoadHistory(ctx context.Context, user string, isHuma
 		if isHuman {
 			if _, ok := tl.receiptLatest.Load(user); !ok {
 				bs := time.Now().UnixNano() / 1000000
-				maxPos, err := tl.persist.GetUserMaxReceiptOffset(ctx, user)
+				maxPos, err := tl.persist.GetUserMaxReceiptOffset(context.TODO(), user)
 				spend := time.Now().UnixNano()/1000000 - bs
 				if err != nil {
 					log.Errorf("load db failed UserTimeLineRepo.LoadReceiptHistory user %s spend:%d err %d", user, spend, err)
@@ -450,17 +450,17 @@ func (tl *UserTimeLineRepo) LoadHistory(ctx context.Context, user string, isHuma
 				tl.SetReceiptLatest(user, maxPos)
 			}
 			if _, ok := tl.friendShip.Load(user); !ok {
-				tl.LoadUserFriendShip(ctx, user)
+				tl.LoadUserFriendShip(user)
 			}
 		}
 		tl.userReady.Store(user, true)
 	}
 }
 
-func (tl *UserTimeLineRepo) loadUserHistory(ctx context.Context, user string) {
+func (tl *UserTimeLineRepo) loadUserHistory(user string) {
 	for {
 		if _, ok := tl.ready.Load(user); !ok {
-			tl.loadHistory(ctx, user)
+			tl.loadHistory(user)
 			if _, ok := tl.ready.Load(user); !ok {
 				time.Sleep(time.Millisecond * 3)
 			} else {
@@ -473,14 +473,14 @@ func (tl *UserTimeLineRepo) loadUserHistory(ctx context.Context, user string) {
 	}
 }
 
-func (tl *UserTimeLineRepo) loadHistory(ctx context.Context, user string) {
+func (tl *UserTimeLineRepo) loadHistory(user string) {
 	_, loaded := tl.loading.LoadOrStore(user, true)
 	if loaded {
 		return
 	}
 	defer tl.loading.Delete(user)
 	bs := time.Now().UnixNano() / 1000000
-	streams, err := tl.persist.SelectUserTimeLineHistory(ctx, user, 100)
+	streams, err := tl.persist.SelectUserTimeLineHistory(context.TODO(), user, 100)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed UserTimeLineRepo.SelectUserTimeLineHistory user %s spend:%d ms err %d", user, spend, err)
@@ -552,9 +552,9 @@ func (tl *UserTimeLineRepo) GetUserLastFail(user string) int64 {
 	return int64(-1)
 }
 
-func (tl *UserTimeLineRepo) GetUserLatestOffset(ctx context.Context, user string, isHuman bool) int64 {
+func (tl *UserTimeLineRepo) GetUserLatestOffset(user string, isHuman bool) int64 {
 	if tl.CheckUserLoadingReady(user) == false {
-		tl.LoadHistory(ctx, user, isHuman)
+		tl.LoadHistory(user, isHuman)
 	}
 
 	if val, ok := tl.userLatest.Load(user); ok {
@@ -564,9 +564,9 @@ func (tl *UserTimeLineRepo) GetUserLatestOffset(ctx context.Context, user string
 	return -1
 }
 
-func (tl *UserTimeLineRepo) GetUserRoomLatestOffset(ctx context.Context, user string, isHuman bool) *UserRoomOffset {
+func (tl *UserTimeLineRepo) GetUserRoomLatestOffset(user string, isHuman bool) *UserRoomOffset {
 	if tl.CheckUserLoadingReady(user) == false {
-		tl.LoadHistory(ctx, user, isHuman)
+		tl.LoadHistory(user, isHuman)
 	}
 	val, ok := tl.userRoomLatest.Load(user)
 	if ok {
@@ -576,9 +576,9 @@ func (tl *UserTimeLineRepo) GetUserRoomLatestOffset(ctx context.Context, user st
 	}
 }
 
-func (tl *UserTimeLineRepo) GetUserLatestReceiptOffset(ctx context.Context, user string, isHuman bool) int64 {
+func (tl *UserTimeLineRepo) GetUserLatestReceiptOffset(user string, isHuman bool) int64 {
 	if tl.CheckUserLoadingReady(user) == false {
-		tl.LoadHistory(ctx, user, isHuman)
+		tl.LoadHistory(user, isHuman)
 	}
 
 	val, ok := tl.receiptLatest.Load(user)
@@ -589,8 +589,8 @@ func (tl *UserTimeLineRepo) GetUserLatestReceiptOffset(ctx context.Context, user
 	return -1
 }
 
-func (tl *UserTimeLineRepo) GetHistory(ctx context.Context, user string) *feedstypes.TimeLines {
-	tl.loadUserHistory(ctx, user)
+func (tl *UserTimeLineRepo) GetHistory(user string) *feedstypes.TimeLines {
+	tl.loadUserHistory(user)
 	if !tl.repo.exits(user) && tl.CheckUserLoadingReady(user) {
 		tl.userReady.Store(user, false)
 		return nil //tl已被兑换出去，等待下次加载
@@ -600,8 +600,8 @@ func (tl *UserTimeLineRepo) GetHistory(ctx context.Context, user string) *feedst
 	return tl.repo.getTimeLine(user)
 }
 
-func (tl *UserTimeLineRepo) GetUserRange(ctx context.Context, user string) (int64, int64) {
-	timeLine := tl.GetHistory(ctx, user)
+func (tl *UserTimeLineRepo) GetUserRange(user string) (int64, int64) {
+	timeLine := tl.GetHistory(user)
 	if timeLine != nil {
 		return timeLine.GetFeedRange()
 	}

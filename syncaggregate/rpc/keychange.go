@@ -15,15 +15,14 @@
 package rpc
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	syncapi "github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/go-nats"
 	"net/http"
 )
@@ -33,9 +32,8 @@ type KeyChangeRpcConsumer struct {
 	keyChangeRepo *repos.KeyChangeStreamRepo
 	userTimeLine  *repos.UserTimeLineRepo
 	chanSize      uint32
-	//msgChan       []chan *types.KeyChangeContent
-	msgChan []chan common.ContextMsg
-	cfg     *config.Dendrite
+	msgChan       []chan *types.KeyChangeContent
+	cfg           *config.Dendrite
 }
 
 func NewKeyChangeRpcConsumer(
@@ -59,7 +57,7 @@ func (s *KeyChangeRpcConsumer) GetTopic() string {
 	return types.KcTopicDef
 }
 
-func (s *KeyChangeRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *KeyChangeRpcConsumer) cb(msg *nats.Msg) {
 	var result types.KeyChangeContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc key change cb error %v", err)
@@ -68,30 +66,29 @@ func (s *KeyChangeRpcConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	if common.IsRelatedRequest(result.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 		result.Reply = msg.Reply
 		idx := common.CalcStringHashCode(result.UserID) % s.chanSize
-		s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+		s.msgChan[idx] <- &result
 	}
 }
 
-func (s *KeyChangeRpcConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.KeyChangeContent)
-		s.processKc(msg.Ctx, data.FromPos, data.ToPos, data.Reply, data.UserID)
+func (s *KeyChangeRpcConsumer) startWorker(msgChan chan *types.KeyChangeContent) {
+	for data := range msgChan {
+		s.processKc(data.FromPos, data.ToPos, data.Reply, data.UserID)
 	}
 }
 
 func (s *KeyChangeRpcConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *types.KeyChangeContent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *types.KeyChangeContent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
 
-func (s *KeyChangeRpcConsumer) processKc(ctx context.Context, fromPos, toPos int64, reply, userID string) {
+func (s *KeyChangeRpcConsumer) processKc(fromPos, toPos int64, reply, userID string) {
 	kcTimeLine := s.keyChangeRepo.GetHistory()
 	if kcTimeLine == nil {
 		resp := util.JSONResponse{
@@ -109,7 +106,7 @@ func (s *KeyChangeRpcConsumer) processKc(ctx context.Context, fromPos, toPos int
 
 	kcMap := s.keyChangeRepo.GetHistory()
 	if kcMap != nil {
-		friendShipMap := s.userTimeLine.GetFriendShip(ctx, userID, true)
+		friendShipMap := s.userTimeLine.GetFriendShip(userID, true)
 		if friendShipMap != nil {
 			friendShipMap.Range(func(key, _ interface{}) bool {
 				if val, ok := kcMap.Load(key.(string)); ok {

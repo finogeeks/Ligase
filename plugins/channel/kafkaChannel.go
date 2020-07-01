@@ -39,13 +39,8 @@ type KafkaConsumerConf interface {
 	GoChannelEnable() *bool
 }
 
-type KafkaProducerConf interface {
-	LingerMsConf() *string
-}
-
 const (
-	DefaultTimeOut          = 10
-	DefaultEnableAutoCommit = true
+	DefaultTimeOut = 10
 )
 
 type msgContext struct {
@@ -71,7 +66,6 @@ type KafkaChannel struct {
 	cacheTopics sync.Map
 	broker      string
 	conf        interface{}
-	subTopics   []string
 }
 
 func init() {
@@ -228,40 +222,6 @@ func (c *KafkaChannel) Close() {
 	}
 }
 
-func (c *KafkaChannel) Commit(rawMsgs []interface{}) error {
-	if rawMsgs == nil || len(rawMsgs) == 0 || c.consumer == nil {
-		return nil
-	}
-
-	partitionsMsgArr := []*kafka.Message{}
-	partitionsMsg := make(map[string]map[int32]bool)
-	for i := len(rawMsgs) - 1; i >= 0; i-- {
-		rawMsg := rawMsgs[i]
-		if v, ok := rawMsg.(*kafka.Message); ok {
-			topic := *v.TopicPartition.Topic
-			tempMap := partitionsMsg[topic]
-			if tempMap == nil {
-				tempMap = make(map[int32]bool)
-				partitionsMsg[topic] = tempMap
-			}
-			if !tempMap[v.TopicPartition.Partition] {
-				tempMap[v.TopicPartition.Partition] = true
-				partitionsMsgArr = append(partitionsMsgArr, v)
-			}
-		}
-	}
-	var err error
-	for i := len(partitionsMsgArr) - 1; i >= 0; i-- {
-		v := partitionsMsgArr[i]
-		_, err0 := c.consumer.CommitMessage(v)
-		if err0 != nil {
-			log.Errorf("kafka commit offset error %s", v)
-			err = err0
-		}
-	}
-	return err
-}
-
 func (c *KafkaChannel) startProducer() error {
 	c.startChan()
 	go func() {
@@ -304,26 +264,20 @@ func (c *KafkaChannel) startProducer() error {
 
 //todo mannual commit message
 func (c *KafkaChannel) startConsumer() error {
-	c.subTopics = []string{c.topic}
-	err := c.consumer.SubscribeTopics(c.subTopics, nil)
+	err := c.consumer.SubscribeTopics([]string{c.topic}, nil)
 	if err != nil {
 		log.Errorf("StartConsumer sub err: %v", err)
 		return nil
 	}
 
 	log.Infof("StartConsumer topic:%s group:%s", c.topic, c.grp)
-	onMessage := func(consumer core.IChannelConsumer, msg *kafka.Message) {
+	onMessage := func(consumer core.IChannelConsumer, topic string, partition int32, data []byte) {
 		defer func() {
 			if e := recover(); e != nil {
 				log.Errorf("channel consumer panic: %#v", e)
 			}
 		}()
-		metricName := fmt.Sprintf("t[%s]:p[%d]:g[%s]",
-			*msg.TopicPartition.Topic, msg.TopicPartition.Partition, c.grp)
-		span := common.StartSpanFromMsgAfterReceived(metricName, msg)
-		defer span.Finish()
-		ctx := common.ContextWithSpan(context.Background(), span)
-		consumer.OnMessage(ctx, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.Value, msg)
+		consumer.OnMessage(topic, partition, data)
 	}
 	var evHandler func()
 	evHandler = func() {
@@ -333,7 +287,7 @@ func (c *KafkaChannel) startConsumer() error {
 				go evHandler()
 			}
 		}()
-		for c.start {
+		for c.start == true {
 			select {
 			case ev := <-c.consumer.Events():
 				switch e := ev.(type) {
@@ -345,13 +299,11 @@ func (c *KafkaChannel) startConsumer() error {
 					log.Infof("consumer unassigned partitions: %v", e)
 				case *kafka.Message:
 					//log.Infof("consumer %% Message on topic:%s partition:%d offset:%d val:%s grp:%s", *e.TopicPartition.Topic, e.TopicPartition.Partition, e.TopicPartition.Offset, string(e.Value), t.consumerGroup)
-					onMessage(c.handler, e)
+					onMessage(c.handler, *e.TopicPartition.Topic, e.TopicPartition.Partition, e.Value)
 				case kafka.PartitionEOF:
 					log.Infof("consumer Reached: %v", e)
 				case kafka.Error:
 					log.Errorf("consumer Error: %v", e)
-				case kafka.OffsetsCommitted:
-					log.Infof("consumer offset commited %s", e)
 				case *kafka.Stats:
 					// https://github.com/edenhill/librdkafka/blob/master/STATISTICS.md
 					var stats map[string]interface{}
@@ -379,38 +331,30 @@ func (c *KafkaChannel) startConsumer() error {
 	return nil
 }
 
-func (c *KafkaChannel) SubscribeTopic(topic string) error {
-	c.subTopics = append(c.subTopics, topic)
-	err := c.consumer.SubscribeTopics(c.subTopics, nil)
-	if err != nil {
-		log.Errorf("SubscribeTopic sub err: %v", err)
-		return err
-	}
-	return nil
-}
-
 func (c *KafkaChannel) preStartProducer(broker string, statsInterval int) error {
 	if c.producer == nil {
-		conf := c.conf.(KafkaProducerConf)
 		err := c.createTopic(broker, c.topic)
 		if err != nil {
 			log.Errorf("Failed to create topic:%s err:%v", c.topic, err)
 			return err
 		}
 		pc := kafka.ConfigMap{
-			"bootstrap.servers":       broker,
-			"go.produce.channel.size": 10000,
-			"go.batch.producer":       false,
+			"bootstrap.servers":        broker,
+			"go.produce.channel.size":  10000,
+			"go.batch.producer":        false,
+			"socket.timeout.ms":        5000,
+			"session.timeout.ms":       5000,
+			"reconnect.backoff.max.ms": 5000,
+			"default.topic.config": kafka.ConfigMap{
+				"message.timeout.ms": 6000,
+			},
 		}
 		if adapter.GetKafkaEnableIdempotence() {
 			pc.SetKey("enable.idempotence", true)
 		}
-		if conf.LingerMsConf() != nil && !adapter.GetKafkaForceAsyncSend() {
-			pc.SetKey("linger.ms", *conf.LingerMsConf())
-		}
 		p, err := kafka.NewProducer(&pc)
 		if err != nil {
-			log.Errorf("Failed to create topic:%s producer: %v", c.topic, err)
+			log.Errorf("Failed to create producer: %v", err)
 			return err
 		}
 		c.slot = 64
@@ -423,7 +367,7 @@ func (c *KafkaChannel) preStartProducer(broker string, statsInterval int) error 
 
 func (c *KafkaChannel) preStartConsumer(broker string, statsInterval int) error {
 	if c.consumer == nil {
-		enableAutoCommit := DefaultEnableAutoCommit
+		enableAutoCommit := true
 		autoCommitIntervalMS := 5000
 		topicAutoOffsetReset := "latest"
 		goChannelEnable := true
@@ -480,7 +424,7 @@ func (c *KafkaChannel) getAssignTopic(topic string) (string, error) {
 }
 
 //异步发送消息
-func (c *KafkaChannel) Send(topic string, partition int32, keys, bytes []byte, headers map[string]string) error {
+func (c *KafkaChannel) Send(topic string, partition int32, keys, bytes []byte) error {
 	if c.start == false {
 		return errors.New("Kafka producer not start yet")
 	}
@@ -489,15 +433,14 @@ func (c *KafkaChannel) Send(topic string, partition int32, keys, bytes []byte, h
 		return errors.New(fmt.Sprintf("Kafka producer create custom topic:%s err:%v", topic, err))
 	}
 	if keys != nil {
-		return c.pubWithKey(topic, keys, bytes, headers, false, false)
+		return c.pubWithKey(topic, keys, bytes, false, false)
 	} else {
-		return c.pubWithPartition(topic, partition, bytes, headers, false, false)
+		return c.pubWithPartition(topic, partition, bytes, false, false)
 	}
 }
 
 //异步发送消息失败重试
-func (c *KafkaChannel) SendWithRetry(topic string, partition int32, keys, bytes []byte,
-	headers map[string]string) error {
+func (c *KafkaChannel) SendWithRetry(topic string, partition int32, keys, bytes []byte) error {
 	if c.start == false {
 		return errors.New("Kafka producer not start yet")
 	}
@@ -506,17 +449,16 @@ func (c *KafkaChannel) SendWithRetry(topic string, partition int32, keys, bytes 
 		return errors.New(fmt.Sprintf("Kafka producer create custom topic:%s err:%v", topic, err))
 	}
 	if keys != nil {
-		return c.pubWithKey(topic, keys, bytes, headers, false, true)
+		return c.pubWithKey(topic, keys, bytes, false, true)
 	} else {
-		return c.pubWithPartition(topic, partition, bytes, headers, false, true)
+		return c.pubWithPartition(topic, partition, bytes, false, true)
 	}
 }
 
 //同步发送消息
-func (c *KafkaChannel) SendAndRecv(topic string, partition int32, keys, bytes []byte,
-	headers map[string]string) error {
+func (c *KafkaChannel) SendAndRecv(topic string, partition int32, keys, bytes []byte) error {
 	if adapter.GetKafkaForceAsyncSend() {
-		return c.Send(topic, partition, keys, bytes, headers)
+		return c.Send(topic, partition, keys, bytes)
 	}
 	if c.start == false {
 		return errors.New("Kafka producer not start yet")
@@ -526,17 +468,16 @@ func (c *KafkaChannel) SendAndRecv(topic string, partition int32, keys, bytes []
 		return errors.New(fmt.Sprintf("Kafka producer create custom topic:%s err:%v", topic, err))
 	}
 	if keys != nil {
-		return c.pubWithKey(topic, keys, bytes, headers, true, false)
+		return c.pubWithKey(topic, keys, bytes, true, false)
 	} else {
-		return c.pubWithPartition(topic, partition, bytes, headers, true, false)
+		return c.pubWithPartition(topic, partition, bytes, true, false)
 	}
 }
 
 //同步发送消息失败重试
-func (c *KafkaChannel) SendAndRecvWithRetry(topic string, partition int32, keys, bytes []byte,
-	headers map[string]string) error {
+func (c *KafkaChannel) SendAndRecvWithRetry(topic string, partition int32, keys, bytes []byte) error {
 	if adapter.GetKafkaForceAsyncSend() {
-		return c.SendWithRetry(topic, partition, keys, bytes, headers)
+		return c.SendWithRetry(topic, partition, keys, bytes)
 	}
 	if c.start == false {
 		return errors.New("Kafka producer not start yet")
@@ -546,15 +487,14 @@ func (c *KafkaChannel) SendAndRecvWithRetry(topic string, partition int32, keys,
 		return errors.New(fmt.Sprintf("Kafka producer create custom topic:%s err:%v", topic, err))
 	}
 	if keys != nil {
-		return c.pubWithKey(topic, keys, bytes, headers, true, true)
+		return c.pubWithKey(topic, keys, bytes, true, true)
 	} else {
-		return c.pubWithPartition(topic, partition, bytes, headers, true, true)
+		return c.pubWithPartition(topic, partition, bytes, true, true)
 	}
 }
 
 //将消息发送到partition参数指定的partition，此接口可以废弃
-func (c *KafkaChannel) pubWithPartition(topic string, partition int32, bytes []byte,
-	headers map[string]string, sync bool, retry bool) error {
+func (c *KafkaChannel) pubWithPartition(topic string, partition int32, bytes []byte, sync bool, retry bool) error {
 	if partition < 0 {
 		log.Errorf("Failed to Pub partition:%d topic:%s", partition, topic)
 		partition = 1
@@ -568,11 +508,6 @@ func (c *KafkaChannel) pubWithPartition(topic string, partition int32, bytes []b
 	} else {
 		msg.Headers = []kafka.Header{{Key: "retries", Value: []byte(strconv.Itoa(-1))}}
 	}
-	if headers != nil {
-		for k, v := range headers {
-			msg.Headers = append(msg.Headers, kafka.Header{Key: k, Value: []byte(v)})
-		}
-	}
 	if sync {
 		result := make(chan error)
 		c.dispatch(msg, result)
@@ -584,8 +519,7 @@ func (c *KafkaChannel) pubWithPartition(topic string, partition int32, bytes []b
 
 //将消息发送到指定的partition,partition由kafka使用key根据内部算法得到
 //(同样的key会发送到一个partition，key对应partition的算法可以通过partitioner参数改变)
-func (c *KafkaChannel) pubWithKey(topic string, keys, bytes []byte,
-	headers map[string]string, sync bool, retry bool) error {
+func (c *KafkaChannel) pubWithKey(topic string, keys, bytes []byte, sync bool, retry bool) error {
 	var msg kafka.Message
 	msg.TopicPartition.Topic = &topic
 	msg.TopicPartition.Partition = kafka.PartitionAny
@@ -595,11 +529,6 @@ func (c *KafkaChannel) pubWithKey(topic string, keys, bytes []byte,
 		msg.Headers = []kafka.Header{{Key: "retries", Value: []byte(strconv.Itoa(0))}}
 	} else {
 		msg.Headers = []kafka.Header{{Key: "retries", Value: []byte(strconv.Itoa(-1))}}
-	}
-	if headers != nil {
-		for k, v := range headers {
-			msg.Headers = append(msg.Headers, kafka.Header{Key: k, Value: []byte(v)})
-		}
 	}
 	if sync {
 		result := make(chan error)
@@ -611,7 +540,6 @@ func (c *KafkaChannel) pubWithKey(topic string, keys, bytes []byte,
 }
 
 func (c *KafkaChannel) pubSync(msg kafka.Message, deliveryChan chan kafka.Event, result chan error) {
-	ticker := time.NewTimer(time.Duration(DefaultTimeOut) * time.Second)
 	bs := time.Now().UnixNano() / 1000000
 	err := c.producer.Produce(&msg, deliveryChan)
 	if err != nil {
@@ -622,12 +550,11 @@ func (c *KafkaChannel) pubSync(msg kafka.Message, deliveryChan chan kafka.Event,
 	}
 	for {
 		select {
-		//函数阻塞在：e := <-deliveryChan，直到broker有返回
+		//函数阻塞在：e := <-deliveryChan，直到broker有返回或reconnect超时
 		case e := <-deliveryChan:
 			spend := time.Now().UnixNano()/1000000 - bs
 			m := e.(*kafka.Message)
 			if m.TopicPartition.Error != nil {
-				ticker.Stop()
 				//logger.GetLogger().Errorf("sync Failed to delivery topic:%s partition:%d msg:%s err:%s", *m.TopicPartition.Topic, m.TopicPartition.Partition, string(m.Value), m.TopicPartition.Error.Error())
 				//kafka异常报此错误时，需要重试，不重试会造成丢消息, 由配置确定是程序自动重试还是由调用者重试
 				if retry, retries := c.pubRetry(&msg); retry {
@@ -647,9 +574,6 @@ func (c *KafkaChannel) pubSync(msg kafka.Message, deliveryChan chan kafka.Event,
 				result <- nil
 				return
 			}
-		//超时还没有应答，kafka全部挂掉的情况下会出现，kafka恢复正常后会返回 m.TopicPartition.Error，此处仅打印错误日志
-		case <-ticker.C:
-			log.Errorf("sync Delivery msg:%s to topic:%s failed not response timeout", string(msg.Value), *msg.TopicPartition.Topic)
 		}
 	}
 }
@@ -686,6 +610,6 @@ func (c *KafkaChannel) pubRetry(msg *kafka.Message) (retry bool, retries int) {
 }
 
 //nats methed interface
-func (c *KafkaChannel) SendRecv(topic string, bytes []byte, timeout int, headers map[string]string) ([]byte, error) {
+func (c *KafkaChannel) SendRecv(topic string, bytes []byte, timeout int) ([]byte, error) {
 	return nil, errors.New("unsupported commond SendRecv")
 }

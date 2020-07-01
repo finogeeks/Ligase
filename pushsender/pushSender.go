@@ -17,8 +17,8 @@ package pushsender
 import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
-	"github.com/finogeeks/ligase/pushsender/consumers"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/pushsender/consumers"
 	"github.com/finogeeks/ligase/storage/model"
 )
 

@@ -21,6 +21,4 @@ import (
 type ConfigDatabase interface {
 	UpsertServerName(ctx context.Context, nid int64, serverName string) error
 	SelectServerNames(ctx context.Context) (results []string, err error)
-	UpsertServerInstance(ctx context.Context, nid int64, serverName string) error
-	SelectServerInstance(ctx context.Context, serverName string) (instance int64, err error)
 }

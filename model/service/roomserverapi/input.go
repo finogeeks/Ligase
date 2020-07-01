@@ -20,8 +20,8 @@ package roomserverapi
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/roomservertypes"
 )
 
 const (

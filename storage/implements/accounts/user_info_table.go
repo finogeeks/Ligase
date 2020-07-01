@@ -22,9 +22,9 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const userInfoSchema = `
@@ -94,18 +94,18 @@ func (s *userInfoStatements) prepare(d *Database) (err error) {
 	return
 }
 
-func (s *userInfoStatements) recoverUserInfo(ctx context.Context) error {
+func (s *userInfoStatements) recoverUserInfo() error {
 	limit := 1000
 	offset := 0
 	exists := true
 	for exists {
 		exists = false
-		rows, err := s.recoverUserInfoStmt.QueryContext(ctx, limit, offset)
+		rows, err := s.recoverUserInfoStmt.QueryContext(context.TODO(), limit, offset)
 		if err != nil {
 			return err
 		}
 		offset = offset + limit
-		exists, err = s.processRecover(ctx, rows)
+		exists, err = s.processRecover(rows)
 		if err != nil {
 			return err
 		}
@@ -114,7 +114,7 @@ func (s *userInfoStatements) recoverUserInfo(ctx context.Context) error {
 	return nil
 }
 
-func (s *userInfoStatements) processRecover(ctx context.Context, rows *sql.Rows) (exists bool, err error) {
+func (s *userInfoStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		exists = true
@@ -133,7 +133,7 @@ func (s *userInfoStatements) processRecover(ctx context.Context, rows *sql.Rows)
 		update.IsRecovery = true
 		update.AccountDBEvents.UserInfoInsert = &ui
 		update.SetUid(int64(common.CalcStringHashCode64(ui.UserID)))
-		err2 := s.db.WriteDBEventWithTbl(ctx, &update, "account_user_info")
+		err2 := s.db.WriteDBEvent(&update)
 		if err2 != nil {
 			log.Errorf("update user_info cache error: %v", err2)
 			if err == nil {
@@ -161,7 +161,7 @@ func (s *userInfoStatements) upsertUserInfo(
 			Email:     email,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "account_user_info")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	_, err := s.upsertUserInfoStmt.ExecContext(ctx, userID, userName, jobNumber, mobile, landline, email)
@@ -184,7 +184,7 @@ func (s *userInfoStatements) initUserInfo(
 			Email:     email,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "account_user_info")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	_, err := s.initUserInfoStmt.ExecContext(ctx, userID, userName, jobNumber, mobile, landline, email)
@@ -236,7 +236,7 @@ func (s *userInfoStatements) deleteUserInfo(
 			UserID: userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "account_user_info")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	isDeleted := 1

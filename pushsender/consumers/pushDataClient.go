@@ -27,8 +27,8 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/json-iterator/go"
 	"github.com/nats-io/go-nats"
@@ -45,9 +45,7 @@ type PushDataConsumer struct {
 	pushDB     model.PushAPIDatabase
 	pushCount  *sync.Map
 	chanSize   uint32
-	//msgChan    []chan *pushapitypes.PushPubContents
-	msgChan    []chan common.ContextMsg
-	httpClient *http.Client
+	msgChan    []chan *pushapitypes.PushPubContents
 }
 
 func NewPushDataConsumer(
@@ -62,31 +60,13 @@ func NewPushDataConsumer(
 		chanSize:  16,
 	}
 	s.pushCount = new(sync.Map)
-	s.httpClient = &http.Client{
-		Transport: s.createTransport(),
-	}
+
 	pushFilter := filter.GetFilterMng().Register("pushSender", nil)
 	s.pushFilter = pushFilter
 	return s
 }
 
-func (s *PushDataConsumer) createTransport() *http.Transport {
-	dialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-	return &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           dialer.DialContext,
-		MaxIdleConns:          200,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		MaxIdleConnsPerHost:   200,
-	}
-}
-
-func (s *PushDataConsumer) GetCB() common.MsgHandlerWithContext {
+func (s *PushDataConsumer) GetCB() nats.MsgHandler {
 	return s.cb
 }
 
@@ -97,7 +77,7 @@ func (s *PushDataConsumer) GetTopic() string {
 func (s *PushDataConsumer) Clean() {
 }
 
-func (s *PushDataConsumer) cb(ctx context.Context, msg *nats.Msg) {
+func (s *PushDataConsumer) cb(msg *nats.Msg) {
 	var result pushapitypes.PushPubContents
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("PushDataConsumer cb Unmarshal err: %v", err)
@@ -106,13 +86,11 @@ func (s *PushDataConsumer) cb(ctx context.Context, msg *nats.Msg) {
 
 	idx := common.CalcStringHashCode(result.Input.RoomID) % s.chanSize
 	log.Infof("PushDataConsumer cb slot:%d roomID:%s", idx, result.Input.RoomID)
-	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+	s.msgChan[idx] <- &result
 }
 
-func (s *PushDataConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		data := msg.Msg.(*pushapitypes.PushPubContents)
+func (s *PushDataConsumer) startWorker(msgChan chan *pushapitypes.PushPubContents) {
+	for data := range msgChan {
 		if s.pushFilter.Lookup([]byte(data.Input.EventID)) {
 			log.Infof("PushDataConsumer startWorker lookup eventID:%s", data.Input.EventID)
 			return
@@ -121,7 +99,6 @@ func (s *PushDataConsumer) startWorker(msgChan chan common.ContextMsg) {
 		s.pushFilter.Insert([]byte(data.Input.EventID))
 		for _, content := range data.Contents {
 			s.PushData(
-				ctx,
 				data.Input,
 				content.Pushers,
 				data.SenderDisplayName,
@@ -137,13 +114,13 @@ func (s *PushDataConsumer) startWorker(msgChan chan common.ContextMsg) {
 }
 
 func (s *PushDataConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *pushapitypes.PushPubContents, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *pushapitypes.PushPubContents, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.rpcClient.ReplyWithContext(s.GetTopic(), s.cb)
+	s.rpcClient.Reply(s.GetTopic(), s.cb)
 
 	return nil
 }
@@ -166,7 +143,6 @@ func (s *PushDataConsumer) SetPushFailTimes(pusherKey string, success bool) int 
 }
 
 func (s *PushDataConsumer) PushData(
-	ctx context.Context,
 	input *gomatrixserverlib.ClientEvent,
 	pushers *pushapitypes.Pushers,
 	senderDisplayName,
@@ -281,7 +257,7 @@ func (s *PushDataConsumer) PushData(
 			failCount := s.SetPushFailTimes(pusherKey, false)
 			if failCount > s.cfg.PushService.RemoveFailTimes {
 				log.Warnf("for failed too many del appId:%s, pushKey:%s, display:%s", pusher.AppId, pusher.PushKey, pusher.DeviceDisplayName)
-				if err := s.pushDB.DeletePushersByKey(ctx, pusher.AppId, pusher.PushKey); err != nil {
+				if err := s.pushDB.DeletePushersByKey(context.TODO(), pusher.AppId, pusher.PushKey); err != nil {
 					log.Errorw("delete pusher error", log.KeysAndValues{"err", err, "AppId", pusher.AppId, "PushKey", pusher.PushKey})
 				}
 			}
@@ -295,7 +271,7 @@ func (s *PushDataConsumer) PushData(
 			if len(ack.Rejected) > 0 {
 				for _, v := range ack.Rejected {
 					log.Warnf("for reject del pushKey:%s", v)
-					if err := s.pushDB.DeletePushersByKeyOnly(ctx, v); err != nil {
+					if err := s.pushDB.DeletePushersByKeyOnly(context.TODO(), v); err != nil {
 						log.Errorw("delete pusher error", log.KeysAndValues{"err", err})
 					}
 				}
@@ -308,6 +284,19 @@ func (s *PushDataConsumer) HttpRequest(
 	reqUrl string,
 	content []byte,
 ) (int, []byte, error) {
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			DisableKeepAlives:     true,
+		},
+		Timeout: 30 * time.Second,
+	}
 	req, err := http.NewRequest(http.MethodPost, reqUrl, bytes.NewReader(content))
 	if err != nil {
 		return -1, nil, err
@@ -316,7 +305,7 @@ func (s *PushDataConsumer) HttpRequest(
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := client.Do(req)
 	defer func() {
 		if resp != nil && resp.Body != nil {
 			resp.Body.Close()

@@ -15,7 +15,6 @@
 package consumers
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -23,13 +22,13 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/pushapi/routing"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/tidwall/gjson"
 )
 
@@ -85,7 +84,7 @@ func (s *PushConsumer) SetEventRepo(eventRepo *repos.EventReadStreamRepo) *PushC
 	return s
 }
 
-func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.ClientEvent, eventOffset int64) {
+func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64) {
 	eventJson, err := json.Marshal(&input)
 	if err != nil {
 		log.Errorf("PushConsumer processEvent marshal error %d, message %s", err, input.EventID)
@@ -105,7 +104,7 @@ func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.Cli
 	case "m.room.redaction", "m.room.update":
 		members = s.getRoomMembers(input)
 		redactID := input.Redacts
-		stream := s.roomHistory.GetStreamEv(ctx, input.RoomID, redactID)
+		stream := s.roomHistory.GetStreamEv(input.RoomID, redactID)
 		if stream != nil {
 			redactOffset = stream.Offset
 		}
@@ -146,7 +145,7 @@ func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.Cli
 			eventJson *[]byte,
 			pushContents *push.PushPubContents,
 		) {
-			s.preProcessPush(ctx, &member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents)
+			s.preProcessPush(&member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents)
 			wg.Done()
 		}(member, input, senderDisplayName, memCount, eventOffset, redactOffset, &eventJson, &pushContents)
 	}
@@ -157,12 +156,11 @@ func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.Cli
 		pushContents.Input = input
 		pushContents.RoomAlias = ""
 		pushContents.SenderDisplayName = senderDisplayName
-		go s.pubPushContents(ctx, &pushContents, &eventJson)
+		go s.pubPushContents(&pushContents, &eventJson)
 	}
 }
 
 func (s *PushConsumer) preProcessPush(
-	ctx context.Context,
 	member *string,
 	input *gomatrixserverlib.ClientEvent,
 	senderDisplayName *string,
@@ -174,7 +172,7 @@ func (s *PushConsumer) preProcessPush(
 ) {
 	if *member != input.Sender {
 		if input.Type == "m.room.redaction" || input.Type == "m.room.update" {
-			if s.eventRepo.GetUserLastOffset(ctx, *member, input.RoomID) < redactOffset || redactOffset == -1 {
+			if s.eventRepo.GetUserLastOffset(*member, input.RoomID) < redactOffset || redactOffset == -1 {
 				//如果一个用户读完消息以后，有新的未读，此时hs重启，其他人撤销之前已读消息，计数会不准确
 				//高亮信息撤回，暂时也不好处理计减
 				s.countRepo.UpdateRoomReadCount(input.RoomID, *member, "decrease")
@@ -202,7 +200,7 @@ func (s *PushConsumer) preProcessPush(
 			rules = append(rules, v)
 		}
 
-		displayName, _, _ := s.complexCache.GetProfileByUserID(ctx, *member)
+		displayName, _, _ := s.complexCache.GetProfileByUserID(*member)
 
 		s.processPush(&pushers, &rules, input, &displayName, member, memCount, eventJson, pushContents)
 	} else {
@@ -231,8 +229,8 @@ func (s *PushConsumer) getRoomMembers(
 	return result
 }
 
-func (s *PushConsumer) getRoomName(ctx context.Context, roomID string) string {
-	states := s.rsTimeline.GetStates(ctx, roomID)
+func (s *PushConsumer) getRoomName(roomID string) string {
+	states := s.rsTimeline.GetStates(roomID)
 	name := ""
 
 	if states != nil {
@@ -273,8 +271,8 @@ func (s *PushConsumer) getRoomName(ctx context.Context, roomID string) string {
 	return name
 }
 
-func (s *PushConsumer) getCreateContent(ctx context.Context, roomID string) interface{} {
-	states := s.rsTimeline.GetStates(ctx, roomID)
+func (s *PushConsumer) getCreateContent(roomID string) interface{} {
+	states := s.rsTimeline.GetStates(roomID)
 
 	if states != nil {
 		var feeds []feedstypes.Feed
@@ -304,7 +302,7 @@ func (s *PushConsumer) getCreateContent(ctx context.Context, roomID string) inte
 	return nil
 }
 
-func (s *PushConsumer) pubPushContents(ctx context.Context, pushContents *push.PushPubContents, eventJson *[]byte) {
+func (s *PushConsumer) pubPushContents(pushContents *push.PushPubContents, eventJson *[]byte) {
 	//临时处理，rcs去除邀请重试以后可以去掉
 	if pushContents.Input.Type == "m.room.member" {
 		result := gjson.Get(string(*eventJson), "unsigned.prev_content.membership")
@@ -313,8 +311,8 @@ func (s *PushConsumer) pubPushContents(ctx context.Context, pushContents *push.P
 		}
 	}
 
-	pushContents.RoomName = s.getRoomName(ctx, pushContents.Input.RoomID)
-	createContent := s.getCreateContent(ctx, pushContents.Input.RoomID)
+	pushContents.RoomName = s.getRoomName(pushContents.Input.RoomID)
+	createContent := s.getCreateContent(pushContents.Input.RoomID)
 	if createContent != nil {
 		pushContents.CreateContent = &createContent
 	}

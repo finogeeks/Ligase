@@ -19,14 +19,13 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/plugins/message/external"
 )
 
 func MakeJoin(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -37,7 +36,7 @@ func MakeJoin(
 		return gomatrixserverlib.RespMakeJoin{}
 	}
 
-	redResp, err := fedClient.MakeJoin(ctx, gomatrixserverlib.ServerName(destination), req.RoomID, req.UserID, req.Ver)
+	redResp, err := fedClient.MakeJoin(context.Background(), gomatrixserverlib.ServerName(destination), req.RoomID, req.UserID, req.Ver)
 	if err != nil {
 		log.Errorf("federation make join error response: %v", err)
 	}
@@ -45,7 +44,6 @@ func MakeJoin(
 }
 
 func SendJoin(
-	ctx context.Context,
 	fedClient *client.FedClientWrap,
 	request *roomserverapi.FederationEvent,
 	destination string,
@@ -57,12 +55,12 @@ func SendJoin(
 		return gomatrixserverlib.RespSendJoin{}
 	}
 
-	redResp, err := fedClient.SendJoin(ctx, gomatrixserverlib.ServerName(destination), req.RoomID, req.EventID, req.Event)
+	redResp, err := fedClient.SendJoin(context.Background(), gomatrixserverlib.ServerName(destination), req.RoomID, req.EventID, req.Event)
 	if err != nil {
 		log.Errorf("federation send join error response: %v", err)
 	}
 	if len(redResp.StateEvents) > 0 {
-		proc.AddRequest(ctx, redResp.StateEvents, false) // TODO: false是因为自动邀请时有可能需要历史消息，这是临时解决方案，看以后有没有更好的处理
+		proc.AddRequest(redResp.StateEvents, false)
 	}
 	return redResp
 }

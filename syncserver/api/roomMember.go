@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"net/http"
 
@@ -23,13 +22,13 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -60,7 +59,7 @@ func (ReqGetRoomMembers) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqGetRoomMembers) NewResponse(code int) core.Coder {
 	return new(syncapitypes.MemberResponse)
 }
-func (ReqGetRoomMembers) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomMembers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomMembersRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -70,7 +69,7 @@ func (ReqGetRoomMembers) Process(ctx context.Context, consumer interface{}, msg 
 	roomID := req.RoomID
 	userID := device.UserID
 
-	state := c.rsTimeline.GetStateStreams(ctx, roomID)
+	state := c.rsTimeline.GetStateStreams(roomID)
 	if state == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find room state")
 	} else {
@@ -87,7 +86,7 @@ func (ReqGetRoomMembers) Process(ctx context.Context, consumer interface{}, msg 
 			return http.StatusForbidden, jsonerror.Forbidden("You aren't a member of the room and weren't previously a member of the room.")
 		}
 
-		states := c.rsTimeline.GetStates(ctx, roomID)
+		states := c.rsTimeline.GetStates(roomID)
 		if states == nil {
 			return http.StatusNotFound, jsonerror.NotFound("cannot find room state")
 		}

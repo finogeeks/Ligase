@@ -22,7 +22,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/publicroomstypes"
@@ -210,7 +209,7 @@ func (s *publicRoomsStatements) insertNewRoom(
 			Visibility:     visibility,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "publicroomsapi_public_rooms")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onInsertNewRoom(ctx, roomID, seqID, joinedMembers, pq.StringArray(aliases), canonicalAlias, name, topic, worldReadable, guestCanJoin, avatarUrl, visibility)
@@ -243,7 +242,7 @@ func (s *publicRoomsStatements) incrementJoinedMembersInRoom(
 		update.Key = dbtypes.PublicRoomIncrementJoinedKey
 		update.PublicRoomDBEvents.PublicRoomJoined = &roomID
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "publicroomsapi_public_rooms")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onIncrementJoinedMembersInRoom(ctx, roomID)
@@ -265,7 +264,7 @@ func (s *publicRoomsStatements) decrementJoinedMembersInRoom(
 		update.Key = dbtypes.PublicRoomDecrementJoinedKey
 		update.PublicRoomDBEvents.PublicRoomJoined = &roomID
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "publicroomsapi_public_rooms")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onDecrementJoinedMembersInRoom(ctx, roomID)
@@ -296,7 +295,7 @@ func (s *publicRoomsStatements) updateRoomAttribute(
 			AttrValue: attrValue,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		return s.db.WriteDBEventWithTbl(ctx, &update, "publicroomsapi_public_rooms")
+		return s.db.WriteDBEvent(&update)
 	}
 
 	return s.onUpdateRoomAttribute(ctx, attrName, attrValue, roomID)

@@ -19,10 +19,10 @@ import (
 	"fmt"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	jsoniter "github.com/json-iterator/go"
 )
 

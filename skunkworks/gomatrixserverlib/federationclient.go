@@ -256,6 +256,7 @@ type BackfillRequest struct {
 	RoomID  string `json:"room_id"`
 	Dir     string `json:"dir"`
 	Domain  string `json:"domain"`
+	Origin  string `json:"origin"`
 }
 
 type BackfillResponse struct {

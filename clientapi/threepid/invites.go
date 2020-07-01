@@ -29,10 +29,10 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/json-iterator/go"
 )
 
@@ -221,7 +221,7 @@ func queryIDServerStoreInvite(
 	var profile *authtypes.Profile
 	profile = &authtypes.Profile{}
 	if common.CheckValidDomain(serverName, cfg.Matrix.ServerName) {
-		displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+		displayName, avatarURL, _ := complexCache.GetProfileByUserID(userID)
 
 		profile.UserID = userID
 		profile.DisplayName = displayName
@@ -389,6 +389,6 @@ func emit3PIDInviteEvent(
 		Query: []string{"3pid_invite", ""},
 	}
 
-	_, err = rsRpcCli.InputRoomEvents(ctx, &rawEvent)
+	_, err = rsRpcCli.InputRoomEvents(context.Background(), &rawEvent)
 	return err
 }

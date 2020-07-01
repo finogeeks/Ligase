@@ -16,7 +16,6 @@ package api
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/model/types"
 	"net/http"
 
 	"github.com/finogeeks/ligase/cache"
@@ -62,7 +61,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.InitGroup("pushapi", c, c.Cfg.Rpc.ProxyPushApiTopic, types.PUSH_API_GROUP)
+	c.APIConsumer.Init("pushapi", c, c.Cfg.Rpc.ProxyPushApiTopic)
 	c.APIConsumer.Start()
 }
 
@@ -105,7 +104,7 @@ func (ReqGetPushers) FillRequest(coder core.Coder, req *http.Request, vars map[s
 func (ReqGetPushers) NewResponse(code int) core.Coder {
 	return new(pushapitypes.Pushers)
 }
-func (ReqGetPushers) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPushers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	return routing.GetPushers(
 		device.UserID, c.redisCache,
@@ -137,11 +136,11 @@ func (ReqPostSetPushers) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqPostSetPushers) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqPostSetPushers) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostSetPushers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostSetPushersRequest)
 	return routing.PutPusher(
-		ctx, req, c.pushDB, device,
+		context.Background(), req, c.pushDB, device,
 	)
 }
 
@@ -165,7 +164,7 @@ func (ReqGetPushRules) FillRequest(coder core.Coder, req *http.Request, vars map
 func (ReqGetPushRules) NewResponse(code int) core.Coder {
 	return new(pushapitypes.GlobalRule)
 }
-func (ReqGetPushRules) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPushRules) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	return routing.GetPushRules(
 		device, c.redisCache,
@@ -192,7 +191,7 @@ func (ReqGetPushRulesGlobal) FillRequest(coder core.Coder, req *http.Request, va
 func (ReqGetPushRulesGlobal) NewResponse(code int) core.Coder {
 	return new(pushapitypes.RuleSet)
 }
-func (ReqGetPushRulesGlobal) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPushRulesGlobal) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	return routing.GetPushRulesGlobal(
 		device, c.redisCache,
@@ -225,11 +224,11 @@ func (ReqGetPushRuleByID) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqGetPushRuleByID) NewResponse(code int) core.Coder {
 	return make(internals.JSONMap)
 }
-func (ReqGetPushRuleByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetPushrulesByIDRequest)
 	return routing.GetPushRule(
-		ctx, device, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.redisCache,
 	)
 }
 
@@ -265,11 +264,11 @@ func (ReqPutPushRuleByID) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqPutPushRuleByID) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqPutPushRuleByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutPushrulesByIDRequest)
 	return routing.PutPushRule(
-		ctx, req, c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), req, c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
 	)
 }
 
@@ -303,11 +302,11 @@ func (ReqDelPushRuleByID) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqDelPushRuleByID) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqDelPushRuleByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqDelPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.DelPushrulesByIDRequest)
 	return routing.DeletePushRule(
-		ctx, c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
 	)
 }
 
@@ -339,11 +338,11 @@ func (ReqGetPushRulesEnabledByID) FillRequest(coder core.Coder, req *http.Reques
 func (ReqGetPushRulesEnabledByID) NewResponse(code int) core.Coder {
 	return new(pushapitypes.EnabledType)
 }
-func (ReqGetPushRulesEnabledByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPushRulesEnabledByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetPushrulesEnabledByIDRequest)
 	return routing.GetPushRuleEnabled(
-		ctx, device, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.redisCache,
 	)
 }
 
@@ -379,11 +378,11 @@ func (ReqPutPushRulesEnabledByID) FillRequest(coder core.Coder, req *http.Reques
 func (ReqPutPushRulesEnabledByID) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqPutPushRulesEnabledByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutPushRulesEnabledByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutPushrulesEnabledByIDRequest)
 	return routing.PutPushRuleEnabled(
-		ctx, req, c.pushDB, device, c.Cfg,
+		context.Background(), req, c.pushDB, device, c.Cfg,
 		req.Scope, req.Kind, req.RuleID, c.redisCache,
 	)
 }
@@ -416,11 +415,11 @@ func (ReqGetPushRuleActionsByID) FillRequest(coder core.Coder, req *http.Request
 func (ReqGetPushRuleActionsByID) NewResponse(code int) core.Coder {
 	return new(pushapitypes.PushActions)
 }
-func (ReqGetPushRuleActionsByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetPushRuleActionsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetPushrulesActionsByIDRequest)
 	return routing.GetPushRuleActions(
-		ctx, device, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.redisCache,
 	)
 }
 
@@ -456,11 +455,11 @@ func (ReqPutPushRulesActionsByID) FillRequest(coder core.Coder, req *http.Reques
 func (ReqPutPushRulesActionsByID) NewResponse(code int) core.Coder {
 	return nil
 }
-func (ReqPutPushRulesActionsByID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPutPushRulesActionsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutPushrulesActionsByIDRequest)
 	return routing.PutPushRuleActions(
-		ctx, req, c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), req, c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
 	)
 }
 
@@ -489,7 +488,7 @@ func (ReqPostUsersPushKey) FillRequest(coder core.Coder, req *http.Request, vars
 func (ReqPostUsersPushKey) NewResponse(code int) core.Coder {
 	return new(pushapitypes.PushersRes)
 }
-func (ReqPostUsersPushKey) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqPostUsersPushKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostUsersPushKeyRequest)
 	return routing.GetUsersPushers(

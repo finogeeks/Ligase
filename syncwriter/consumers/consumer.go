@@ -21,18 +21,17 @@ import (
 	"context"
 	jsonRaw "encoding/json"
 	"fmt"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncserver/extra"
 	jsoniter "github.com/json-iterator/go"
@@ -49,11 +48,9 @@ type RoomEventConsumer struct {
 	roomCurState        *repos.RoomCurStateRepo
 	displayNameRepo     *repos.DisplayNameRepo
 	chanSize            uint32
-	//msgChan             []chan *roomserverapi.OutputNewRoomEvent
-	msgChan []chan common.ContextMsg
-	//backFillChan        []chan *roomserverapi.OutputNewRoomEvent
-	backFillChan []chan common.ContextMsg
-	cfg          *config.Dendrite
+	msgChan             []chan *roomserverapi.OutputNewRoomEvent
+	backFillChan        []chan *roomserverapi.OutputNewRoomEvent
+	cfg                 *config.Dendrite
 }
 
 func NewRoomEventConsumer(
@@ -100,37 +97,35 @@ func (s *RoomEventConsumer) SetDisplayNameRepo(displayNameRepo *repos.DisplayNam
 	return s
 }
 
-func (s *RoomEventConsumer) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*roomserverapi.OutputNewRoomEvent)
-		s.onNewRoomEvent(msg.Ctx, data)
+func (s *RoomEventConsumer) startWorker(msgChan chan *roomserverapi.OutputNewRoomEvent) {
+	for data := range msgChan {
+		s.onNewRoomEvent(context.TODO(), data)
 	}
 }
 
-func (s *RoomEventConsumer) startBackFill(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*roomserverapi.OutputNewRoomEvent)
-		s.onBackFillEvent(msg.Ctx, data)
+func (s *RoomEventConsumer) startBackFill(msgChan chan *roomserverapi.OutputNewRoomEvent) {
+	for data := range msgChan {
+		s.onBackFillEvent(context.TODO(), data)
 	}
 }
 
 func (s *RoomEventConsumer) Start() error {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *roomserverapi.OutputNewRoomEvent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *roomserverapi.OutputNewRoomEvent, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 
-	s.backFillChan = make([]chan common.ContextMsg, s.chanSize)
+	s.backFillChan = make([]chan *roomserverapi.OutputNewRoomEvent, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.backFillChan[i] = make(chan common.ContextMsg, 512)
+		s.backFillChan[i] = make(chan *roomserverapi.OutputNewRoomEvent, 512)
 		go s.startBackFill(s.backFillChan[i])
 	}
 	//s.channel.Start()
 	return nil
 }
 
-func (s *RoomEventConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
+func (s *RoomEventConsumer) OnMessage(topic string, partition int32, data []byte) {
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("sync writer: message parse failure", log.KeysAndValues{"error", err})
@@ -144,13 +139,13 @@ func (s *RoomEventConsumer) OnMessage(ctx context.Context, topic string, partiti
 		if common.IsRelatedRequest(output.NewRoomEvent.Event.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 			log.Infow("sync writer received event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID})
 			idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
-			s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: output.NewRoomEvent}
+			s.msgChan[idx] <- output.NewRoomEvent
 		}
 	case roomserverapi.OutputBackfillRoomEvent:
 		if common.IsRelatedRequest(output.NewRoomEvent.Event.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 			log.Infow("sync writer received back fill event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID})
 			idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
-			s.backFillChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: output.NewRoomEvent}
+			s.backFillChan[idx] <- output.NewRoomEvent
 		}
 	default:
 		log.Debugw("sync writer: ignoring unknown output type", log.KeysAndValues{"type", output.Type})
@@ -186,21 +181,17 @@ func (s *RoomEventConsumer) processStateEv(ev *gomatrixserverlib.ClientEvent) (g
 	return *ev, nil
 }
 
-func (s *RoomEventConsumer) processRedactEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent) {
+func (s *RoomEventConsumer) processRedactEv(ev *gomatrixserverlib.ClientEvent) {
 	var redactEv gomatrixserverlib.ClientEvent
 
-	stream := s.roomHistoryTimeLine.GetStreamEv(ctx, ev.RoomID, ev.Redacts)
+	stream := s.roomHistoryTimeLine.GetStreamEv(ev.RoomID, ev.Redacts)
 	if stream != nil {
 		redactEv = *stream.Ev
-		log.Infof("processRedactEv get redact:%s ev:%v from timeline", ev.Redacts, redactEv)
 	} else {
-		evs, err := s.db.Events(ctx, []string{ev.Redacts})
+		evs, err := s.db.Events(context.TODO(), []string{ev.Redacts})
+		log.Infof("redact redact:%s evs:%v, err:%v", ev.Redacts, evs, err)
 		if err == nil && len(evs) > 0 {
 			redactEv = evs[0]
-			log.Infof("processRedactEv get redact:%s ev:%v from db", ev.Redacts, redactEv)
-		} else {
-			log.Errorf("processRedactEv cannot found redact:%s ev:%v both timeline and db", ev.Redacts, redactEv)
-			return
 		}
 	}
 
@@ -210,6 +201,7 @@ func (s *RoomEventConsumer) processRedactEv(ctx context.Context, ev *gomatrixser
 		empty, _ := json.Marshal(content)
 		redactEv.Content = empty
 		redactEv.Hint = fmt.Sprintf("%s撤回了一条消息", extra.GetDisplayName(s.displayNameRepo, ev.Sender))
+		log.Infof("syncwrite, edactEv.Hint: %s", redactEv.Hint)
 		unsigned.RedactedBecause = ev
 	} else {
 		redactEv.Content = ev.Content
@@ -217,17 +209,16 @@ func (s *RoomEventConsumer) processRedactEv(ctx context.Context, ev *gomatrixser
 	}
 	unsignedBytes, err := json.Marshal(unsigned)
 	if err != nil {
-		log.Errorf("processRedactEv redact Marshal:%s evs:%v, err:%v", ev.Redacts, unsigned, err)
-		return
+		log.Errorf("redact redact Marshal:%s evs:%v, err:%v", ev.Redacts, unsigned, err)
 	}
 	redactEv.Unsigned = unsignedBytes
 	if stream != nil {
 		stream.Ev = &redactEv //更新timeline
 	}
-	if err := s.db.UpdateEvent(ctx, redactEv, ev.Redacts, redactEv.Type, ev.RoomID); err != nil {
-		log.Errorf("processRedactEv update redact:%s ev:%v to db err:%v", ev.Redacts, redactEv, err)
+	if err == nil {
+		s.db.UpdateEvent(context.TODO(), redactEv, ev.Redacts, redactEv.Type, ev.RoomID)
 	} else {
-		log.Infof("processRedactEv update redact:%s ev:%v to db succ", ev.Redacts, redactEv)
+		log.Errorf("redact err:%v", err)
 	}
 }
 
@@ -237,11 +228,11 @@ func (s *RoomEventConsumer) onNewRoomEvent(
 	ev := msg.Event
 	domain, _ := common.DomainFromID(ev.Sender)
 	if ev.Type != "m.room.create" {
-		s.roomStateTimeLine.GetStateStreams(ctx, ev.RoomID) //load state stream timeline& state
-		s.roomHistoryTimeLine.LoadHistory(ctx, ev.RoomID, true)
-		preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ctx, ev.RoomID, domain)
+		s.roomStateTimeLine.GetStateStreams(ev.RoomID) //load state stream timeline& state
+		s.roomHistoryTimeLine.LoadHistory(ev.RoomID, true)
+		preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ev.RoomID, domain)
 		if preOffset != -1 && preOffset+1 != ev.DomainOffset {
-			s.db.InsertOutputMinStream(ctx, ev.EventOffset, ev.RoomID)
+			s.db.InsertOutputMinStream(context.TODO(), ev.EventOffset, ev.RoomID)
 		}
 	}
 	s.roomHistoryTimeLine.SetDomainMaxStream(ev.RoomID, domain, ev.DomainOffset)
@@ -249,7 +240,7 @@ func (s *RoomEventConsumer) onNewRoomEvent(
 	if common.IsStateClientEv(&ev) == true { //state ev
 		ev, _ = s.processStateEv(&ev)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
-		s.processRedactEv(ctx, &ev)
+		s.processRedactEv(&ev)
 	}
 
 	transId := ""
@@ -294,10 +285,10 @@ func (s *RoomEventConsumer) onNewRoomEvent(
 			return err
 		}
 
-		s.roomStateTimeLine.AddStreamEv(ctx, &ev, ev.EventOffset, true) //保留state stream
+		s.roomStateTimeLine.AddStreamEv(&ev, ev.EventOffset, true) //保留state stream
 	}
 
-	s.roomHistoryTimeLine.AddEv(ctx, &ev, ev.EventOffset, true) //更新room timeline
+	s.roomHistoryTimeLine.AddEv(&ev, ev.EventOffset, true) //更新room timeline
 
 	return nil
 }
@@ -308,15 +299,15 @@ func (s *RoomEventConsumer) onBackFillEvent(
 	ev := msg.Event
 	domain, _ := common.DomainFromID(ev.Sender)
 
-	preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ctx, ev.RoomID, domain)
+	preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ev.RoomID, domain)
 	if preOffset <= ev.DomainOffset {
-		s.db.InsertOutputMinStream(ctx, ev.EventOffset, ev.RoomID)
+		s.db.InsertOutputMinStream(context.TODO(), ev.EventOffset, ev.RoomID)
 	}
 
 	if common.IsStateClientEv(&ev) == true { //state ev
 		ev, _ = s.processStateEv(&ev)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
-		s.processRedactEv(ctx, &ev)
+		s.processRedactEv(&ev)
 	}
 	err := s.db.WriteEvent(ctx, &ev, []gomatrixserverlib.ClientEvent{}, msg.AddsStateEventIDs, msg.RemovesStateEventIDs, msg.TransactionID, -ev.EventOffset, ev.DomainOffset, ev.Depth, domain, int64(ev.OriginServerTS))
 	if err != nil {

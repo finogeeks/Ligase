@@ -21,18 +21,18 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
 	Register(model.CMD_FED_BACKFILL, Backfill)
 }
 
-func Backfill(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func Backfill(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	log.Infof("Enter Backfill......")
 
 	retMsg := &model.GobMessage{
@@ -55,9 +55,10 @@ func Backfill(ctx context.Context, msg *model.GobMessage, cache service.Cache, r
 	req.RoomID = request.RoomID
 	req.Dir = request.Dir
 	req.Domain = request.Domain
+	req.Origin = request.Origin
 	bytes, _ := json.Marshal(*request)
 	log.Infof("Backfill request: %v", string(bytes))
-	err := rpcCli.QueryBackFillEvents(ctx, &req, &resp)
+	err := rpcCli.QueryBackFillEvents(context.TODO(), &req, &resp)
 
 	if err != nil {
 		log.Errorf("Backfill err %v", err)

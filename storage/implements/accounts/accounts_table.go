@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 const accountsSchema = `
@@ -54,21 +54,13 @@ const selectAccountsCountSQL = "" +
 	"SELECT count(1) FROM account_accounts"
 
 const selectAccountSQL = "" +
-	"SELECT user_id, app_service_id FROM account_accounts WHERE user_id = $1"
-
-const selectActualCountSQL = "" +
-	"SELECT count(1) FROM account_accounts where app_service_id = 'actual'"
-
-const updateAccountSQL = "" +
-	"UPDATE account_accounts SET app_service_id = $1 WHERE user_id = $2"
+	"SELECT user_id FROM account_accounts WHERE user_id = $1"
 
 type accountsStatements struct {
 	db                      *Database
 	insertAccountStmt       *sql.Stmt
 	selectAccountsCountStmt *sql.Stmt
 	selectAccountStmt       *sql.Stmt
-	selectActualCountStmt   *sql.Stmt
-	updateAccountStmt       *sql.Stmt
 }
 
 func (s *accountsStatements) getSchema() string {
@@ -86,12 +78,6 @@ func (s *accountsStatements) prepare(d *Database) (err error) {
 	if s.selectAccountStmt, err = d.db.Prepare(selectAccountSQL); err != nil {
 		return
 	}
-	if s.selectActualCountStmt, err = d.db.Prepare(selectActualCountSQL); err != nil {
-		return
-	}
-	if s.updateAccountStmt, err = d.db.Prepare(updateAccountSQL); err != nil {
-		return
-	}
 	return
 }
 
@@ -104,7 +90,7 @@ func (s *accountsStatements) selectAccount(ctx context.Context, userID string) (
 	var account authtypes.Account
 	defer rows.Close()
 	for rows.Next() {
-		if err := rows.Scan(&account.UserID, &account.AppServiceID); err != nil {
+		if err := rows.Scan(&account.UserID); err != nil {
 			return nil, err
 		}
 	}
@@ -132,7 +118,7 @@ func (s *accountsStatements) insertAccount(
 			AppServiceID: appServiceID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		err := s.db.WriteDBEventWithTbl(ctx, &update, "account_accounts")
+		err := s.db.WriteDBEvent(&update)
 		if err != nil {
 			return nil, err
 		}
@@ -151,15 +137,6 @@ func (s *accountsStatements) insertAccount(
 	}, nil
 }
 
-func (s *accountsStatements) updateAccount(
-	ctx context.Context, userID, appServiceID string,
-) (err error) {
-	_, err = s.updateAccountStmt.ExecContext(
-		ctx, appServiceID, userID,
-	)
-	return err
-}
-
 func (s *accountsStatements) onInsertAccount(
 	ctx context.Context, userID, hash, appServiceID string, createdTs int64,
 ) error {
@@ -172,12 +149,5 @@ func (s *accountsStatements) selectAccountsTotal(
 	ctx context.Context,
 ) (count int, err error) {
 	err = s.selectAccountsCountStmt.QueryRowContext(ctx).Scan(&count)
-	return
-}
-
-func (s *accountsStatements) selectActualTotal(
-	ctx context.Context,
-) (count int, err error) {
-	err = s.selectActualCountStmt.QueryRowContext(ctx).Scan(&count)
 	return
 }

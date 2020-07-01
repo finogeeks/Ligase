@@ -15,7 +15,6 @@
 package api
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"net/http"
 
@@ -23,12 +22,12 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -59,7 +58,7 @@ func (ReqGetRoomState) FillRequest(coder core.Coder, req *http.Request, vars map
 func (ReqGetRoomState) NewResponse(code int) core.Coder {
 	return &internals.JSONArr{}
 }
-func (ReqGetRoomState) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomState) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomStateRequest)
 	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -69,7 +68,7 @@ func (ReqGetRoomState) Process(ctx context.Context, consumer interface{}, msg co
 	roomID := req.RoomID
 	userID := device.UserID
 
-	state := c.rsTimeline.GetStateStreams(ctx, roomID)
+	state := c.rsTimeline.GetStateStreams(roomID)
 	if state == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find state")
 	}
@@ -79,7 +78,7 @@ func (ReqGetRoomState) Process(ctx context.Context, consumer interface{}, msg co
 		return http.StatusNotFound, jsonerror.NotFound("cannot find state")
 	}
 
-	states := c.rsTimeline.GetStates(ctx, roomID)
+	states := c.rsTimeline.GetStates(roomID)
 	if states == nil {
 		return http.StatusNotFound, jsonerror.NotFound("cannot find state")
 	}

@@ -18,12 +18,10 @@
 package consumers
 
 import (
-	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"time"
 )
 
@@ -32,15 +30,13 @@ func init() {
 }
 
 type PresenceDBEvCacheConsumer struct {
-	pool PoolProviderInterface
-	//msgChan chan *dbtypes.DBEvent
-	msgChan chan common.ContextMsg
+	pool    PoolProviderInterface
+	msgChan chan *dbtypes.DBEvent
 }
 
-func (s *PresenceDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) {
+func (s *PresenceDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
 	var res error
-	for msg := range msgChan {
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
@@ -64,7 +60,7 @@ func (s *PresenceDBEvCacheConsumer) startWorker(msgChan chan common.ContextMsg) 
 
 func NewPresenceDBEvCacheConsumer() ConsumerInterface {
 	s := new(PresenceDBEvCacheConsumer)
-	s.msgChan = make(chan common.ContextMsg, 4096)
+	s.msgChan = make(chan *dbtypes.DBEvent, 4096)
 
 	return s
 }
@@ -80,8 +76,8 @@ func (s *PresenceDBEvCacheConsumer) Start() {
 	go s.startWorker(s.msgChan)
 }
 
-func (s *PresenceDBEvCacheConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
-	s.msgChan <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+func (s *PresenceDBEvCacheConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
+	s.msgChan <- dbEv
 	return nil
 }
 

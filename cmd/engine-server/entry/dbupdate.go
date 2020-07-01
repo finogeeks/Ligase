@@ -16,13 +16,12 @@ package entry
 
 import (
 	"context"
-	"sync"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+	"sync"
 )
 
 type FedDBUpdate struct {
@@ -31,27 +30,18 @@ type FedDBUpdate struct {
 }
 
 type UpdateDBForFed struct {
-	roomDB model.RoomServerDatabase
-	syncDB model.SyncAPIDatabase
-	//msgChan  []chan *FedDBUpdate
-	msgChan  []chan common.ContextMsg
+	roomDB   model.RoomServerDatabase
+	syncDB   model.SyncAPIDatabase
+	msgChan  []chan *FedDBUpdate
 	chanSize uint32
 }
 
 func StartUpdateDBForFed(
 	base *basecomponent.BaseDendrite,
 ) {
-	span, ctx := common.StartSobSomSpan(context.Background(), "StartUpdateDBForFed")
-	defer span.Finish()
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
-	for _, v := range dbUpdateProducerName {
-		dbUpdates := kafka.Producer.DBUpdates
-		dbUpdates.Topic = dbUpdates.Topic + "_" + v
-		dbUpdates.Name = dbUpdates.Name + "_" + v
-		addProducer(transportMultiplexer, dbUpdates)
-	}
 	transportMultiplexer.PreStart()
 	transportMultiplexer.Start()
 
@@ -70,7 +60,7 @@ func StartUpdateDBForFed(
 	limit := 10000
 	offset := 0
 	for exists {
-		rooms, err := roomDB.GetAllRooms(ctx, limit, offset)
+		rooms, err := roomDB.GetAllRooms(context.TODO(), limit, offset)
 		if err != nil {
 			log.Errorf("ProcessGoEvents.getRooms err %v", err)
 			exists = false
@@ -85,7 +75,7 @@ func StartUpdateDBForFed(
 				RoomNID: room.RoomNID,
 			}
 			idx := common.CalcStringHashCode(room.RoomID) % s.chanSize
-			s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: up}
+			s.msgChan[idx] <- up
 		}
 		offset = offset + limit
 	}
@@ -93,22 +83,20 @@ func StartUpdateDBForFed(
 }
 
 func (s *UpdateDBForFed) Start() {
-	s.msgChan = make([]chan common.ContextMsg, s.chanSize)
+	s.msgChan = make([]chan *FedDBUpdate, s.chanSize)
 	for i := uint32(0); i < s.chanSize; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 512)
+		s.msgChan[i] = make(chan *FedDBUpdate, 512)
 		go s.startWorker(s.msgChan[i])
 	}
 }
 
-func (s *UpdateDBForFed) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*FedDBUpdate)
-		s.processRoom(msg.Ctx, data.RoomNID, data.RoomID)
+func (s *UpdateDBForFed) startWorker(msgChan chan *FedDBUpdate) {
+	for data := range msgChan {
+		s.processRoom(data.RoomNID, data.RoomID)
 	}
 }
 
 func (s *UpdateDBForFed) processRoom(
-	ctx context.Context,
 	roomNID int64,
 	roomID string,
 ) {
@@ -120,7 +108,7 @@ func (s *UpdateDBForFed) processRoom(
 	domainMap := new(sync.Map)
 
 	for exists {
-		nids, events, err := s.roomDB.GetRoomEventsWithLimit(ctx, roomNID, limit, offset)
+		nids, events, err := s.roomDB.GetRoomEventsWithLimit(context.TODO(), roomNID, limit, offset)
 		if err != nil {
 			log.Errorf("processRoom.GetRoomEventsWithLimit err %v", err)
 			exists = false
@@ -146,17 +134,17 @@ func (s *UpdateDBForFed) processRoom(
 			}
 			domainMap.Store(domain, domainOffset)
 
-			s.roomDB.UpdateRoomEvent(ctx, evNid, roomNID, depth, domainOffset, domain)
-			s.syncDB.UpdateSyncEvent(ctx, domainOffset, int64(ev.OriginServerTS()), domain, roomID, ev.EventID())
+			s.roomDB.UpdateRoomEvent(context.TODO(), evNid, roomNID, depth, domainOffset, domain)
+			s.syncDB.UpdateSyncEvent(context.TODO(), domainOffset, int64(ev.OriginServerTS()), domain, roomID, ev.EventID())
 		}
 
 		offset = offset + limit
 	}
 
-	s.roomDB.UpdateRoomDepth(ctx, depth, roomNID)
+	s.roomDB.UpdateRoomDepth(context.TODO(), depth, roomNID)
 
 	domainMap.Range(func(key, value interface{}) bool {
-		s.roomDB.SaveRoomDomainsOffset(ctx, roomNID, key.(string), value.(int64))
+		s.roomDB.SaveRoomDomainsOffset(context.TODO(), roomNID, key.(string), value.(int64))
 		return true
 	})
 

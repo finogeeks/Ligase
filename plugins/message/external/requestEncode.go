@@ -833,7 +833,27 @@ func (externalReq *DelDeviceRequest) Encode() ([]byte, error) {
 }
 
 func (externalReq *PutPresenceRequest) Encode() ([]byte, error) {
-	return json.Marshal(externalReq)
+	msg, seg, err := capn.NewMessage(capn.SingleSegment(nil))
+	if err != nil {
+		return nil, err
+	}
+
+	reqCapn, err := NewRootPutPresenceRequestCapn(seg)
+	if err != nil {
+		return nil, err
+	}
+
+	reqCapn.SetUserID(externalReq.UserID)
+	reqCapn.SetPresence(externalReq.Presence)
+	reqCapn.SetStatusMsg(externalReq.StatusMsg)
+	reqCapn.SetExtStatusMsg(externalReq.ExtStatusMsg)
+
+	data, err := msg.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
 
 func (externalReq *GetPresenceRequest) Encode() ([]byte, error) {
@@ -1841,5 +1861,9 @@ func (externalReq *PostQueryClientKeysRequest) Encode() ([]byte, error) {
 }
 
 func (externalReq *PostClaimClientKeysRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}
+
+func (externalReq *DismissRoomRequest) Encode() ([]byte, error) {
 	return json.Marshal(externalReq)
 }

@@ -19,12 +19,12 @@ import (
 	"sync"
 	"time"
 
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/tidwall/gjson"
 )
@@ -68,8 +68,7 @@ func (tl *PresenceDataStreamRepo) SetOnlineRepo(repo *OnlineUserRepo) {
 	tl.onlineRepo = repo
 }
 
-func (tl *PresenceDataStreamRepo) AddPresenceDataStream(ctx context.Context,
-	dataStream *types.PresenceStream, offset int64, broadCast bool) {
+func (tl *PresenceDataStreamRepo) AddPresenceDataStream(dataStream *types.PresenceStream, offset int64, broadCast bool) {
 	if val, ok := tl.repo.Load(dataStream.UserID); ok && val != nil {
 		feed := val.(*feedstypes.PresenceDataStream)
 		if feed.GetOffset() > offset {
@@ -83,7 +82,7 @@ func (tl *PresenceDataStreamRepo) AddPresenceDataStream(ctx context.Context,
 	tl.repo.Store(dataStream.UserID, presenceDataStream)
 
 	if broadCast {
-		userMap := tl.userTimeLine.GetFriendShip(ctx, dataStream.UserID, true)
+		userMap := tl.userTimeLine.GetFriendShip(dataStream.UserID, true)
 		if userMap != nil {
 			userMap.Range(func(key, _ interface{}) bool {
 				if maxPos, ok := tl.maxPosition.Load(key.(string)); ok {
@@ -115,14 +114,14 @@ func (tl *PresenceDataStreamRepo) UpdateUserMaxPos(userID string, offset int64) 
 	}
 }
 
-func (tl *PresenceDataStreamRepo) LoadHistory(ctx context.Context, userID string, sync bool) {
+func (tl *PresenceDataStreamRepo) LoadHistory(userID string, sync bool) {
 	if _, ok := tl.ready.Load(userID); !ok {
 		if _, ok := tl.loading.Load(userID); !ok {
 			tl.loading.Store(userID, true)
 			if sync == false {
-				go tl.loadHistory(ctx, userID)
+				go tl.loadHistory(userID)
 			} else {
-				tl.loadHistory(ctx, userID)
+				tl.loadHistory(userID)
 			}
 
 			tl.queryHitCounter.WithLabelValues("db", "PresenceDataStreamRepo", "LoadHistory").Add(1)
@@ -130,18 +129,18 @@ func (tl *PresenceDataStreamRepo) LoadHistory(ctx context.Context, userID string
 			if sync == false {
 				return
 			}
-			tl.CheckLoadReady(ctx, userID, true)
+			tl.CheckLoadReady(userID, true)
 		}
 	} else {
 		tl.queryHitCounter.WithLabelValues("cache", "PresenceDataStreamRepo", "LoadHistory").Add(1)
 	}
 }
 
-func (tl *PresenceDataStreamRepo) CheckLoadReady(ctx context.Context, userID string, sync bool) bool {
+func (tl *PresenceDataStreamRepo) CheckLoadReady(userID string, sync bool) bool {
 	_, ok := tl.ready.Load(userID)
 	if ok || sync == false {
 		if sync == false {
-			tl.LoadHistory(ctx, userID, false)
+			tl.LoadHistory(userID, false)
 		}
 		return ok
 	}
@@ -152,7 +151,7 @@ func (tl *PresenceDataStreamRepo) CheckLoadReady(ctx context.Context, userID str
 			break
 		}
 
-		tl.LoadHistory(ctx, userID, false)
+		tl.LoadHistory(userID, false)
 
 		now := time.Now().Unix()
 		if now-start > 35 {
@@ -167,9 +166,9 @@ func (tl *PresenceDataStreamRepo) CheckLoadReady(ctx context.Context, userID str
 	return ok
 }
 
-func (tl *PresenceDataStreamRepo) loadHistory(ctx context.Context, userID string) {
+func (tl *PresenceDataStreamRepo) loadHistory(userID string) {
 	defer tl.loading.Delete(userID)
-	userMap := tl.userTimeLine.GetFriendShip(ctx, userID, true)
+	userMap := tl.userTimeLine.GetFriendShip(userID, true)
 	if userMap != nil {
 		var users []string
 		maxPos := int64(0)
@@ -185,7 +184,7 @@ func (tl *PresenceDataStreamRepo) loadHistory(ctx context.Context, userID string
 		})
 		if len(users) > 0 {
 			bs := time.Now().UnixNano() / 1000000
-			streams, offsets, err := tl.persist.GetUserPresenceDataStream(ctx, users)
+			streams, offsets, err := tl.persist.GetUserPresenceDataStream(context.TODO(), users)
 			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {
 				log.Errorf("load db failed PresenceDataStreamRepo history user:%s spend:%d ms err:%v", userID, spend, err)
@@ -198,7 +197,7 @@ func (tl *PresenceDataStreamRepo) loadHistory(ctx context.Context, userID string
 			}
 
 			for idx := range streams {
-				tl.AddPresenceDataStream(ctx, &streams[idx], offsets[idx], false)
+				tl.AddPresenceDataStream(&streams[idx], offsets[idx], false)
 				if offsets[idx] > maxPos {
 					maxPos = offsets[idx]
 				}
@@ -238,11 +237,9 @@ func (tl *PresenceDataStreamRepo) LoadOnlinePresence() {
 	offset := 0
 	exists := true
 
-	span, ctx := common.StartSobSomSpan(context.Background(), "PresenceDataStreamRepo.LoadOnlinePresence")
-	defer span.Finish()
 	for exists {
 		exists = false
-		streams, offsets, err := tl.persist.GetHistoryPresenceDataStream(ctx, limit, offset)
+		streams, offsets, err := tl.persist.GetHistoryPresenceDataStream(context.TODO(), limit, offset)
 		if err != nil {
 			log.Panicf("PresenceDataStreamRepo load history err: %v", err)
 			return
@@ -264,7 +261,7 @@ func (tl *PresenceDataStreamRepo) LoadOnlinePresence() {
 
 			value := gjson.Get(string(dataStream.Content), "content.presence")
 			if value.String() != "offline" {
-				tl.onlineRepo.Pet(ctx, dataStream.UserID, "virtual-restore", -1, 0)
+				tl.onlineRepo.Pet(dataStream.UserID, "virtual-restore", -1, 0)
 				stream := new(types.PresenceStream)
 				*stream = dataStream
 				presenceDataStream := new(feedstypes.PresenceDataStream)

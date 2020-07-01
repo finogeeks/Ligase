@@ -25,9 +25,9 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -44,6 +44,26 @@ func SaveAccountData(
 	content []byte,
 	cache service.Cache,
 ) (int, core.Coder) {
+	// if req.Method != http.MethodPut {
+	// 	return util.JSONResponse{
+	// 		Code: http.StatusMethodNotAllowed,
+	// 		JSON: jsonerror.NotFound("Bad method"),
+	// 	}
+	// }
+
+	// if userID != device.UserID {
+	// 	return util.JSONResponse{
+	// 		Code: http.StatusForbidden,
+	// 		JSON: jsonerror.Forbidden("userID does not match the current user"),
+	// 	}
+	// }
+
+	// defer req.Body.Close() // nolint: errcheck
+
+	// body, err := ioutil.ReadAll(req.Body)
+	// if err != nil {
+	// 	return httputil.LogThenError(req, err)
+	// }
 	body := content
 
 	log.Infof("SaveAccountData user %s device_id %s room_id %s data_type %s data %", userID, deviceID, roomID, dataType, string(body))
@@ -67,17 +87,12 @@ func SaveAccountData(
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
-	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputClientData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputClientData.Name,
-		cfg.Kafka.Producer.OutputClientData.Underlying)
 	if err := common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(userID),
+			Obj:  data,
 		}); err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}

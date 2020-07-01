@@ -17,15 +17,15 @@ package model
 import (
 	"context"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	types "github.com/finogeeks/ligase/model/publicroomstypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type PublicRoomAPIDatabase interface {
 	//NewDatabase(driver, createAddr, address, topic string, useAsync bool) (interface{}, error)
 	SetIDGenerator(*uid.UidGenerator)
-	WriteDBEvent(ctx context.Context, update *dbtypes.DBEvent) error
+	WriteDBEvent(update *dbtypes.DBEvent) error
 
 	UpdateRoomFromEvent(
 		ctx context.Context, event gomatrixserverlib.ClientEvent,

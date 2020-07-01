@@ -17,11 +17,10 @@ package repos
 import (
 	"context"
 	"fmt"
-	"sync"
-
-	"github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+	"sync"
 )
 
 type EventReadStreamRepo struct {
@@ -51,7 +50,7 @@ func (tl *EventReadStreamRepo) AddUserReceiptOffset(userID, roomID string, recei
 	tl.userReceiptOffset.Store(key, receiptOffset)
 }
 
-func (tl *EventReadStreamRepo) GetUserLastOffset(ctx context.Context, userID, roomID string) int64 {
+func (tl *EventReadStreamRepo) GetUserLastOffset(userID, roomID string) int64 {
 	key := fmt.Sprintf("%s:%s", userID, roomID)
 
 	if lastOffset, ok := tl.userReceiptOffset.Load(key); ok {
@@ -60,7 +59,7 @@ func (tl *EventReadStreamRepo) GetUserLastOffset(ctx context.Context, userID, ro
 	} else {
 		tl.queryHitCounter.WithLabelValues("db", "EventReadStreamRepo", "GetUserLastOffset").Add(1)
 
-		offset, _, err := tl.persist.GetUserHistoryReceiptData(ctx, roomID, userID)
+		offset, _, err := tl.persist.GetUserHistoryReceiptData(context.TODO(), roomID, userID)
 		if err != nil {
 			log.Errorf("EventReadStreamRepo GetUserLastOffset userID %s roomID %s err: %v", userID, roomID, err)
 		} else {

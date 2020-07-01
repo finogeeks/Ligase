@@ -129,7 +129,7 @@ func (eb *EventBuilder) Build(eventNID int64, now time.Time, origin ServerName) 
 	result.fields.Depth = eb.Depth
 	result.fields.DomainOffset = eb.DomainOffset
 	result.fields.Unsigned = eb.Unsigned
-	result.fields.OriginServerTS = AsTimestamp(now)
+	result.fields.OriginServerTS = 0 //AsTimestamp(now)
 	result.fields.Origin = origin
 	result.fields.RedactsSender = eb.RedactsSender
 
@@ -513,6 +513,10 @@ func (e *Event) SetDepth(depth int64) {
 
 func (e *Event) SetDomainOffset(offset int64) {
 	e.fields.DomainOffset = offset
+}
+
+func (e *Event) SetOriginServerTS(ts Timestamp) {
+	e.fields.OriginServerTS = ts
 }
 
 // UnmarshalJSON implements json.Unmarshaller assuming the Event is from an untrusted source.

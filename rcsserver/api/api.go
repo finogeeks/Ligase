@@ -15,16 +15,15 @@
 package api
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -55,11 +54,11 @@ func (ReqGetFriendships) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqGetFriendships) NewResponse(code int) core.Coder {
 	return new(external.GetFriendshipsResponse)
 }
-func (ReqGetFriendships) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetFriendships) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetFriendshipsRequest)
 	userID := device.UserID
-	resp, err := c.getFriendships(ctx, req, userID)
+	resp, err := c.getFriendships(req, userID)
 	if err != nil {
 		log.Errorf("Failed to get friendships: %v\n", err)
 		return http.StatusInternalServerError, resp
@@ -91,10 +90,10 @@ func (ReqGetRoomID) FillRequest(coder core.Coder, req *http.Request, vars map[st
 func (ReqGetRoomID) NewResponse(code int) core.Coder {
 	return new(external.GetFriendshipResponse)
 }
-func (ReqGetRoomID) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetRoomID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetFriendshipRequest)
-	resp, err := c.getFriendship(ctx, req)
+	resp, err := c.getFriendship(req)
 	if err != nil {
 		log.Errorf("Failed to get friendship: %v\n", err)
 		return http.StatusInternalServerError, resp

@@ -28,11 +28,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -41,9 +41,8 @@ func init() {
 }
 
 type PushDBEVConsumer struct {
-	db model.PushAPIDatabase
-	//msgChan     []chan *dbtypes.DBEvent
-	msgChan     []chan common.ContextMsg
+	db          model.PushAPIDatabase
+	msgChan     []chan *dbtypes.DBEvent
 	monState    []*DBMonItem
 	path        string
 	fileName    string
@@ -54,30 +53,28 @@ type PushDBEVConsumer struct {
 	cfg         *config.Dendrite
 }
 
-func (s *PushDBEVConsumer) startWorker(msgChan chan common.ContextMsg) error {
+func (s *PushDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) error {
 	var res error
-	for msg := range msgChan {
-		ctx := msg.Ctx
-		output := msg.Msg.(*dbtypes.DBEvent)
+	for output := range msgChan {
 		start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
 		data := output.PushDBEvents
 		switch key {
 		case dbtypes.PusherDeleteKey:
-			res = s.onPusherDelete(ctx, data.PusherDelete)
+			res = s.onPusherDelete(context.TODO(), data.PusherDelete)
 		case dbtypes.PusherDeleteByKeyKey:
-			res = s.onPusherDeleteByKey(ctx, data.PusherDeleteByKey)
+			res = s.onPusherDeleteByKey(context.TODO(), data.PusherDeleteByKey)
 		case dbtypes.PusherDeleteByKeyOnlyKey:
-			res = s.onPusherDeleteByKeyOnly(ctx, data.PusherDeleteByKeyOnly)
+			res = s.onPusherDeleteByKeyOnly(context.TODO(), data.PusherDeleteByKeyOnly)
 		case dbtypes.PusherInsertKey:
-			res = s.onPusherInsert(ctx, data.PusherInsert)
+			res = s.onPusherInsert(context.TODO(), data.PusherInsert)
 		case dbtypes.PushRuleUpsertKey:
-			res = s.onPushRuleInsert(ctx, data.PushRuleInert)
+			res = s.onPushRuleInsert(context.TODO(), data.PushRuleInert)
 		case dbtypes.PushRuleDeleteKey:
-			res = s.onPushRuleDelete(ctx, data.PushRuleDelete)
+			res = s.onPushRuleDelete(context.TODO(), data.PushRuleDelete)
 		case dbtypes.PushRuleEnableUpsetKey:
-			res = s.onPushRuleEnableInsert(ctx, data.PushRuleEnableInsert)
+			res = s.onPushRuleEnableInsert(context.TODO(), data.PushRuleEnableInsert)
 		default:
 			res = nil
 			log.Infow("push db event: ignoring unknown output type", log.KeysAndValues{"key", key})
@@ -127,9 +124,9 @@ func NewPushDBEVConsumer() ConsumerInterface {
 	}
 
 	//init worker
-	s.msgChan = make([]chan common.ContextMsg, 3)
+	s.msgChan = make([]chan *dbtypes.DBEvent, 3)
 	for i := uint64(0); i < 3; i++ {
-		s.msgChan[i] = make(chan common.ContextMsg, 4096)
+		s.msgChan[i] = make(chan *dbtypes.DBEvent, 4096)
 	}
 
 	s.mutex = new(sync.Mutex)
@@ -164,16 +161,12 @@ func (s *PushDBEVConsumer) startRecover() {
 		select {
 		case <-s.ticker.C:
 			s.ticker.Reset(time.Second * 600) //10分钟一次
-			func() {
-				span, ctx := common.StartSobSomSpan(context.Background(), "PushDBEVConsumer.startRecover")
-				defer span.Finish()
-				s.recover(ctx)
-			}()
+			s.recover()
 		}
 	}
 }
 
-func (s *PushDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent) error {
+func (s *PushDBEVConsumer) OnMessage(dbEv *dbtypes.DBEvent) error {
 	chanID := 0
 	switch dbEv.Key {
 	case dbtypes.PusherDeleteKey, dbtypes.PusherDeleteByKeyKey, dbtypes.PusherDeleteByKeyOnlyKey, dbtypes.PusherInsertKey:
@@ -187,7 +180,7 @@ func (s *PushDBEVConsumer) OnMessage(ctx context.Context, dbEv *dbtypes.DBEvent)
 		return nil
 	}
 
-	s.msgChan[chanID] <- common.ContextMsg{Ctx: ctx, Msg: dbEv}
+	s.msgChan[chanID] <- dbEv
 	return nil
 }
 
@@ -288,7 +281,7 @@ func (s *PushDBEVConsumer) renameRecoverFile() bool {
 	return false
 }
 
-func (s *PushDBEVConsumer) recover(ctx context.Context) {
+func (s *PushDBEVConsumer) recover() {
 	log.Infof("PushDBEVConsumer start recover")
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
@@ -316,7 +309,7 @@ func (s *PushDBEVConsumer) recover(ctx context.Context) {
 				continue
 			}
 
-			s.OnMessage(ctx, &dbEv)
+			s.OnMessage(&dbEv)
 		}
 
 		f.Close()

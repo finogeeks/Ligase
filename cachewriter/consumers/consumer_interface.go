@@ -15,10 +15,9 @@
 package consumers
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/dbtypes"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/gomodule/redigo/redis"
 	"sync"
 )
@@ -27,7 +26,7 @@ var regMu sync.RWMutex
 var newHandler = make(map[int64]func() ConsumerInterface)
 
 type ConsumerInterface interface {
-	OnMessage(context.Context, *dbtypes.DBEvent) error
+	OnMessage(*dbtypes.DBEvent) error
 	Prepare(*config.Dendrite)
 	SetPool(PoolProviderInterface)
 	Start()

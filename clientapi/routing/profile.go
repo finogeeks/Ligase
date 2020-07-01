@@ -29,15 +29,15 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 func GetWhoAmi(
@@ -51,6 +51,7 @@ func getFedProfile(
 	userID string,
 	cfg config.Dendrite,
 	federation *fed.Federation,
+	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
 	domain string,
 ) (int, *external.GetProfileResponse) {
@@ -73,39 +74,19 @@ func getFedProfile(
 	}
 }
 
-func checkDomain(ctx context.Context, cfg config.Dendrite, domain string, cache service.Cache, db model.RoomServerDatabase) bool {
+func checkDomain(cfg config.Dendrite, fedDomians *common.FedDomains, domain string) bool {
+	// local check
 	if common.CheckValidDomain(domain, cfg.Matrix.ServerName) {
 		return true
 	}
-	settingKey := "im.federation.domains"
-	domains := []common.FedDomainInfo{}
-	str, err := cache.GetSettingRaw(settingKey)
-	if err != nil {
-		log.Warnf("get settingKey:%s from cache err:%v", settingKey, err)
-		str, err = db.SelectSettingKey(ctx, settingKey)
-		if err != nil {
-			log.Warnf("get settingKey:%s from db err:%v", settingKey, err)
-			return false
-		}
-		err = cache.SetSetting(settingKey, str)
-		if err != nil {
-			log.Warnf("get settingKey:%s set val from db to cache err:%v", settingKey, err)
-		}
-	}
-	if str == "" {
+
+	// fed check
+	fds := fedDomians.GetAllFedDomains()
+	if len(fds) == 0 || !common.CheckValidDomain(domain, fds) {
+		log.Errorf("get profile error, invalid domain: %s", domain)
 		return false
 	}
-	err = json.UnmarshalFromString(str, &domains)
-	if err != nil {
-		log.Warnf("get settingKey:%s UnmarshalFromString err:%v", settingKey, err)
-		return false
-	}
-	for _, d := range domains {
-		if d.Domain == domain {
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 // GetProfile implements GET /profile/{userID}
@@ -116,22 +97,22 @@ func GetProfile(
 	federation *fed.Federation,
 	accountDB model.AccountsDatabase,
 	cache service.Cache,
+	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
-	roomDB model.RoomServerDatabase,
 ) (int, core.Coder) {
 	userID := req.UserID
 	domain, _ := utils.DomainFromID(userID)
-	if checkDomain(ctx, cfg, domain, cache, roomDB) == false {
+	if checkDomain(cfg, fedDomians, domain) == false {
 		return http.StatusNotFound, &external.GetProfileResponse{
 			AvatarURL:   cfg.DefaultAvatar,
 			DisplayName: "",
 		}
 	}
 
-	displayName, avatarURL, err := complexCache.GetProfileByUserID(ctx, userID)
+	displayName, avatarURL, err := complexCache.GetProfileByUserID(userID)
 	if err != nil {
 		log.Warnf("getProfileComplex from local domain: %s, error: %v", domain, err)
-		return getFedProfile(ctx, userID, cfg, federation, complexCache, domain)
+		return getFedProfile(ctx, userID, cfg, federation, fedDomians, complexCache, domain)
 	}
 
 	return http.StatusOK, &external.GetProfileResponse{
@@ -148,20 +129,20 @@ func GetAvatarURL(
 	accountDB model.AccountsDatabase,
 	cache service.Cache,
 	federation *fed.Federation,
+	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
-	roomDB model.RoomServerDatabase,
 ) (int, core.Coder) {
 	domain, _ := utils.DomainFromID(userID)
-	if checkDomain(ctx, cfg, domain, cache, roomDB) == false {
+	if checkDomain(cfg, fedDomians, domain) == false {
 		return http.StatusNotFound, &external.GetAvatarURLResponse{
 			AvatarURL: cfg.DefaultAvatar,
 		}
 	}
 
-	avatarURL, err := complexCache.GetAvatarURL(ctx, userID)
+	avatarURL, err := complexCache.GetAvatarURL(userID)
 	if err != nil {
 		log.Warnf("getAvatarComplex from local domain: %s, error: %v", domain, err)
-		code, resp := getFedProfile(ctx, userID, cfg, federation, complexCache, domain)
+		code, resp := getFedProfile(ctx, userID, cfg, federation, fedDomians, complexCache, domain)
 		return code, &external.GetAvatarURLResponse{
 			AvatarURL: resp.AvatarURL,
 		}
@@ -188,7 +169,7 @@ func SetAvatarURL(
 
 	log.Infof("SetAvatarURL %s avatar: %s", userID, r.AvatarURL)
 
-	oldDisplayName, oldAvatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+	oldDisplayName, oldAvatarURL, _ := complexCache.GetProfileByUserID(userID)
 	if oldAvatarURL == r.AvatarURL {
 		return http.StatusOK, nil
 	}
@@ -234,18 +215,12 @@ func SetAvatarURL(
 	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
-
-	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputProfileData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputProfileData.Name,
-		cfg.Kafka.Producer.OutputProfileData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(userID),
+			Obj:  data,
 		})
 
 	if cfg.SendMemberEvent {
@@ -262,7 +237,7 @@ func SetAvatarURL(
 				DisplayName: oldDisplayName,
 				AvatarURL:   r.AvatarURL,
 			}
-			go BuildMembershipAndFireEvents(ctx, response.Rooms, newProfile, userID, cfg, rsRpcCli, idg)
+			go BuildMembershipAndFireEvents(response.Rooms, newProfile, userID, cfg, rsRpcCli, idg)
 		}
 	}
 
@@ -274,22 +249,21 @@ func GetDisplayName(
 	ctx context.Context, userID string, cfg config.Dendrite,
 	accountDB model.AccountsDatabase,
 	cache service.Cache, federation *fed.Federation,
-	complexCache *common.ComplexCache,
-	roomDB model.RoomServerDatabase,
+	fedDomians *common.FedDomains, complexCache *common.ComplexCache,
 ) (int, core.Coder) {
 	domain, _ := utils.DomainFromID(userID)
-	if checkDomain(ctx, cfg, domain, cache, roomDB) == false {
+	if checkDomain(cfg, fedDomians, domain) == false {
 		return http.StatusNotFound, &external.GetDisplayNameResponse{
 			DisplayName: "",
 		}
 	}
 
 	// local check
-	displayName, err := complexCache.GetDisplayName(ctx, userID)
+	displayName, err := complexCache.GetDisplayName(userID)
 	if err != nil {
 		log.Warnf("getDisplayNameComplex from local domain: %s, error: %v", domain, err)
 
-		code, resp := getFedProfile(ctx, userID, cfg, federation, complexCache, domain)
+		code, resp := getFedProfile(ctx, userID, cfg, federation, fedDomians, complexCache, domain)
 		return code, &external.GetDisplayNameResponse{
 			DisplayName: resp.DisplayName,
 		}
@@ -316,7 +290,7 @@ func SetDisplayName(
 
 	log.Infof("SetDisplayName %s displayName: %s", userID, r.DisplayName)
 
-	oldDisplayName, oldAvatarURL, _ := complexCache.GetProfileByUserID(ctx, userID)
+	oldDisplayName, oldAvatarURL, _ := complexCache.GetProfileByUserID(userID)
 	if oldDisplayName == r.DisplayName {
 		return http.StatusOK, nil
 	}
@@ -364,18 +338,12 @@ func SetDisplayName(
 	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
-
-	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputProfileData.Name)
-	defer span.Finish()
-	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputProfileData.Name,
-		cfg.Kafka.Producer.OutputProfileData.Underlying)
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
 		&core.TransportPubMsg{
-			Keys:    []byte(userID),
-			Obj:     data,
-			Headers: common.InjectSpanToHeaderForSending(span),
+			Keys: []byte(userID),
+			Obj:  data,
 		})
 
 	if cfg.SendMemberEvent {
@@ -392,7 +360,7 @@ func SetDisplayName(
 				DisplayName: r.DisplayName,
 				AvatarURL:   oldAvatarURL,
 			}
-			go BuildMembershipAndFireEvents(ctx, response.Rooms, newProfile, userID, cfg, rsRpcCli, idg)
+			go BuildMembershipAndFireEvents(response.Rooms, newProfile, userID, cfg, rsRpcCli, idg)
 		}
 	}
 
@@ -400,7 +368,6 @@ func SetDisplayName(
 }
 
 func BuildMembershipAndFireEvents(
-	ctx context.Context,
 	rooms []string,
 	newProfile authtypes.Profile, userID string, cfg *config.Dendrite,
 	rpcCli roomserverapi.RoomserverRPCAPI,
@@ -429,7 +396,7 @@ func BuildMembershipAndFireEvents(
 		var queryRes roomserverapi.QueryRoomStateResponse
 		var queryReq roomserverapi.QueryRoomStateRequest
 		queryReq.RoomID = roomID
-		err := rpcCli.QueryRoomState(ctx, &queryReq, &queryRes)
+		err := rpcCli.QueryRoomState(context.TODO(), &queryReq, &queryRes)
 		if err != nil || queryRes.RoomExists == false {
 			log.Errorf("BuildMembershipAndFireEvents fail on QueryRoomState for roomid:%s user:%s with err:%v", roomID, userID, err)
 			continue
@@ -459,7 +426,7 @@ func BuildMembershipAndFireEvents(
 					SvrName: domain,
 				},
 			}
-			_, err = rpcCli.InputRoomEvents(ctx, &rawEvent)
+			_, err = rpcCli.InputRoomEvents(context.Background(), &rawEvent)
 			if err != nil {
 				log.Errorf("BuildMembershipAndFireEvents fail on PostEvent for roomid:%s user:%s with err:%v", roomID, userID, err)
 				continue
@@ -478,8 +445,8 @@ func GetProfiles(
 	federation *fed.Federation,
 	accountDB model.AccountsDatabase,
 	cache service.Cache,
+	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
-	roomDB model.RoomServerDatabase,
 ) (int, core.Coder) {
 	userIDs := req.UserIDs
 
@@ -496,7 +463,7 @@ func GetProfiles(
 	reqItem := external.GetProfileRequest{}
 	for _, user := range userIDs {
 		reqItem.UserID = user
-		_, coder := GetProfile(ctx, &reqItem, cfg, federation, accountDB, cache, complexCache, roomDB)
+		_, coder := GetProfile(ctx, &reqItem, cfg, federation, accountDB, cache, fedDomians, complexCache)
 
 		respItem := coder.(*external.GetProfileResponse)
 		profileItem.UserID = user

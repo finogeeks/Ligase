@@ -32,13 +32,6 @@ func StartSyncServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputProfileSyncServer, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdateSyncServer, base.Cfg.MultiInstance.Instance)
 
-	for _, v := range dbUpdateProducerName {
-		dbUpdates := kafka.Producer.DBUpdates
-		dbUpdates.Topic = dbUpdates.Topic + "_" + v
-		dbUpdates.Name = dbUpdates.Name + "_" + v
-		addProducer(transportMultiplexer, dbUpdates)
-	}
-
 	transportMultiplexer.PreStart()
 	serverConfDB := base.CreateServerConfDB()
 	cache := base.PrepareCache()
@@ -57,14 +50,6 @@ func StartFixSyncDBServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
-
-	for _, v := range dbUpdateProducerName {
-		dbUpdates := kafka.Producer.DBUpdates
-		dbUpdates.Topic = dbUpdates.Topic + "_" + v
-		dbUpdates.Name = dbUpdates.Name + "_" + v
-		addProducer(transportMultiplexer, dbUpdates)
-	}
-
 	transportMultiplexer.PreStart()
 	transportMultiplexer.Start()
 

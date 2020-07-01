@@ -15,11 +15,10 @@
 package consumers
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/filter"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/json-iterator/go"
 	"github.com/nats-io/go-nats"
 )
@@ -30,15 +29,14 @@ type FilterTokenCB struct {
 	rpcClient   *common.RpcClient
 	tokenFilter *filter.SimpleFilter
 	chanSize    uint32
-	//msgChan     []chan *types.FilterTokenContent
-	msgChan []chan common.ContextMsg
+	msgChan     []chan *types.FilterTokenContent
 }
 
 func (f *FilterTokenCB) GetTopic() string {
 	return types.FilterTokenTopicDef
 }
 
-func (f *FilterTokenCB) GetCB() common.MsgHandlerWithContext {
+func (f *FilterTokenCB) GetCB() nats.MsgHandler {
 	return f.cb
 }
 
@@ -58,36 +56,35 @@ func NewFilterTokenConsumer(
 	return f
 }
 
-func (f *FilterTokenCB) cb(ctx context.Context, msg *nats.Msg) {
+func (f *FilterTokenCB) cb(msg *nats.Msg) {
 	var result types.FilterTokenContent
 	if err := json.Unmarshal(msg.Data, &result); err != nil {
 		log.Errorf("rpc filter token cb error %v", err)
 		return
 	}
 	idx := common.CalcStringHashCode(result.UserID) % f.chanSize
-	f.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
+	f.msgChan[idx] <- &result
 }
 
-func (f *FilterTokenCB) startWorker(msgChan chan common.ContextMsg) {
-	for msg := range msgChan {
-		data := msg.Msg.(*types.FilterTokenContent)
-		f.process(msg.Ctx, data)
+func (f *FilterTokenCB) startWorker(msgChan chan *types.FilterTokenContent) {
+	for data := range msgChan {
+		f.process(data)
 	}
 }
 
 func (f *FilterTokenCB) Start() error {
 	log.Infof("FilterTokenConsumer start")
-	f.msgChan = make([]chan common.ContextMsg, f.chanSize)
+	f.msgChan = make([]chan *types.FilterTokenContent, f.chanSize)
 	for i := uint32(0); i < f.chanSize; i++ {
-		f.msgChan[i] = make(chan common.ContextMsg, 512)
+		f.msgChan[i] = make(chan *types.FilterTokenContent, 512)
 		go f.startWorker(f.msgChan[i])
 	}
 
-	f.rpcClient.ReplyWithContext(f.GetTopic(), f.cb)
+	f.rpcClient.Reply(f.GetTopic(), f.cb)
 	return nil
 }
 
-func (f *FilterTokenCB) process(ctx context.Context, data *types.FilterTokenContent) {
+func (f *FilterTokenCB) process(data *types.FilterTokenContent) {
 	switch data.FilterType {
 	case types.FILTERTOKENADD:
 		f.tokenFilter.Insert(data.UserID, data.DeviceID)
