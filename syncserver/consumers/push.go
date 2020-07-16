@@ -20,15 +20,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/pushapi/routing"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/tidwall/gjson"
 )
 
@@ -42,6 +43,9 @@ type PushConsumer struct {
 	roomHistory  *repos.RoomHistoryTimeLineRepo
 	pubTopic     string
 	complexCache *common.ComplexCache
+	msgChan      []chan *gomatrixserverlib.ClientEvent
+	chanSize     uint32
+	slotSize     uint32
 }
 
 func NewPushConsumer(
@@ -53,10 +57,31 @@ func NewPushConsumer(
 		cache:        cache,
 		rpcClient:    client,
 		complexCache: complexCache,
+		chanSize:     20480,
+		slotSize:     64,
 	}
 	s.pubTopic = push.PushTopicDef
 
 	return s
+}
+
+func (s *PushConsumer) Start() {
+	s.msgChan = make([]chan *gomatrixserverlib.ClientEvent, s.slotSize)
+	for i := uint32(0); i < s.slotSize; i++ {
+		s.msgChan[i] = make(chan *gomatrixserverlib.ClientEvent, s.chanSize)
+		go s.startWorker(s.msgChan[i])
+	}
+}
+
+func (s *PushConsumer) startWorker(msgChan chan *gomatrixserverlib.ClientEvent) {
+	for data := range msgChan {
+		s.OnEvent(data, data.EventOffset)
+	}
+}
+
+func (s *PushConsumer) DispthEvent(ev *gomatrixserverlib.ClientEvent) {
+	idx := common.CalcStringHashCode(ev.RoomID) % s.slotSize
+	s.msgChan[idx] <- ev
 }
 
 func (s *PushConsumer) SetRoomHistory(roomHistory *repos.RoomHistoryTimeLineRepo) *PushConsumer {
@@ -85,6 +110,11 @@ func (s *PushConsumer) SetEventRepo(eventRepo *repos.EventReadStreamRepo) *PushC
 }
 
 func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, input *gomatrixserverlib.ClientEvent) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("PushConsumer onevent roomID:%s eventID:%s eventOffset:%d spend:%d", input.RoomID, input.EventID, input.EventOffset, spend)
+	}(bs, input)
 	eventJson, err := json.Marshal(&input)
 	if err != nil {
 		log.Errorf("PushConsumer processEvent marshal error %d, message %s", err, input.EventID)

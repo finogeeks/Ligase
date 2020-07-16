@@ -24,16 +24,16 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 )
 
 type InputResult struct {
@@ -99,7 +99,9 @@ func (r *EventsProcessor) handleInput(input *InputContext) {
 
 func (r *EventsProcessor) dispthInput(ctx context.Context, input *roomserverapi.RawEvent, result chan InputResult) {
 	hash := common.CalcStringHashCode(input.RoomID)
-	r.inputChan[hash%r.slot] <- &InputContext{
+	slot := hash % r.slot
+	log.Infof("dispth input roomID:%s slot:%d", input.RoomID, slot)
+	r.inputChan[slot] <- &InputContext{
 		ctx:    ctx,
 		input:  input,
 		result: result,
@@ -107,8 +109,13 @@ func (r *EventsProcessor) dispthInput(ctx context.Context, input *roomserverapi.
 }
 
 func (r *EventsProcessor) WriteOutputEvents(roomID string, updates []roomserverapi.OutputEvent) error {
+	updateEvents := []string{}
+	for _, event := range updates {
+		updateEvents = append(updateEvents, event.NewRoomEvent.Event.EventID)
+	}
+	log.Infof("before WriteOutputEvents roomID:%s updates:%+v", roomID, updateEvents)
+	bs := time.Now().UnixNano() / 1000000
 	roomIDData := []byte(roomID)
-
 	for i := range updates {
 		err := common.GetTransportMultiplexer().SendAndRecvWithRetry(
 			r.Cfg.Kafka.Producer.OutputRoomEvent.Underlying,
@@ -119,10 +126,12 @@ func (r *EventsProcessor) WriteOutputEvents(roomID string, updates []roomservera
 				Inst: r.Cfg.Kafka.Producer.OutputRoomEvent.Inst,
 			})
 		if err != nil {
+			log.Errorf("WriteOutputEvents roomID:%s event:%s err:%v", roomID, updates[i].NewRoomEvent.Event.EventID, err)
 			return err
 		}
 	}
-
+	spend := time.Now().UnixNano()/1000000 - bs
+	log.Infof("after WriteOutputEvents spend:%d roomID:%s updates:%+v", spend, roomID, updateEvents)
 	return nil
 }
 
@@ -212,6 +221,11 @@ func (r *EventsProcessor) processRoomEvent(
 	txnID *roomservertypes.TransactionID,
 	svrName string,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("processRoomEvent roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	if kind == roomserverapi.KindNew {
 		var isDirect bool
 		var err error
@@ -271,6 +285,11 @@ func (r *EventsProcessor) processDirectRoomCreateOrMemberEvent(
 	ctx context.Context,
 	event gomatrixserverlib.Event,
 ) ([]gomatrixserverlib.Event, bool, error) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("processDirectRoomCreateOrMemberEvent roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	inCont := types.RCSInputEventContent{
 		Event: event,
 	}
@@ -298,6 +317,11 @@ func (r *EventsProcessor) processDirectRoomCreateOrMemberEvent(
 }
 
 func (r *EventsProcessor) processFedInvite(ctx context.Context, event gomatrixserverlib.Event) (gomatrixserverlib.Event, error) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("processFedInvite roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	if event.Type() != gomatrixserverlib.MRoomMember || event.StateKey() == nil {
 		return event, nil
 	}
@@ -367,6 +391,11 @@ func (r *EventsProcessor) processNew(
 	svrName string,
 	trustedJSON bool,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("processNew roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	log.Debugf("------------------------processNew start")
 	begin := time.Now()
 	last := begin
@@ -445,6 +474,11 @@ func (r *EventsProcessor) processBackfill(
 	txnID *roomservertypes.TransactionID,
 	svrName string,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("processBackfill roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	log.Debugf("------------------------processRoomEvent start")
 	eventNID := event.EventNID()
 
@@ -489,6 +523,12 @@ func (r *EventsProcessor) postProcessNew(
 	transactionID *roomservertypes.TransactionID,
 	curSnap int64,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("postProcessNew roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, *event)
+
 	last := time.Now()
 
 	updates, err := r.updateMemberShip(ctx, roomNID, eventNID, *event, pre)

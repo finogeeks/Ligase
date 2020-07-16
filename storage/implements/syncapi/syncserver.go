@@ -26,13 +26,13 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	jsoniter "github.com/json-iterator/go"
 	_ "github.com/lib/pq"
 )
@@ -314,6 +314,13 @@ func (d *Database) GetInviteRidsForUser(
 	userID string,
 ) ([]string, []int64, error) {
 	return d.roomstate.selectRoomIDsWithMembership(ctx, userID, []string{"invite"})
+}
+
+func (d *Database) GetLeaveRidsForUser(
+	ctx context.Context,
+	userID string,
+) ([]string, []int64, error) {
+	return d.roomstate.selectRoomIDsWithMembership(ctx, userID, []string{"leave", "ban"})
 }
 
 // streamEventsToEvents converts streamEvent to Event. If device is non-nil and

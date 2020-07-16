@@ -18,11 +18,11 @@ import (
 	"context"
 
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type SyncAPIDatabase interface {
@@ -96,6 +96,10 @@ type SyncAPIDatabase interface {
 		roomIDs []string,
 	) (friends []string, err error)
 	GetInviteRidsForUser(
+		ctx context.Context,
+		userID string,
+	) (rids []string, offsets []int64, err error)
+	GetLeaveRidsForUser(
 		ctx context.Context,
 		userID string,
 	) (rids []string, offsets []int64, err error)

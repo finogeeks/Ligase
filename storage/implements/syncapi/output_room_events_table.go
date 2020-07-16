@@ -23,11 +23,11 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/encryption"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -62,14 +62,9 @@ CREATE TABLE IF NOT EXISTS syncapi_output_room_events (
     depth BIGINT NOT NULL default -1,
     CONSTRAINT syncapi_output_room_events_unique UNIQUE (event_id, room_id)
 );
--- for event selection
---CREATE UNIQUE INDEX IF NOT EXISTS syncapi_event_id_idx ON syncapi_output_room_events(event_id);
-CREATE UNIQUE INDEX IF NOT EXISTS syncapi_event_id_uni_idx ON syncapi_output_room_events(id);
-CREATE INDEX IF NOT EXISTS syncapi_output_event_id_idx ON syncapi_output_room_events(event_id);
-CREATE INDEX  IF NOT EXISTS syncapi_user_history  ON syncapi_output_room_events (type,room_id);
-CREATE INDEX IF NOT EXISTS syncapi_output_room_visibility  ON syncapi_output_room_events (type,room_id,device_id) WHERE device_id IS NOT NULL;
-CREATE INDEX  IF NOT EXISTS syncapi_user_recent  ON syncapi_output_room_events (room_id);
-CREATE INDEX  IF NOT EXISTS syncapi_load_room_history ON syncapi_output_room_events (id,room_id);
+CREATE INDEX IF NOT EXISTS syncapi_output_room_visibility ON syncapi_output_room_events (type,room_id,device_id);
+CREATE INDEX IF NOT EXISTS syncapi_roomid_id_desc on syncapi_output_room_events(room_id, id desc);
+CREATE INDEX IF NOT EXISTS syncapi_load_room_history ON syncapi_output_room_events (id,room_id);
 
 -- mirror table for debug, plaintext storage
 CREATE TABLE IF NOT EXISTS syncapi_output_room_events_mirror (

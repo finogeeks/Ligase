@@ -18,14 +18,14 @@
 package syncserver
 
 import (
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncserver/api"
 	"github.com/finogeeks/ligase/syncserver/consumers"
@@ -74,7 +74,7 @@ func SetupSyncServerComponent(
 
 	roomHistory.SetPersist(syncDB)
 	roomHistory.SetMonitor(qureyHitCounter)
-
+	roomHistory.SetCache(cacheIn)
 	rsCurState.SetPersist(syncDB)
 
 	rsTimeline.SetPersist(syncDB)
@@ -105,7 +105,7 @@ func SetupSyncServerComponent(
 	pushConsumer.SetEventRepo(eventReadStreamRepo)
 	pushConsumer.SetRoomCurState(rsCurState)
 	pushConsumer.SetRsTimeline(rsTimeline)
-
+	pushConsumer.Start()
 	feedServer := consumers.NewRoomEventFeedConsumer(base.Cfg, syncDB, pushConsumer, rpcClient, idg)
 	feedServer.SetRoomHistory(roomHistory)
 	feedServer.SetRsCurState(rsCurState)

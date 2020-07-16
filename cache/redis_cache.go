@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	e2e "github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -1116,4 +1116,24 @@ func (rc *RedisCache) DeleteUserInfo(userID string) error {
 	}
 
 	return conn.Flush()
+}
+
+func (rc *RedisCache) SetRoomLatestOffset(roomId string, offset int64) error {
+	conn := rc.pool().Get()
+	defer conn.Close()
+	key := fmt.Sprintf("%s:%s", "roomlatestoffset", roomId)
+	err := conn.Send("set", key, offset)
+	if err != nil {
+		return err
+	}
+	return conn.Flush()
+}
+
+func (rc *RedisCache) GetRoomLatestOffset(roomId string) (int64, error) {
+	key := fmt.Sprintf("%s:%s", "roomlatestoffset", roomId)
+	offset, err := redis.Int64(rc.SafeDo("get", key))
+	if err != nil {
+		return -1, err
+	}
+	return offset, err
 }

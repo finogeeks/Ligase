@@ -27,17 +27,17 @@ import (
 	"strings"
 	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/content/download"
 	"github.com/finogeeks/ligase/content/repos"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/mediatypes"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/gorilla/mux"
 )
 
@@ -107,7 +107,8 @@ func (p *Processor) Upload(rw http.ResponseWriter, req *http.Request, device *au
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-
+	vs := req.URL.Query()
+	isEmote := vs.Get("isemote") == "true"
 	thumbnail := "false"
 	contentType := req.Header.Get("Content-Type")
 	mediaType := contentType
@@ -120,9 +121,13 @@ func (p *Processor) Upload(rw http.ResponseWriter, req *http.Request, device *au
 	reqUrl = p.buildUrl(req, reqUrl)
 	res, err := p.httpRequest(device.UserID, req.Method, reqUrl, req)
 	if err != nil {
-		log.Errorw("upload file error 1", log.KeysAndValues{"user_id", device.UserID, "err", err})
+		log.Errorw("upload file error 1", log.KeysAndValues{"user_id", device.UserID, "err", err, "url", reqUrl})
 		rw.WriteHeader(http.StatusInternalServerError)
 		rw.Write([]byte("Internal Server Error. " + err.Error()))
+		return
+	}
+	if isEmote {
+		p.uploadEmoteResp(rw, res, device.UserID)
 		return
 	}
 	if res.StatusCode != http.StatusOK {
@@ -141,7 +146,6 @@ func (p *Processor) Upload(rw http.ResponseWriter, req *http.Request, device *au
 		rw.Write([]byte("Unknown Error. " + errInfo.Error))
 		return
 	}
-
 	var resp mediatypes.NetDiskResponse
 	data_, _ := ioutil.ReadAll(res.Body)
 	//err = json.NewDecoder(res.Body).Decode(&resp)
@@ -258,19 +262,24 @@ func (p *Processor) doDownload(
 		reqUrl = fmt.Sprintf(cfg.Media.DownloadUrl, netdiskID)
 	case "thumbnail":
 		req.ParseForm()
-		method = req.Form.Get("method")
-		width = req.Form.Get("width")
-		widthInt, _ := strconv.Atoi(width)
-		if method == "scale" {
-			if widthInt <= 100 {
-				reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "small")
-			} else if widthInt <= 300 {
-				reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "middle")
+		scaleType := req.Form.Get("type")
+		if scaleType != "" {
+			reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, scaleType)
+		} else {
+			method = req.Form.Get("method")
+			width = req.Form.Get("width")
+			widthInt, _ := strconv.Atoi(width)
+			if method == "scale" {
+				if widthInt <= 100 {
+					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "small")
+				} else if widthInt <= 300 {
+					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "middle")
+				} else {
+					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
+				}
 			} else {
 				reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
 			}
-		} else {
-			reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
 		}
 	}
 
