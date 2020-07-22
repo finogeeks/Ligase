@@ -17,17 +17,18 @@ package sync
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/gomatrix"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/authtypes"
-	"github.com/finogeeks/ligase/model/syncapitypes"
-	"github.com/finogeeks/ligase/model/types"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrix"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type offsetMarks struct {
@@ -166,6 +167,8 @@ type request struct {
 	joinRooms      []string
 	traceId        string
 	slot           uint32
+	hasNewEvent    bool
+	MaxRoomOffset  map[string]int64
 }
 
 func (req *request) checkNoWait() bool {
@@ -173,30 +176,6 @@ func (req *request) checkNoWait() bool {
 		return true
 	}
 	return false
-}
-
-func (req *request) pushReqRoom(stream *syncapitypes.UserTimeLineStream, overwriteState bool) {
-	var room *syncapitypes.SyncRoom
-	if reqRoom, ok := req.reqRooms.Load(stream.RoomID); ok {
-		room = reqRoom.(*syncapitypes.SyncRoom)
-	} else {
-		room = &syncapitypes.SyncRoom{
-			RoomID:    stream.RoomID,
-			Start:     stream.RoomOffset,
-			RoomState: stream.RoomState,
-		}
-		req.reqRooms.Store(stream.RoomID, room)
-	}
-	log.Debugf("----------push room state", room.RoomID, room.RoomState, stream.RoomState)
-	if overwriteState {
-		room.RoomState = stream.RoomState
-	}
-	if room.Start > stream.RoomOffset {
-		room.Start = stream.RoomOffset
-	}
-	if room.End < stream.RoomOffset {
-		room.End = stream.RoomOffset
-	}
 }
 
 func (sm *SyncMng) buildFilter(req *types.HttpReq, userID string) *gomatrix.Filter {
@@ -315,16 +294,22 @@ func (sm *SyncMng) buildRequest(
 	res.remoteReady = false
 	res.remoteFinished = false
 	res.traceId = req.TraceId
+	res.hasNewEvent = false
+	res.MaxRoomOffset = make(map[string]int64)
 	log.Infof("SyncMng buildRequest traceid:%s now:%d diff:%d user:%s device:%s utlRecv:%d request:%v", res.traceId, now, res.latest-now, device.UserID, device.ID, res.marks.utlRecv, res)
 	return res
+}
+
+func (sm *SyncMng) isFullSync(req *request) bool {
+	return req.isFullSync || req.marks.utlRecv == 0
 }
 
 func (sm *SyncMng) OnSyncRequest(
 	req *types.HttpReq,
 	device *authtypes.Device,
 ) (int, *syncapitypes.Response) {
-	log.Infof("SyncMng request start traceid:%s user:%s dev:%s", req.TraceId, device.UserID, device.ID)
 	start := time.Now().UnixNano() / 1000000
+	log.Infof("SyncMng request start traceid:%s user:%s dev:%s start:%d", req.TraceId, device.UserID, device.ID, start)
 	lastPos := sm.onlineRepo.GetLastPos(device.UserID, device.ID)
 	request := sm.buildRequest(req, device, start, lastPos)
 	sm.onlineRepo.Pet(device.UserID, device.ID, request.marks.utlRecv, request.timeout)
@@ -339,11 +324,11 @@ func (sm *SyncMng) OnSyncRequest(
 			res := syncapitypes.NewResponse(0)
 			res.NextBatch = request.token
 
-			if request.marks.utlRecv == 0 && request.device.IsHuman == true {
-				log.Errorf("SyncMng request not ready failed traceid:%s user:%s dev:%s latest:%d spend:%d ms errcode:%d", request.traceId, request.device.UserID, request.device.ID, request.latest, now-start, http.StatusServiceUnavailable)
+			if sm.isFullSync(request) && request.device.IsHuman == true {
+				log.Errorf("SyncMng request not ready failed traceid:%s user:%s dev:%s latest:%d spend:%d ms errcode:%d request.remoteFinished:%t request.remoteReady:%t", request.traceId, request.device.UserID, request.device.ID, request.latest, now-start, http.StatusServiceUnavailable, request.remoteFinished, request.remoteReady)
 				return http.StatusServiceUnavailable, res
 			} else {
-				log.Infof("SyncMng request not ready succ traceid:%s user:%s dev:%s latest:%d spend:%d ms", request.traceId, request.device.UserID, request.device.ID, request.latest, now-start)
+				log.Infof("SyncMng request not ready succ traceid:%s user:%s dev:%s latest:%d spend:%d ms request.remoteFinished:%t request.remoteReady:%t", request.traceId, request.device.UserID, request.device.ID, request.latest, now-start, request.remoteFinished, request.remoteReady)
 				return http.StatusOK, res
 			}
 		}
@@ -358,9 +343,13 @@ func (sm *SyncMng) OnSyncRequest(
 			log.Infof("SyncMng request ready timeout, break wait traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, request.latest)
 			break
 		}
-		hasEventUpdate, lastEvent := sm.userTimeLine.ExistsUserEventUpdate(request.marks.utlRecv, device.UserID)
+		hasEventUpdate, curUtl := sm.userTimeLine.ExistsUserEventUpdate(request.marks.utlRecv, device.UserID, device.ID, req.TraceId)
+		if curUtl != request.marks.utlRecv {
+			log.Warnf("SyncMng ExistsUserEventUpdate update oldUtl:%d to newUtl:%d", request.marks.utlRecv, curUtl)
+			request.marks.utlRecv = curUtl
+		}
 		if hasEventUpdate && now-start > 500 {
-			log.Infof("SyncMng break has user event traceid:%s user:%s dev:%s now:%d latest:%d utlRecv:%d lastEvent:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.utlRecv, lastEvent)
+			log.Infof("SyncMng break has user event traceid:%s user:%s dev:%s now:%d latest:%d utlRecv:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.utlRecv)
 			break
 		}
 
@@ -405,7 +394,7 @@ func (sm *SyncMng) OnSyncRequest(
 		res = syncapitypes.NewResponse(0)
 		res.NextBatch = request.token
 		now := time.Now().UnixNano() / 1000000
-		if request.marks.utlRecv == 0 && request.device.IsHuman == true {
+		if sm.isFullSync(request) && request.device.IsHuman == true {
 			log.Errorf("SyncMng OnSyncRequest still not ready failed traceid:%s user:%s dev:%s last:%d spend:%d ms errcode:%d", request.traceId, request.device.UserID, device.ID, lastPos, now-start, http.StatusServiceUnavailable)
 			return http.StatusServiceUnavailable, res
 		} else {
@@ -414,16 +403,19 @@ func (sm *SyncMng) OnSyncRequest(
 		}
 	} else {
 		res = syncapitypes.NewResponse(0)
+		bs := time.Now().UnixNano() / 1000000
 		ok := sm.buildSyncData(request, res)
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("traceid:%s buildSyncData spend:%d", request.traceId, spend)
 		if !ok {
 			res = syncapitypes.NewResponse(0)
 			res.NextBatch = request.token
 			now := time.Now().UnixNano() / 1000000
-			if request.marks.utlRecv == 0 && request.device.IsHuman == true {
+			if sm.isFullSync(request) && request.device.IsHuman == true {
 				log.Errorf("SyncMng OnSyncRequest failed ready traceid:%s user:%s dev:%s spend:%d ms errcode:%d", request.traceId, request.device.UserID, request.device.ID, now-start, http.StatusServiceUnavailable)
 				return http.StatusServiceUnavailable, res
 			} else {
-				log.Errorf("SyncMng OnSyncRequest succ ready traceid:%s user:%s dev:%s spend:%d ms", request.traceId, request.device.UserID, request.device.ID, now-start)
+				log.Warnf("SyncMng OnSyncRequest succ ready traceid:%s user:%s dev:%s spend:%d ms", request.traceId, request.device.UserID, request.device.ID, now-start)
 				return http.StatusOK, res
 			}
 		}
@@ -461,7 +453,7 @@ func (sm *SyncMng) OnSyncRequest(
 	}
 	sm.FillSortEventOffset(res, request)
 	now := time.Now().UnixNano() / 1000000
-	if request.marks.utlRecv == 0 {
+	if sm.isFullSync(request) {
 		bytes, _ := json.Marshal(res.Presence)
 		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s presence:%s", request.traceId, request.device.UserID, request.device.ID, string(bytes))
 		bytes, _ = json.Marshal(res.AccountData)

@@ -16,9 +16,10 @@ package api
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"net/http"
 
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"

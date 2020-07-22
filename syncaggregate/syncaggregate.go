@@ -15,13 +15,13 @@
 package syncaggregate
 
 import (
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/syncaggregate/api"
 	"github.com/finogeeks/ligase/syncaggregate/consumers"
 	"github.com/finogeeks/ligase/syncaggregate/rpc"
@@ -49,7 +49,7 @@ func SetupSyncAggregateComponent(
 	queryHitCounter := monitor.NewLabeledCounter("syncaggreate_query_hit", []string{"target", "repo", "func"})
 
 	clientDataStreamRepo := repos.NewClientDataStreamRepo(4, maxEntries, gcPerNum)
-	userTimeLine := repos.NewUserTimeLineRepo(4, maxEntries, gcPerNum, idg)
+	userTimeLine := repos.NewUserTimeLineRepo(idg)
 
 	stdEventStreamRepo := repos.NewSTDEventStreamRepo(base.Cfg, 4, maxEntries, gcPerNum, flushDelay)
 	onlineRepo := repos.NewOnlineUserRepo(base.Cfg.StateMgr.StateOffline, base.Cfg.StateMgr.StateOfflineIOS)
@@ -58,6 +58,7 @@ func SetupSyncAggregateComponent(
 	clientDataStreamRepo.SetMonitor(queryHitCounter)
 
 	userTimeLine.SetPersist(syncDB)
+	userTimeLine.SetCache(cacheIn)
 	userTimeLine.SetMonitor(queryHitCounter)
 
 	presenceStreamRepo := repos.NewPresenceDataStreamRepo(userTimeLine)
@@ -94,7 +95,7 @@ func SetupSyncAggregateComponent(
 		log.Panicf("failed to start sync account data consumer err:%v", err)
 	}
 
-	eventConsumer := consumers.NewEventFeedConsumer(base.Cfg, syncDB)
+	eventConsumer := consumers.NewEventFeedConsumer(base.Cfg, syncDB, cacheIn)
 	eventConsumer.SetUserTimeLine(userTimeLine)
 	eventConsumer.SetPresenceStreamRepo(presenceStreamRepo)
 	if err := eventConsumer.Start(); err != nil {

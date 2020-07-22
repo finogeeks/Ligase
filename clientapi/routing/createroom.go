@@ -32,13 +32,13 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -114,6 +114,11 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 	accountDB model.AccountsDatabase, rpcCli roomserverapi.RoomserverRPCAPI, cache service.Cache,
 	idg *uid.UidGenerator, complexCache *common.ComplexCache,
 ) (int, core.Coder) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, roomID, userID string) {
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("userID:%s createRoom roomID:%s spend:%d", userID, roomID, spend)
+	}(bs, roomID, userID)
 	now := time.Now()
 	last := now
 	fields := util.GetLogFields(ctx)

@@ -129,6 +129,16 @@ type Cache interface {
 	GetUserInfoByUserID(userID string) (result *authtypes.UserInfo)
 	SetUserInfo(userID, userName, jobNumber, mobile, landline, email string) error
 	DeleteUserInfo(userID string) error
+
+	SetRoomLatestOffset(roomId string, offset int64) error
+	GetRoomLatestOffset(roomId string) (int64, error)
+
+	SetToken(userID, device string, utl int64, roomoffsets map[string]int64) error
+	GetToken(userID, device string, utl int64) (map[string]int64, error)
+	DelTokens(userID, device string, utls []int64) error
+	AddTokenUtl(userID, device string, utl int64) error
+	GetTokenUtls(userID, device string) (utls []int64, err error)
+	GetLastValidToken(userID, device string) (int64, map[string]int64, error)
 }
 
 type CacheItem struct {

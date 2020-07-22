@@ -23,8 +23,6 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
@@ -33,6 +31,8 @@ import (
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/pushapi/routing"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncaggregate/consumers"
 	jsoniter "github.com/json-iterator/go"
@@ -74,24 +74,7 @@ func NewSyncMng(
 	mng.chanSize = chanSize
 	mng.cfg = cfg
 	mng.rpcClient = rpcClient
-	go mng.cleanOffset()
 	return mng
-}
-
-func (sm *SyncMng) cleanOffset() {
-	ticker := time.NewTicker(time.Minute * 30)
-	for {
-		select {
-		case <-ticker.C:
-		}
-		sm.syncOffset.Range(func(key, val interface{}) bool {
-			userRoomOffset := val.(*UserRoomOffset)
-			if time.Now().Unix()-userRoomOffset.CreateTime > 60 {
-				sm.syncOffset.Delete(key.(string))
-			}
-			return true
-		})
-	}
 }
 
 func (sm *SyncMng) SetCache(cache service.Cache) *SyncMng {
@@ -130,9 +113,7 @@ func (sm *SyncMng) OnStateChange(state *types.NotifyDeviceState) {
 		} else {
 			log.Infof("OnStateChange publish kafka topic:%s succ userID:%s,deviceID:%s,laststate:%d,curstate:%d,pushkeys:%v", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, state.UserID, state.DeviceID, state.LastState, state.CurState, state.Pushkeys)
 		}
-
 	}
-
 	sm.stateChangePresent(state)
 }
 
@@ -305,25 +286,19 @@ func (sm *SyncMng) dispatch(uid string, req *request) {
 }
 
 func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool {
-	if req.marks.utlRecv == 0 && req.device.IsHuman == false {
+	//bot not build full sync data
+	if sm.isFullSync(req) && req.device.IsHuman == false {
 		_, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 		if err != nil {
 			return false
 		}
-
 		_, err = sm.userTimeLine.GetInviteRooms(req.device.UserID)
 		if err != nil {
 			return false
 		}
-
-		if req.maxEvOffset <= 0 {
-			req.maxEvOffset = 1
-		}
-		req.marks.utlProcess = req.maxEvOffset
-		log.Infof("update utlProcess:%d int buildSyncData traceid:%s user:%s not humman", req.marks.utlProcess, req.traceId, req.device.UserID)
+		sm.updateFullSyncNotData(req)
 		return true
 	}
-
 	requestMap := make(map[uint32]*syncapitypes.SyncServerRequest)
 	maxReceiptOffset := sm.userTimeLine.GetUserLatestReceiptOffset(req.device.UserID, req.device.IsHuman)
 	req.reqRooms.Range(func(key, value interface{}) bool {
@@ -360,7 +335,7 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 		request.JoinedRooms = append(request.JoinedRooms, roomID)
 	}
 	bs := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng.callSyncLoad remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms))
+	log.Infof("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms))
 	var wg sync.WaitGroup
 	for instance, syncReq := range requestMap {
 		wg.Add(1)
@@ -393,7 +368,7 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 					var result types.CompressContent
 					err = json.Unmarshal(data, &result)
 					if err != nil {
-						log.Errorf("sync response traceid:%s slot:%d spend:%d ms user:%s, device:%s, Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
+						log.Errorf("SyncMng.buildSyncData response traceid:%s slot:%d spend:%d ms user:%s, device:%s, Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
 						syncReq.SyncReady = false
 					} else {
 						if result.Compressed {
@@ -402,10 +377,10 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 						var response syncapitypes.SyncServerResponse
 						err = json.Unmarshal(result.Content, &response)
 						if err != nil {
-							log.Errorf("SyncServerResponse response traceid:%s slot:%d spend:%d ms user:%s, device:%s Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
+							log.Errorf("SyncMng.buildSyncData SyncServerResponse response traceid:%s slot:%d spend:%d ms user:%s, device:%s Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
 							syncReq.SyncReady = false
 						} else {
-							log.Infof("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, response.AllLoaded)
+							log.Infof("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
 							if response.AllLoaded {
 								syncReq.SyncReady = true
 								sm.addSyncData(req, res, &response)
@@ -415,18 +390,18 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 						}
 					}
 				} else {
-					log.Errorf("call rpc for syncServer sync traceid:%s slot:%d spend:%d ms user %s device %s error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
+					log.Errorf("SyncMng.buildSyncData call rpc for syncServer sync traceid:%s slot:%d spend:%d ms user %s device %s error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
 					syncReq.SyncReady = false
 				}
 			} else {
-				log.Errorf("marshal callSyncLoad content error,traceid:%s slot:%d spend:%d ms device %s user %s error %v", req.traceId, req.slot, req.device.ID, req.device.UserID, err)
+				log.Errorf("SyncMng.buildSyncData marshal callSyncLoad content error,traceid:%s slot:%d spend:%d ms device %s user %s error %v", req.traceId, req.slot, req.device.ID, req.device.UserID, err)
 				syncReq.SyncReady = false
 			}
 		}(instance, syncReq, req, maxReceiptOffset, res)
 	}
 	wg.Wait()
 	es := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng.callSyncLoad remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
+	log.Infof("SyncMng.buildSyncData remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
 	finished := true
 	for _, syncReq := range requestMap {
 		if syncReq.SyncReady == false {
@@ -445,23 +420,17 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 		if res.Rooms.Leave == nil {
 			res.Rooms.Leave = make(map[string]syncapitypes.LeaveResponse)
 		}
-
-		if req.marks.utlProcess == 0 {
-			req.marks.utlProcess = 1
-		}
 		if req.marks.preProcess == 0 {
 			req.marks.preProcess = 1
 		}
 		if req.marks.kcProcess == 0 {
 			req.marks.kcProcess = 1
 		}
-		if req.maxEvOffset > 0 {
-			req.marks.utlProcess = req.maxEvOffset
-		}
-		//log.Infof("SyncMng.callSyncLoad update utl request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
+		sm.freshToken(req, res)
+		log.Infof("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t", req.traceId, req.slot, req.device.UserID, req.device.ID, finished)
 		return true
 	} else {
-		sm.userTimeLine.SetUserLastFail(req.device.UserID, req.maxEvOffset)
+		log.Warnf("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t", req.traceId, req.slot, req.device.UserID, req.device.ID, finished)
 		return false
 	}
 }
