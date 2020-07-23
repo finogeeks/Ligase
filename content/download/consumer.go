@@ -375,6 +375,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		q.Add("content", info.Content)
 		if isEmote {
 			q.Add("isemote", "true")
+			q.Add("isfed", "true")
 		}
 		if thumbnail {
 			q.Add("thumbnail", "true")

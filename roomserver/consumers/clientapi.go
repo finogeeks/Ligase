@@ -24,7 +24,7 @@ import (
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )

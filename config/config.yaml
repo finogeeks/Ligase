@@ -416,4 +416,8 @@ state_mgr:
 encryption:
     mirror: true
 
+token_expire: 604800
+utl_expire: 608400
+latest_token: 3
+
 license: '{"organ_name":"community","expire_time":1627920000000,"total_users":100,"total_rooms":1,"room_members":1,"desc":"community","organ_domain":"community","reg_organ":"community","encryption":false,"secret":"pTRiLIHpGVgT0jsk"}'

@@ -24,7 +24,7 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 )
 
 func GetAliasRoomID(

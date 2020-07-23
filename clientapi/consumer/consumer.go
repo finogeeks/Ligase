@@ -21,7 +21,7 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )

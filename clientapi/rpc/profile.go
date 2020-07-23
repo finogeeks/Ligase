@@ -30,7 +30,7 @@ import (
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 )
 
 type ProfileRpcConsumer struct {
@@ -185,8 +185,6 @@ func (s *ProfileRpcConsumer) processProfile(profile *types.ProfileContent) {
 		}
 
 		data := new(types.ProfileStreamUpdate)
-		// data.IsMasterHndle = true
-		data.IsUpdateStauts = content.Presence != ""
 		data.UserID = profile.UserID
 		data.Presence = content
 		common.GetTransportMultiplexer().SendWithRetry(

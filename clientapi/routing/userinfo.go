@@ -155,7 +155,6 @@ func AddUserInfo(
 
 	// we use definition of profile to report user_info event
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 	common.GetTransportMultiplexer().SendWithRetry(
@@ -242,7 +241,6 @@ func SetUserInfo(
 
 	// we use definition of profile to report user_info event
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 	common.GetTransportMultiplexer().SendWithRetry(

@@ -212,7 +212,6 @@ func SetAvatarURL(
 	}
 
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 	common.GetTransportMultiplexer().SendWithRetry(
@@ -335,7 +334,6 @@ func SetDisplayName(
 	}
 
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 	common.GetTransportMultiplexer().SendWithRetry(

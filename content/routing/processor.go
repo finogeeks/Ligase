@@ -43,6 +43,8 @@ import (
 
 const contentUri = "mxc://%s/%s"
 
+var jsonContentType = []string{"application/json; charset=utf-8"}
+
 type Processor struct {
 	cfg       *config.Dendrite
 	histogram mon.LabeledHistogram
@@ -99,6 +101,13 @@ func (p *Processor) buildUrl(req *http.Request, reqUrl string) string {
 	}
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+func (p *Processor) WriteHeader(w http.ResponseWriter) {
+	header := w.Header()
+	if val := header["Content-Type"]; len(val) == 0 {
+		header["Content-Type"] = jsonContentType
+	}
 }
 
 // /upload
@@ -164,9 +173,11 @@ func (p *Processor) Upload(rw http.ResponseWriter, req *http.Request, device *au
 	}
 
 	data, _ := json.Marshal(resJson)
-
+	//set header must before write header code, if not, set header cannot take effect
+	p.WriteHeader(rw)
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(data)
+	log.Infof("userID:%s upload media succ", device.UserID)
 }
 
 // /download/{serverName}/{mediaId}

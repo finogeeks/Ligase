@@ -114,11 +114,18 @@ func (sm *SyncMng) OnStateChange(state *types.NotifyDeviceState) {
 			log.Infof("OnStateChange publish kafka topic:%s succ userID:%s,deviceID:%s,laststate:%d,curstate:%d,pushkeys:%v", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, state.UserID, state.DeviceID, state.LastState, state.CurState, state.Pushkeys)
 		}
 	}
+}
+
+func (sm *SyncMng) OnUserStateChange(state *types.NotifyUserState) {
 	sm.stateChangePresent(state)
 }
 
-func (sm *SyncMng) stateChangePresent(state *types.NotifyDeviceState) {
-	needAddPresentEv := true
+func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
+	if state.LastState == state.CurState {
+		//not go here
+		log.Warnf("stateChangePresent not change userID:%s,laststate:%d,curstate:%d", state.UserID, state.LastState, state.CurState)
+		return
+	}
 	presence := ""
 	presenceContent := types.PresenceShowJSON{}
 	presencCache, ok := sm.cache.GetPresences(state.UserID)
@@ -141,65 +148,54 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyDeviceState) {
 			}
 		}
 	}
-
-	if state.CurState == repos.OFFLINE_STATE {
+	if state.CurState == repos.USER_OFFLINE_STATE {
 		presence = "offline"
 	} else {
 		presence = "online"
-		if feed != nil && presenceContent.Presence != "offline" {
-			presence = presenceContent.Presence
-		}
 	}
 	if presencCache != nil {
-		log.Infof("stateChangePresent succ userID:%s,deviceID:%s,laststate:%d,curstate:%d, cache: userID:%s presence:%s statusMsg:%s extStatusMsg:%s, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID, state.DeviceID, state.LastState, state.CurState, presencCache.UserID, presencCache.Status, presencCache.StatusMsg, presencCache.ExtStatusMsg, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
+		log.Infof("stateChangePresent succ userID:%s,laststate:%d,curstate:%d, cache: userID:%s presence:%s statusMsg:%s extStatusMsg:%s, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID,  state.LastState, state.CurState, presencCache.UserID, presencCache.Status, presencCache.StatusMsg, presencCache.ExtStatusMsg, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
 	} else {
-		log.Infof("stateChangePresent succ userID:%s,deviceID:%s,laststate:%d,curstate:%d, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID, state.DeviceID, state.LastState, state.CurState, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
+		log.Infof("stateChangePresent succ userID:%s,laststate:%d,curstate:%d, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID,  state.LastState, state.CurState, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
 	}
-	if needAddPresentEv {
-		statusMsg := presenceContent.StatusMsg
-		extStatusMsg := presenceContent.ExtStatusMsg
-
-		sm.cache.SetPresences(state.UserID, presence, statusMsg, extStatusMsg)
-		displayName, avatarURL, _ := sm.complexCache.GetProfileByUserID(state.UserID)
-		user_info := sm.cache.GetUserInfoByUserID(state.UserID)
-		currentlyActive := false
-		if presence == "online" {
-			currentlyActive = true
-		}
-		content := types.PresenceJSON{
-			Presence:        presence,
-			StatusMsg:       statusMsg,
-			ExtStatusMsg:    extStatusMsg,
-			CurrentlyActive: currentlyActive,
-			UserID:          state.UserID,
-			LastActiveAgo:   0,
-		}
-
-		content.AvatarURL = avatarURL
-		content.DisplayName = displayName
-
-		if user_info != nil {
-			content.UserName = user_info.UserName
-			content.JobNumber = user_info.JobNumber
-			content.Mobile = user_info.Mobile
-			content.Landline = user_info.Landline
-			content.Email = user_info.Email
-		}
-
-		data := new(types.ProfileStreamUpdate)
-		data.IsMasterHndle = true
-		data.IsUpdateStauts = true
-		data.UserID = state.UserID
-		data.Presence = content
-		log.Infof("state change presence user:%s device:%s", state.UserID, state.DeviceID)
-		common.GetTransportMultiplexer().SendWithRetry(
-			sm.cfg.Kafka.Producer.OutputProfileData.Underlying,
-			sm.cfg.Kafka.Producer.OutputProfileData.Name,
-			&core.TransportPubMsg{
-				Keys: []byte(state.UserID),
-				Obj:  data,
-			})
+	statusMsg := presenceContent.StatusMsg
+	extStatusMsg := presenceContent.ExtStatusMsg
+	sm.cache.SetPresences(state.UserID, presence, statusMsg, extStatusMsg)
+	displayName, avatarURL, _ := sm.complexCache.GetProfileByUserID(state.UserID)
+	user_info := sm.cache.GetUserInfoByUserID(state.UserID)
+	currentlyActive := false
+	if presence == "online" {
+		currentlyActive = true
 	}
+	content := types.PresenceJSON{
+		Presence:        presence,
+		StatusMsg:       statusMsg,
+		ExtStatusMsg:    extStatusMsg,
+		CurrentlyActive: currentlyActive,
+		UserID:          state.UserID,
+		LastActiveAgo:   0,
+	}
+
+	content.AvatarURL = avatarURL
+	content.DisplayName = displayName
+	if user_info != nil {
+		content.UserName = user_info.UserName
+		content.JobNumber = user_info.JobNumber
+		content.Mobile = user_info.Mobile
+		content.Landline = user_info.Landline
+		content.Email = user_info.Email
+	}
+	data := new(types.ProfileStreamUpdate)
+	data.UserID = state.UserID
+	data.Presence = content
+	log.Infof("state change presence user:%s ", state.UserID)
+	common.GetTransportMultiplexer().SendWithRetry(
+		sm.cfg.Kafka.Producer.OutputProfileData.Underlying,
+		sm.cfg.Kafka.Producer.OutputProfileData.Name,
+		&core.TransportPubMsg{
+			Keys: []byte(state.UserID),
+			Obj:  data,
+		})
 }
 
 func (sm *SyncMng) GetPushkeyByUserDeviceID(userID, deviceID string) []types.PushKeyContent {
@@ -285,6 +281,67 @@ func (sm *SyncMng) dispatch(uid string, req *request) {
 	sm.msgChan[req.slot] <- req
 }
 
+func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request){
+	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
+	if err != nil {
+		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetJoinRooms err:%v", req.traceId, err)
+		return
+	}
+	inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)
+	if err != nil {
+		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetInviteRooms err:%v", req.traceId, err)
+		return
+	}
+	leaveRooms, err := sm.userTimeLine.GetLeaveRooms(req.device.UserID)
+	if err != nil {
+		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetLeaveRooms err:%v", req.traceId, err)
+		return
+	}
+	//rebuild
+	req.reqRooms = sync.Map{}
+	req.joinRooms = []string{}
+	joinRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
+		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join")
+		req.joinRooms = append(req.joinRooms, roomID)
+		if offset, ok := req.offsets[roomID]; ok {
+			if offset < latestOffset {
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID,"join","rebuild"))
+			}
+		}else{
+			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId,-1, latestOffset, roomID,"join","rebuild"))
+		}
+		return true
+	})
+	inviteRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
+		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite")
+		if offset, ok := req.offsets[roomID]; ok {
+			if offset < latestOffset {
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID,"invite","rebuild"))
+			}
+		}else{
+			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID,"invite","rebuild"))
+		}
+		return true
+	})
+	leaveRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
+		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "leave")
+		if offset, ok := req.offsets[roomID]; ok {
+			if offset < latestOffset {
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID,"leave","rebuild"))
+			}
+		}else{
+			//token has not offset leave room can get only the leave room msg
+			if latestOffset != -1 {
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset - 1, latestOffset, roomID,"leave", "rebuild"))
+			}
+		}
+		return true
+	})
+}
+
 func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool {
 	//bot not build full sync data
 	if sm.isFullSync(req) && req.device.IsHuman == false {
@@ -298,6 +355,10 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 		}
 		sm.updateFullSyncNotData(req)
 		return true
+	}
+	if !sm.isFullSync(req) {
+		//rebuild reqroom for reduce empty incr sync
+		sm.reBuildIncreamSyncReqRoom(req)
 	}
 	requestMap := make(map[uint32]*syncapitypes.SyncServerRequest)
 	maxReceiptOffset := sm.userTimeLine.GetUserLatestReceiptOffset(req.device.UserID, req.device.IsHuman)
@@ -335,7 +396,7 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 		request.JoinedRooms = append(request.JoinedRooms, roomID)
 	}
 	bs := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms))
+	log.Infof("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms),maxReceiptOffset)
 	var wg sync.WaitGroup
 	for instance, syncReq := range requestMap {
 		wg.Add(1)
