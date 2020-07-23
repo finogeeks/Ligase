@@ -361,7 +361,7 @@ func (tl *UserTimeLineRepo) GetLeaveRooms(user string) (*sync.Map, error) {
 
 	if _, ok := tl.leaveReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, offsets, err := tl.persist.GetLeaveRidsForUser(context.TODO(), user)
+		rooms, _, err := tl.persist.GetLeaveRidsForUser(context.TODO(), user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms err:%v", user, spend, err)
@@ -372,8 +372,8 @@ func (tl *UserTimeLineRepo) GetLeaveRooms(user string) (*sync.Map, error) {
 		} else {
 			log.Infof("load db succ UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms", user, spend)
 		}
-		for idx, id := range rooms {
-			res.Store(id, offsets[idx])
+		for _, id := range rooms {
+			res.Store(id, int64(-1))
 		}
 
 		tl.leave.Store(user, res)
@@ -559,8 +559,13 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 			if _, ok := token[key.(string)]; ok {
 				return true
 			} else {
-				hasNewLeave = true
-				return false
+				//leave room check self has new msg
+				if value.(int64) != -1 {
+					hasNewLeave = true
+					return false
+				}else{
+					return true
+				}
 			}
 		})
 	}

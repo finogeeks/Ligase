@@ -24,7 +24,7 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
-func (sm *SyncMng) buildIncreamSyncRequset(req *request, offsets map[string]int64) error {
+func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
@@ -36,12 +36,12 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request, offsets map[string]int6
 		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join")
 		req.joinRooms = append(req.joinRooms, roomID)
-		if offset, ok := offsets[roomID]; ok {
+		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join","build"))
 			}
 		} else {
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join"))
+			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join","build"))
 		}
 		return true
 	})
@@ -55,12 +55,12 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request, offsets map[string]int6
 	inviteRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite")
-		if offset, ok := offsets[roomID]; ok {
+		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "invite"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "invite","build"))
 			}
 		} else {
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "invite"))
+			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "invite","build"))
 		}
 		return true
 	})
@@ -74,20 +74,23 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request, offsets map[string]int6
 	leaveRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "leave")
-		if offset, ok := offsets[roomID]; ok {
+		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "leave"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "leave","build"))
 			}
 		} else {
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "leave"))
+			//token has not offset leave room can get only the leave room msg
+			if latestOffset != -1 {
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset - 1, latestOffset, roomID,"leave", "build"))
+			}
 		}
 		return true
 	})
 	return nil
 }
 
-func (sm *SyncMng) buildReqRoom(traceId string, start, end int64, roomID, roomState string) *syncapitypes.SyncRoom {
-	log.Infof("traceid:%s roomID:%s start:%d end:%d roomState:%s", traceId, roomID, start, end, roomState)
+func (sm *SyncMng) buildReqRoom(traceId string, start, end int64, roomID, roomState, source string) *syncapitypes.SyncRoom {
+	log.Infof("traceid:%s roomID:%s start:%d end:%d roomState:%s source:%s", traceId, roomID, start, end, roomState,source)
 	return &syncapitypes.SyncRoom{
 		RoomID:    roomID,
 		RoomState: roomState,
@@ -111,7 +114,7 @@ func (sm *SyncMng) buildFullSyncRequest(req *request) error {
 	joinRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
 		req.joinRooms = append(req.joinRooms, key.(string))
-		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join"))
+		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join","build"))
 		return true
 	})
 	inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)
@@ -123,7 +126,7 @@ func (sm *SyncMng) buildFullSyncRequest(req *request) error {
 	}
 	inviteRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
-		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite"), roomID, "invite"))
+		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite"), roomID, "invite","build"))
 		return true
 	})
 	return nil
@@ -148,8 +151,10 @@ func (sm *SyncMng) callSyncLoad(req *request) {
 			log.Infof("traceid:%s before full sync load, token info userId:%s device:%s utl:%s", req.traceId, req.device.UserID, req.device.ID, req.marks.utlRecv)
 			req.isFullSync = true
 		} else {
-			log.Infof("traceid:%s before incream sync load, token info userId:%s device:%s utl:%s offsets:%+v", req.traceId, req.device.UserID, req.device.ID, req.marks.utlRecv, offsets)
-			err = sm.buildIncreamSyncRequset(req, offsets)
+			//token offsets is too large
+			//log.Infof("traceid:%s before incream sync load, token info userId:%s device:%s utl:%s offsets:%+v", req.traceId, req.device.UserID, req.device.ID, req.marks.utlRecv, offsets)
+			req.offsets = offsets
+			err = sm.buildIncreamSyncRequset(req)
 			if err != nil {
 				log.Warnf("traceid:%s build incream sync request err:%v", req.traceId, err)
 				return

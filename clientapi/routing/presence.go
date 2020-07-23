@@ -79,10 +79,8 @@ func UpdatePresenceByID(
 	}
 
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = reqContent.UserID
 	data.Presence = content
-	data.IsUpdateStauts = true
 	data.DeviceID = deviceID
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,

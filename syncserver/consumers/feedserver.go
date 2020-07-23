@@ -238,6 +238,69 @@ func (s *RoomEventFeedConsumer) processRedactEv(ev *gomatrixserverlib.ClientEven
 	}
 }
 
+func (s *RoomEventFeedConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) {
+	var content map[string]interface{}
+	err := json.Unmarshal(ev.Content, &content)
+	if err != nil {
+		log.Errorf("processMessageEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID,  err)
+		return
+	}
+	v, ok := content["m.relates_to"]
+	if !ok {
+		return
+	}
+	mRelayTo := types.MInRelayTo{}
+	b, err := json.Marshal(v)
+	json.Unmarshal(b,&mRelayTo)
+	inRelayTo := mRelayTo.MRelayTo
+	originEventID := inRelayTo.EventID
+	var originEv gomatrixserverlib.ClientEvent
+	stream := s.roomHistoryTimeLine.GetStreamEv(ev.RoomID, originEventID)
+	if stream != nil {
+		originEv = *stream.Ev
+	} else {
+		evs, err := s.db.Events(context.TODO(), []string{originEventID})
+		if err == nil && len(evs) > 0 {
+			originEv = evs[0]
+		} else {
+			if err != nil {
+				log.Errorf("eventID:%s InRelayTo origin eventID:%s get from db err:%v", ev.EventID, originEventID, err)
+			}else{
+				log.Warnf("can not found eventID:%s InRelayTo origin eventID:%s", ev.EventID, originEventID)
+			}
+			return
+		}
+	}
+	unsigned := types.Unsigned{}
+	if originEv.Unsigned != nil {
+		err = json.Unmarshal(originEv.Unsigned,&unsigned)
+		if err != nil {
+			log.Errorf("json.Unmarshal eventID:%s InRelayTo origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+			return
+		}
+	}
+	if unsigned.Relations != nil {
+		if unsigned.Relations.RelayTo.Chunk == nil {
+			unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+		}else{
+			unsigned.Relations.RelayTo.Chunk = append(unsigned.Relations.RelayTo.Chunk, ev.EventID)
+		}
+	}else{
+		unsigned.Relations = &types.EventRelations{}
+		unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+	}
+	unsignedBytes, err := json.Marshal(unsigned)
+	if err != nil {
+		log.Errorf("json.Unmarshal eventID:%s InRelayTo origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+		return
+	}
+	originEv.Unsigned = unsignedBytes
+	if stream != nil {
+		stream.Ev = &originEv
+	}
+	log.Infof("eventID:%s InRelayTo origin eventID:%s succ", ev.EventID, originEventID)
+}
+
 func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	ctx context.Context, msg *roomserverapi.OutputNewRoomEvent,
 ) error {
@@ -287,7 +350,9 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 		}
 		ev.Unsigned = unsignedBytes
 	}
-
+	if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+		s.processMessageEv(&ev)
+	}
 	if ev.StateKey != nil {
 		msg.TransactionID = &roomservertypes.TransactionID{
 			DeviceID:      *ev.StateKey,
@@ -477,6 +542,8 @@ func (s *RoomEventFeedConsumer) onBackFillEvent(
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)
 	}
-
+	if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+		s.processMessageEv(&ev)
+	}
 	return nil
 }

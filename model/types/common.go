@@ -84,6 +84,12 @@ type NotifyDeviceState struct {
 	CurState  int              `json:"cur_state"`
 }
 
+type NotifyUserState struct {
+	UserID 	  string 		   `json:"user_id"`
+	LastState int 			   `json:"last_state"`
+	CurState  int			   `json:"cur_state"`
+}
+
 type ProfileContent struct {
 	UserID       string `json:"user_id,omitempty"`
 	DisplayName  string `json:"display_name,omitempty"`
@@ -291,10 +297,8 @@ type ActDataStreamUpdate struct {
 }
 
 type ProfileStreamUpdate struct {
-	IsMasterHndle  bool         `json:"is_master_handle"` // 是否只能用户所在syncaggregate分片处理，tru时sync不处理，false时只能其他分片处理，包括syncserer
 	UserID         string       `json:"user_id"`
 	DeviceID       string       `json:"device_id"`
-	IsUpdateStauts bool         `json:"is_update_status"`
 	Presence       PresenceJSON `json:"presence"`
 }
 
@@ -310,15 +314,35 @@ type CompressContent struct {
 }
 
 type RedactUnsigned struct {
-	Age             int64                          `json:"age",omitempty`
-	PrevContent     []byte                         `json:"prev_content",omitempty`
-	TransactionID   string                         `json:"transaction_id",omitempty`
-	RedactedBecause *gomatrixserverlib.ClientEvent `json:"redacted_because",omitempty`
-	UpdatedBecause  *gomatrixserverlib.ClientEvent `json:"updated_because",omitempty`
+	Age             int64                          `json:"age,omitempty"`
+	PrevContent     []byte                         `json:"prev_content,omitempty"`
+	TransactionID   string                         `json:"transaction_id,omitempty"`
+	RedactedBecause *gomatrixserverlib.ClientEvent `json:"redacted_because,omitempty"`
+	UpdatedBecause  *gomatrixserverlib.ClientEvent `json:"updated_because,omitempty"`
 }
 
 type Unsigned struct {
-	TransactionID string `json:"transaction_id",omitempty`
+	TransactionID string 			`json:"transaction_id,omitempty"`
+	Relations     *EventRelations 	`json:"m.relations,omitempty"`
+}
+
+type EventRelations struct {
+	RelayTo OriginInRelayTo    `json:"m.in_reply_to"`
+}
+
+type MInRelayTo struct {
+	MRelayTo  InRelayTo `json:"m.in_reply_to"`
+}
+
+type InRelayTo struct {
+	Sender 			string 		`json:"sender"`
+	EventID 		string 		`json:"event_id"`
+	Content 		interface{} `json:"content"`
+	OriginServerTs	int64 		`json:"origin_server_ts"`
+}
+
+type OriginInRelayTo struct {
+	Chunk 			[]string  	`json:"chunk"`
 }
 
 type LoginInfoContent struct {

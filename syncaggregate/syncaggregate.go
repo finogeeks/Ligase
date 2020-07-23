@@ -65,8 +65,6 @@ func SetupSyncAggregateComponent(
 	presenceStreamRepo.SetPersist(syncDB)
 	presenceStreamRepo.SetMonitor(queryHitCounter)
 	presenceStreamRepo.SetCfg(base.Cfg)
-	presenceStreamRepo.SetOnlineRepo(onlineRepo)
-	presenceStreamRepo.LoadOnlinePresence()
 
 	kcRepo := repos.NewKeyChangeStreamRepo(userTimeLine)
 	kcRepo.SetSyncDB(syncDB)

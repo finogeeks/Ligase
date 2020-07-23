@@ -169,6 +169,7 @@ type request struct {
 	slot           uint32
 	hasNewEvent    bool
 	MaxRoomOffset  map[string]int64
+	offsets        map[string]int64
 }
 
 func (req *request) checkNoWait() bool {
@@ -296,6 +297,7 @@ func (sm *SyncMng) buildRequest(
 	res.traceId = req.TraceId
 	res.hasNewEvent = false
 	res.MaxRoomOffset = make(map[string]int64)
+	res.offsets = make(map[string]int64)
 	log.Infof("SyncMng buildRequest traceid:%s now:%d diff:%d user:%s device:%s utlRecv:%d request:%v", res.traceId, now, res.latest-now, device.UserID, device.ID, res.marks.utlRecv, res)
 	return res
 }

@@ -57,7 +57,7 @@ func (sm *SyncMng) updateHasNewEvent(req *request, data *syncapitypes.SyncServer
 	}
 }
 
-func (sm *SyncMng) freshToken(req *request, res *syncapitypes.Response) {
+func (sm *SyncMng) freshToken(req *request,  res *syncapitypes.Response) {
 	if !req.hasNewEvent {
 		if req.isFullSync {
 			sm.updateFullSyncNotData(req)
@@ -67,25 +67,13 @@ func (sm *SyncMng) freshToken(req *request, res *syncapitypes.Response) {
 		log.Infof("traceid:%s after sync has no new event userId:%s device:%s utl:%d token not change isfullsync:%t", req.traceId, req.device.UserID, req.device.Identifier, req.marks.utlRecv, req.isFullSync)
 		return
 	}
-	log.Infof("traceid:%s freshToken maxroomoffset:%+v", req.traceId, req.MaxRoomOffset)
+	//maxroomoffset to large
+	//log.Infof("traceid:%s freshToken maxroomoffset:%+v", req.traceId, req.MaxRoomOffset)
 	offsets := make(map[string]int64)
 	for roomId, offset := range req.MaxRoomOffset {
 		offsets[roomId] = offset
 	}
-	lastOffsets := make(map[string]int64)
-	if !req.isFullSync {
-		_, lastToken, err := sm.userTimeLine.LoadToken(req.device.UserID, req.device.ID, req.marks.utlRecv)
-		if err != nil {
-			sm.clearSyncData(res)
-			req.marks.utlProcess = req.marks.utlRecv
-			log.Infof("traceid:%s after sync get token err:%v reset token userId:%s device:%s utl:%d", req.traceId, err, req.device.UserID, req.device.Identifier, req.marks.utlProcess)
-			return
-		}
-		if lastToken != nil {
-			lastOffsets = lastToken
-		}
-	}
-	for k, v := range lastOffsets {
+	for k ,v := range req.offsets {
 		if _, ok := offsets[k]; !ok {
 			offsets[k] = v
 		}
@@ -99,7 +87,8 @@ func (sm *SyncMng) freshToken(req *request, res *syncapitypes.Response) {
 		return
 	}
 	req.marks.utlProcess = utl
-	log.Infof("traceid:%s after sync update token info userId:%s device:%s utl:%d offsets:%+v", req.traceId, req.device.UserID, req.device.Identifier, utl, offsets)
+	//offsets too large
+	//log.Infof("traceid:%s after sync update token info userId:%s device:%s utl:%d offsets:%+v", req.traceId, req.device.UserID, req.device.Identifier, utl, offsets)
 	return
 }
 

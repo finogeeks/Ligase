@@ -83,6 +83,7 @@ func SetupSyncServerComponent(
 	displayNameRepo.SetPersist(syncDB)
 	displayNameRepo.LoadHistory()
 	receiptDataStreamRepo.SetRsCurState(rsCurState)
+	receiptDataStreamRepo.SetRsTimeline(rsTimeline)
 	userReceiptRepo.SetPersist(syncDB)
 	userReceiptRepo.SetMonitor(qureyHitCounter)
 
