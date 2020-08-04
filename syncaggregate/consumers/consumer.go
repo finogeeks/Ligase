@@ -278,6 +278,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ev *gomatrixserverlib.ClientEve
 						Mobile:      presenceContent.Mobile,
 						Landline:    presenceContent.Landline,
 						Email:       presenceContent.Email,
+						State:       presenceContent.State,
 					}
 					content, _ := json.Marshal(fedProfile)
 					log.Infof("send profile to new domain, user:%s, domain:%s, profile:%s", user, domain, content)

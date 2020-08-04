@@ -196,6 +196,7 @@ func SetAvatarURL(
 		content.Mobile = userInfo.Mobile
 		content.Landline = userInfo.Landline
 		content.Email = userInfo.Email
+		content.State = userInfo.State
 	}
 
 	presences, ok := cache.GetPresences(userID)
@@ -318,6 +319,7 @@ func SetDisplayName(
 		content.Mobile = userInfo.Mobile
 		content.Landline = userInfo.Landline
 		content.Email = userInfo.Email
+		content.State = userInfo.State
 	}
 
 	presences, ok := cache.GetPresences(userID)

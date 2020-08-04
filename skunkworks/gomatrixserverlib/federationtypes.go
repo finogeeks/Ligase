@@ -445,6 +445,7 @@ type RespUserInfo struct {
 	Mobile    string `json:"mobile"`
 	Landline  string `json:"landline"`
 	Email     string `json:"email"`
+	State     int    `json:"state,omitempty"`
 }
 
 type ReqGetMissingEventContent struct {

@@ -35,13 +35,17 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 	joinRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join")
+		//joinoffset < 0 , invaild room, old backfill join event is < 0
+		joinOffset := sm.userTimeLine.GetJoinMembershipOffset(req.device.UserID, roomID)
 		req.joinRooms = append(req.joinRooms, roomID)
 		if offset, ok := req.offsets[roomID]; ok {
-			if offset < latestOffset {
+			if offset < latestOffset && joinOffset > 0 {
 				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join","build"))
 			}
 		} else {
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join","build"))
+			if joinOffset > 0 {
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join", "build"))
+			}
 		}
 		return true
 	})
@@ -113,8 +117,11 @@ func (sm *SyncMng) buildFullSyncRequest(req *request) error {
 	}
 	joinRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
+		joinOffset := sm.userTimeLine.GetJoinMembershipOffset(req.device.UserID, roomID)
 		req.joinRooms = append(req.joinRooms, key.(string))
-		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join","build"))
+		if joinOffset > 0 {
+			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join", "build"))
+		}
 		return true
 	})
 	inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)

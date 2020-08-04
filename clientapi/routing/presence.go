@@ -43,13 +43,16 @@ func UpdatePresenceByID(
 	if userID != reqContent.UserID {
 		return http.StatusForbidden, jsonerror.Forbidden("Can't set presence for others")
 	}
-
+	lastPresence, ok := cache.GetPresences(reqContent.UserID)
+	if ok {
+		log.Infof("get last presence userID:%s Presence:%s StatusMsg:%s ExtStatusMsg:%s", reqContent.UserID, lastPresence.Status, lastPresence.StatusMsg, lastPresence.ExtStatusMsg)
+	}
 	err := presenceDB.UpsertPresences(ctx, reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 	cache.SetPresences(reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
-	log.Infof("Set Presences success %s %s %s %s", reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
+	log.Infof("Set Presences success userID:%s Presence:%s StatusMsg:%s ExtStatusMsg:%s", reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
 
 	displayName, avatarURL, _ := complexCache.GetProfileByUserID(reqContent.UserID)
 	user_info := cache.GetUserInfoByUserID(reqContent.UserID)
@@ -76,12 +79,20 @@ func UpdatePresenceByID(
 		content.Mobile = user_info.Mobile
 		content.Landline = user_info.Landline
 		content.Email = user_info.Email
+		content.State = user_info.State
+	}
+
+	if ok {
+		content.LastStatusMsg = lastPresence.StatusMsg
+		content.LastExtStatusMsg = lastPresence.ExtStatusMsg
+		content.LastPresence = lastPresence.Status
 	}
 
 	data := new(types.ProfileStreamUpdate)
 	data.UserID = reqContent.UserID
 	data.Presence = content
 	data.DeviceID = deviceID
+	data.IsUpdateBase = true
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
