@@ -152,6 +152,9 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 		presence = "offline"
 	} else {
 		presence = "online"
+		if feed != nil && presenceContent.Presence != "offline" {
+			presence = presenceContent.Presence
+		}
 	}
 	if presencCache != nil {
 		log.Infof("stateChangePresent succ userID:%s,laststate:%d,curstate:%d, cache: userID:%s presence:%s statusMsg:%s extStatusMsg:%s, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID,  state.LastState, state.CurState, presencCache.UserID, presencCache.Status, presencCache.StatusMsg, presencCache.ExtStatusMsg, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
@@ -161,6 +164,7 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 	statusMsg := presenceContent.StatusMsg
 	extStatusMsg := presenceContent.ExtStatusMsg
 	sm.cache.SetPresences(state.UserID, presence, statusMsg, extStatusMsg)
+	sm.cache.SetPresencesServerStatus(state.UserID, presence)
 	displayName, avatarURL, _ := sm.complexCache.GetProfileByUserID(state.UserID)
 	user_info := sm.cache.GetUserInfoByUserID(state.UserID)
 	currentlyActive := false
@@ -184,6 +188,7 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 		content.Mobile = user_info.Mobile
 		content.Landline = user_info.Landline
 		content.Email = user_info.Email
+		content.State = user_info.State
 	}
 	data := new(types.ProfileStreamUpdate)
 	data.UserID = state.UserID
@@ -303,13 +308,16 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request){
 	joinRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join")
+		joinOffset := sm.userTimeLine.GetJoinMembershipOffset(req.device.UserID, roomID)
 		req.joinRooms = append(req.joinRooms, roomID)
 		if offset, ok := req.offsets[roomID]; ok {
-			if offset < latestOffset {
+			if offset < latestOffset && joinOffset > 0 {
 				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID,"join","rebuild"))
 			}
-		}else{
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId,-1, latestOffset, roomID,"join","rebuild"))
+		}else {
+			if joinOffset > 0 {
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join", "rebuild"))
+			}
 		}
 		return true
 	})

@@ -298,7 +298,7 @@ func (d *Database) SelectEventsByDirRange(
 func (d *Database) GetRidsForUser(
 	ctx context.Context,
 	userID string,
-) ([]string, []int64, error) {
+) ([]string, []int64, []string, error) {
 	return d.roomstate.selectRoomIDsWithMembership(ctx, userID, []string{"join"})
 }
 
@@ -312,14 +312,14 @@ func (d *Database) GetFriendShip(
 func (d *Database) GetInviteRidsForUser(
 	ctx context.Context,
 	userID string,
-) ([]string, []int64, error) {
+) ([]string, []int64, []string, error) {
 	return d.roomstate.selectRoomIDsWithMembership(ctx, userID, []string{"invite"})
 }
 
 func (d *Database) GetLeaveRidsForUser(
 	ctx context.Context,
 	userID string,
-) ([]string, []int64, error) {
+) ([]string, []int64, []string, error) {
 	return d.roomstate.selectRoomIDsWithMembership(ctx, userID, []string{"leave", "ban"})
 }
 
@@ -421,6 +421,13 @@ func (d *Database) GetRoomLastOffsets(
 	roomIDs []string,
 ) (map[string]int64, error) {
 	return d.events.selectRoomLastOffsets(ctx, roomIDs)
+}
+
+func (d *Database) GetJoinRoomOffsets(
+	ctx context.Context,
+	eventIDs []string,
+)([]int64,[]string,[]string,error){
+	return d.events.selectEventsByEvents(ctx, eventIDs)
 }
 
 func (d *Database) GetRoomReceiptLastOffsets(

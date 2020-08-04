@@ -366,7 +366,7 @@ func (sm *SyncMng) OnSyncRequest(
 		}
 
 		hasReceiptUpdate, lastReceipt := sm.userTimeLine.ExistsUserReceiptUpdate(request.marks.recpRecv, device.UserID)
-		if hasReceiptUpdate && now-start > 500 && request.device.IsHuman == true {
+		if hasReceiptUpdate && now-start > sm.cfg.CheckReceipt && request.device.IsHuman == true {
 			log.Infof("SyncMng break has receipt traceid:%s user:%s dev:%s now:%d latest:%d recpRecv:%d lastReceipt:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.recpRecv, lastReceipt)
 			break
 		}

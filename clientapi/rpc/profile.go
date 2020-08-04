@@ -150,8 +150,8 @@ func (s *ProfileRpcConsumer) processProfile(profile *types.ProfileContent) {
 			s.accountDB.UpsertAvatar(context.TODO(), profile.UserID, profile.AvatarUrl)
 		}
 		if upUserInfo {
-			s.cache.SetUserInfo(profile.UserID, profile.UserName, profile.JobNumber, profile.Mobile, profile.Landline, profile.Email)
-			s.accountDB.UpsertUserInfo(context.TODO(), profile.UserID, profile.UserName, profile.JobNumber, profile.Mobile, profile.Landline, profile.Email)
+			s.cache.SetUserInfo(profile.UserID, profile.UserName, profile.JobNumber, profile.Mobile, profile.Landline, profile.Email, profile.State)
+			s.accountDB.UpsertUserInfo(context.TODO(), profile.UserID, profile.UserName, profile.JobNumber, profile.Mobile, profile.Landline, profile.Email, profile.State)
 		}
 		if upPresence {
 			s.cache.SetPresences(profile.UserID, profile.Presence, profile.StatusMsg, profile.ExtStatusMsg)
@@ -172,6 +172,7 @@ func (s *ProfileRpcConsumer) processProfile(profile *types.ProfileContent) {
 			Mobile:          profile.Mobile,
 			Landline:        profile.Landline,
 			Email:           profile.Email,
+			State:           profile.State,
 		}
 
 		if !upPresence {

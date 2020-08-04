@@ -71,6 +71,7 @@ func (s *ReceiptRpcConsumer) cb(msg *nats.Msg) {
 
 func (s *ReceiptRpcConsumer) startWorker(msgChan chan *types.ReceiptContent) {
 	for data := range msgChan {
+		data.Source = "rpc"
 		s.receiptConsumer.OnReceipt(data)
 	}
 }

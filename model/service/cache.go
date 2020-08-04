@@ -96,6 +96,7 @@ type Cache interface {
 
 	GetPresences(userID string) (*authtypes.Presences, bool)
 	SetPresences(userID, status, statusMsg, extStatusMsg string) error
+	SetPresencesServerStatus(userID, serverStatus string) error
 
 	SetAccountData(userID, roomID, acctType, content string) error
 
@@ -127,7 +128,7 @@ type Cache interface {
 	AddDomain(domain string) error
 
 	GetUserInfoByUserID(userID string) (result *authtypes.UserInfo)
-	SetUserInfo(userID, userName, jobNumber, mobile, landline, email string) error
+	SetUserInfo(userID, userName, jobNumber, mobile, landline, email string, state int) error
 	DeleteUserInfo(userID string) error
 
 	SetRoomLatestOffset(roomId string, offset int64) error

@@ -19,4 +19,5 @@ type Presences struct {
 	Status       string
 	StatusMsg    string
 	ExtStatusMsg string
+	ServerStatus string
 }

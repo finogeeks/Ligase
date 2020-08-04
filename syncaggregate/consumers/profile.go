@@ -114,9 +114,46 @@ func (s *ProfileConsumer) OnMessage(topic string, partition int32, data []byte) 
 	return
 }
 
-func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
-	log.Infof("Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
+func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
+	//not only base prop change, update presence
+	if !output.IsUpdateBase {
+		return true
+	}
+	//only has base prop change, using /presence/{userID}/status update presence
+	//get precense from cache has err, update presence
+	presence, ok := s.cache.GetPresences(output.UserID)
+	if !ok {
+		return true
+	}
+	log.Infof("update base user:%s server status is:%s last presence:%s set presence:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
+	//other base prop has change, update presence
+	if output.Presence.LastStatusMsg != output.Presence.StatusMsg || output.Presence.LastExtStatusMsg != output.Presence.ExtStatusMsg {
+		if output.Presence.Presence == "offline" && presence.ServerStatus != "offline" {
+			output.Presence.Presence = presence.ServerStatus
+		}
+		s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
+		return true
+	}
+	//set presence is same to serverStatus, not update presence
+	if output.Presence.Presence == presence.ServerStatus {
+		return false
+	}
+	//use is online, set offline, not update presence
+	if presence.ServerStatus != "offline" && output.Presence.Presence == "offline" {
+		return false
+	}
+	s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
+	log.Infof("user:%s server status is:%s set precense from:%s to:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
+	return true
+}
 
+func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
+	log.Infof("recv Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
+
+	if !s.checkUpdate(output) {
+		return
+	}
+	log.Infof("do Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
 	event := &gomatrixserverlib.ClientEvent{}
 	event.Type = "m.presence"
 	event.Sender = output.UserID
@@ -167,6 +204,7 @@ func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
 			Mobile:    output.Presence.Mobile,
 			Landline:  output.Presence.Landline,
 			Email:     output.Presence.Email,
+			State:     output.Presence.State,
 		}
 
 		content, _ := json.Marshal(fedProfile)

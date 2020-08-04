@@ -637,7 +637,7 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 
 	rs := s.rsCurState.GetRoomState(roomID)
 	if rs == nil {
-		log.Errorf("SyncServer.buildRoomJoinResp rsCurState.GetRoomState nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
+		log.Warnf("SyncServer.buildRoomJoinResp rsCurState.GetRoomState nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
 		jr.Timeline.Limited = true
 		jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
 		jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}
@@ -646,7 +646,7 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 
 	history := s.roomHistory.GetHistory(roomID)
 	if history == nil {
-		log.Errorf("SyncServer.buildRoomJoinResp roomHistory.GetHistory nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
+		log.Warnf("SyncServer.buildRoomJoinResp roomHistory.GetHistory nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
 		jr.Timeline.Limited = true
 		jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
 		jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}
@@ -655,7 +655,8 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 
 	stateEvt := rs.GetState("m.room.member", req.UserID)
 	if stateEvt == nil {
-		log.Errorf("SyncServer.buildRoomJoinResp rs.GetState nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
+		log.Warnf("SyncServer.buildRoomJoinResp rs.GetState nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
+		//old join members event's has event_offset < 0 event
 		jr.Timeline.Limited = true
 		jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
 		jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}

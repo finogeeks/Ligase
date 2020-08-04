@@ -59,6 +59,7 @@ func GetUserInfo(msg *model.GobMessage, cache service.Cache, rpcCli roomserverap
 		Mobile:    userInfo.Mobile,
 		Landline:  userInfo.Landline,
 		Email:     userInfo.Email,
+		State:     userInfo.State,
 	}).Encode()
 	retMsg := &model.GobMessage{
 		Body: body,

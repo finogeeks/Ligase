@@ -200,6 +200,9 @@ const selectEventRawSQL = "" +
 const selectEventsByRoomIDSQL = "" +
 	"SELECT id, event_id, event_json FROM syncapi_output_room_events WHERE room_id = $1"
 
+const selectEventsByEventsSQL = "" +
+	"SELECT id, event_id, room_id FROM syncapi_output_room_events WHERE event_id = ANY($1)"
+
 type outputRoomEventsStatements struct {
 	db                          *Database
 	insertEventStmt             *sql.Stmt
@@ -229,6 +232,7 @@ type outputRoomEventsStatements struct {
 	updateSyncMsgEventStmt        *sql.Stmt
 	selectEventRawStmt            *sql.Stmt
 	selectEventsByRoomIDStmt      *sql.Stmt
+	selectEventsByEventsStmt 	  *sql.Stmt
 }
 
 func (s *outputRoomEventsStatements) getSchema() string {
@@ -320,6 +324,9 @@ func (s *outputRoomEventsStatements) prepare(db *sql.DB, d *Database) (err error
 		return
 	}
 	if s.selectEventsByRoomIDStmt, err = db.Prepare(selectEventsByRoomIDSQL); err != nil {
+		return
+	}
+	if s.selectEventsByEventsStmt, err = db.Prepare(selectEventsByEventsSQL); err != nil {
 		return
 	}
 	return
@@ -1022,4 +1029,34 @@ func (s *outputRoomEventsStatements) selectEventsByRoomIDMigration(
 		result = append(result, eventBytes)
 	}
 	return ids, eventIDs, result, nil
+}
+
+func (s *outputRoomEventsStatements) selectEventsByEvents(
+	ctx context.Context, events []string,
+) ([]int64, []string, []string, error) {
+	var rows *sql.Rows
+	var err error
+
+	rows, err = s.selectEventsByEventsStmt.QueryContext(ctx,pq.Array(events))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close() // nolint: errcheck
+
+	var ids []int64
+	var eventIDs []string
+	var roomIDs []string
+	for rows.Next() {
+		var id int64
+		var eventID string
+		var roomID string
+		if err = rows.Scan(&id, &eventID, &roomID); err != nil {
+			return nil, nil, nil, err
+		}
+
+		ids = append(ids, id)
+		eventIDs = append(eventIDs, eventID)
+		roomIDs = append(roomIDs, roomID)
+	}
+	return ids, eventIDs, roomIDs, nil
 }
