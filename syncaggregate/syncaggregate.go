@@ -49,7 +49,7 @@ func SetupSyncAggregateComponent(
 	queryHitCounter := monitor.NewLabeledCounter("syncaggreate_query_hit", []string{"target", "repo", "func"})
 
 	clientDataStreamRepo := repos.NewClientDataStreamRepo(4, maxEntries, gcPerNum)
-	userTimeLine := repos.NewUserTimeLineRepo(4, maxEntries, gcPerNum, idg)
+	userTimeLine := repos.NewUserTimeLineRepo(idg)
 
 	stdEventStreamRepo := repos.NewSTDEventStreamRepo(base.Cfg, 4, maxEntries, gcPerNum, flushDelay)
 	onlineRepo := repos.NewOnlineUserRepo(base.Cfg.StateMgr.StateOffline, base.Cfg.StateMgr.StateOfflineIOS)
@@ -58,14 +58,13 @@ func SetupSyncAggregateComponent(
 	clientDataStreamRepo.SetMonitor(queryHitCounter)
 
 	userTimeLine.SetPersist(syncDB)
+	userTimeLine.SetCache(cacheIn)
 	userTimeLine.SetMonitor(queryHitCounter)
 
 	presenceStreamRepo := repos.NewPresenceDataStreamRepo(userTimeLine)
 	presenceStreamRepo.SetPersist(syncDB)
 	presenceStreamRepo.SetMonitor(queryHitCounter)
 	presenceStreamRepo.SetCfg(base.Cfg)
-	presenceStreamRepo.SetOnlineRepo(onlineRepo)
-	presenceStreamRepo.LoadOnlinePresence()
 
 	kcRepo := repos.NewKeyChangeStreamRepo(userTimeLine)
 	kcRepo.SetSyncDB(syncDB)
@@ -94,7 +93,7 @@ func SetupSyncAggregateComponent(
 		log.Panicf("failed to start sync account data consumer err:%v", err)
 	}
 
-	eventConsumer := consumers.NewEventFeedConsumer(base.Cfg, syncDB)
+	eventConsumer := consumers.NewEventFeedConsumer(base.Cfg, syncDB,cacheIn)
 	eventConsumer.SetUserTimeLine(userTimeLine)
 	eventConsumer.SetPresenceStreamRepo(presenceStreamRepo)
 	if err := eventConsumer.Start(); err != nil {

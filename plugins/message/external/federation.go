@@ -32,6 +32,7 @@ type GetFedBackFillRequest struct {
 	Limit       int    `json:"limit,omitempty"`
 	Dir         string `json:"dir"`
 	Domain      string `json:"domain"`
+	Origin      string `json:"origin"`
 }
 
 //  GET /_matrix/federation/v1/media/download/{serverName}/{mediaId}

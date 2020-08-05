@@ -55,6 +55,7 @@ func Backfill(ctx context.Context, msg *model.GobMessage, cache service.Cache, r
 	req.RoomID = request.RoomID
 	req.Dir = request.Dir
 	req.Domain = request.Domain
+	req.Origin = request.Origin
 	bytes, _ := json.Marshal(*request)
 	log.Infof("Backfill request: %v", string(bytes))
 	err := rpcCli.QueryBackFillEvents(ctx, &req, &resp)

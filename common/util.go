@@ -457,3 +457,11 @@ func SplitMxc(s string) (domain, netdiskID string) {
 		return ss[0], ss[1]
 	}
 }
+
+func GetDomainByUserID(userID string) string {
+	if userID == "" {
+		return userID
+	}
+	ss := strings.Split(userID,":")
+	return ss[len(ss)-1]
+}

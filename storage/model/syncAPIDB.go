@@ -94,7 +94,7 @@ type SyncAPIDatabase interface {
 	GetRidsForUser(
 		ctx context.Context,
 		userID string,
-	) (res []string, offsets []int64, err error)
+	) (res []string, offsets []int64, events []string, err error)
 	GetFriendShip(
 		ctx context.Context,
 		roomIDs []string,
@@ -102,7 +102,11 @@ type SyncAPIDatabase interface {
 	GetInviteRidsForUser(
 		ctx context.Context,
 		userID string,
-	) (rids []string, offsets []int64, err error)
+	) (rids []string, offsets []int64, events []string, err error)
+	GetLeaveRidsForUser(
+		ctx context.Context,
+		userID string,
+	) (rids []string, offsets []int64, events []string, err error)
 	InsertStdMessage(
 		ctx context.Context, stdEvent syncapitypes.StdHolder, targetUID, targetDevice, identifier string, offset int64,
 	) (err error)
@@ -142,6 +146,10 @@ type SyncAPIDatabase interface {
 		ctx context.Context,
 		roomIDs []string,
 	) (map[string]int64, error)
+	GetJoinRoomOffsets(
+		ctx context.Context,
+		eventIDs []string,
+	)([]int64,[]string,[]string,error)
 	GetRoomReceiptLastOffsets(
 		ctx context.Context,
 		roomIDs []string,

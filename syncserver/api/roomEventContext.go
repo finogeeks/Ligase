@@ -340,7 +340,7 @@ func (source GetMessagesSource) getFromDB(
 
 	outputRoomEvents := []gomatrixserverlib.ClientEvent{}
 
-	events, offsets, _, err, endPos, endTs := source.c.db.SelectEventsByDir(ctx, userID, roomID, dir, fromTs, limit)
+	events, offsets, _, err, endPos, endTs := source.c.db.SelectEventsByDir(ctx, userID, roomID, dir, fromPos, limit)
 	if err != nil {
 		return outputRoomEvents, fromPos, fromTs, err
 	}

@@ -220,6 +220,10 @@ func (s *RoomEventFeedConsumer) processRedactEv(ctx context.Context, ev *gomatri
 	}
 	unsigned := types.RedactUnsigned{}
 	if ev.Type == "m.room.redaction" {
+		reaction := s.parseRelatesContent(redactEv)
+		if reaction != nil {
+			s.updateReactionEvent(ctx, ev.RoomID, reaction)
+		}
 		content := map[string]interface{}{}
 		empty, _ := json.Marshal(content)
 		redactEv.Content = empty
@@ -241,6 +245,260 @@ func (s *RoomEventFeedConsumer) processRedactEv(ctx context.Context, ev *gomatri
 	}
 }
 
+func (s *RoomEventFeedConsumer) updateReactionEvent(ctx context.Context, roomID string, reaction *types.ReactionContent){
+	var originEv gomatrixserverlib.ClientEvent
+	stream := s.roomHistoryTimeLine.GetStreamEv(ctx, roomID, reaction.EventID)
+	if stream != nil {
+		originEv = *stream.Ev
+	} else {
+		evs, err := s.db.Events(context.TODO(), []string{reaction.EventID})
+		if err == nil && len(evs) > 0 {
+			originEv = evs[0]
+		} else {
+			if err != nil {
+				log.Errorf("updateReaction room:%s event:%s evs:%v, err:%v", roomID, reaction.EventID, evs, err)
+			}
+			return
+		}
+	}
+	unsigned := types.Unsigned{}
+	if originEv.Unsigned != nil {
+		err := json.Unmarshal(originEv.Unsigned,&unsigned)
+		if err != nil {
+			log.Errorf("updateReactionEvent json.Unmarshal  origin eventID:%s unsigned err:%v", reaction.EventID, err)
+			return
+		}
+	}
+	if unsigned.Relations != nil {
+		if unsigned.Relations.Anno == nil {
+			return
+		}else{
+			if unsigned.Relations.Anno.Chunk == nil {
+				return
+			}else{
+				for idx,item := range unsigned.Relations.Anno.Chunk{
+					if item.Key == reaction.Key {
+						item.Count--
+						if item.Count <= 0 {
+							unsigned.Relations.Anno.Chunk = append(unsigned.Relations.Anno.Chunk[:idx], unsigned.Relations.Anno.Chunk[idx+1:]...)
+						}
+						break
+					}
+				}
+				if len(unsigned.Relations.Anno.Chunk) <= 0 {
+					if unsigned.Relations.RelayTo == nil {
+						unsigned.Relations = nil
+					}else{
+						unsigned.Relations.Anno = nil
+					}
+				}
+			}
+		}
+	}else{
+		return
+	}
+	unsignedBytes, err := json.Marshal(unsigned)
+	if err != nil {
+		log.Errorf("updateReactionEvent json.Unmarshal eventID:%s unsigned err:%v", originEv.EventID, err)
+		return
+	}
+	originEv.Unsigned = unsignedBytes
+	if stream != nil {
+		stream.Ev = &originEv
+	}
+	log.Infof("updateReactionEvent eventID:%s  succ", originEv.EventID)
+}
+
+func (s *RoomEventFeedConsumer) parseRelatesContent(redactEv gomatrixserverlib.ClientEvent)(reaction *types.ReactionContent){
+	var originContent map[string]interface{}
+	err := json.Unmarshal(redactEv.Content, &originContent)
+	if err != nil {
+		log.Errorf("json.Unmarshal redactEv err:%v", err)
+		return nil
+	}
+	v, ok := originContent["m.relates_to"]
+	if !ok {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	json.Unmarshal(b,&reaction)
+	originEventID := reaction.EventID
+	//is reaction relay
+	if originEventID != "" && reaction.RelType == "m.annotation" {
+		return reaction
+	}else{
+		//other ignore
+		return nil
+	}
+}
+
+func (s *RoomEventFeedConsumer) processMessageEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent) {
+	var content map[string]interface{}
+	err := json.Unmarshal(ev.Content, &content)
+	if err != nil {
+		log.Errorf("processMessageEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID, err)
+		return
+	}
+	v, ok := content["m.relates_to"]
+	if !ok {
+		return
+	}
+	mRelayTo := types.MInRelayTo{}
+	b, err := json.Marshal(v)
+	json.Unmarshal(b, &mRelayTo)
+	inRelayTo := mRelayTo.MRelayTo
+	originEventID := inRelayTo.EventID
+	var originEv gomatrixserverlib.ClientEvent
+	stream := s.roomHistoryTimeLine.GetStreamEv(ctx, ev.RoomID, originEventID)
+	if stream != nil {
+		originEv = *stream.Ev
+	} else {
+		evs, err := s.db.Events(context.TODO(), []string{originEventID})
+		if err == nil && len(evs) > 0 {
+			originEv = evs[0]
+		} else {
+			if err != nil {
+				log.Errorf("eventID:%s InRelayTo origin eventID:%s get from db err:%v", ev.EventID, originEventID, err)
+			} else {
+				log.Warnf("can not found eventID:%s InRelayTo origin eventID:%s", ev.EventID, originEventID)
+			}
+			return
+		}
+	}
+	unsigned := types.Unsigned{}
+	if originEv.Unsigned != nil {
+		err = json.Unmarshal(originEv.Unsigned, &unsigned)
+		if err != nil {
+			log.Errorf("json.Unmarshal eventID:%s InRelayTo origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+			return
+		}
+	}
+	if unsigned.Relations != nil {
+		if unsigned.Relations.RelayTo == nil {
+			unsigned.Relations.RelayTo = &types.OriginInRelayTo{}
+			unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+		} else {
+			if unsigned.Relations.RelayTo.Chunk == nil {
+				unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+			} else {
+				unsigned.Relations.RelayTo.Chunk = append(unsigned.Relations.RelayTo.Chunk, ev.EventID)
+			}
+		}
+	} else {
+		unsigned.Relations = &types.EventRelations{}
+		unsigned.Relations.RelayTo = &types.OriginInRelayTo{}
+		unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+	}
+	unsignedBytes, err := json.Marshal(unsigned)
+	if err != nil {
+		log.Errorf("json.Unmarshal eventID:%s InRelayTo origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+		return
+	}
+	originEv.Unsigned = unsignedBytes
+	if stream != nil {
+		stream.Ev = &originEv
+	}
+	log.Infof("eventID:%s InRelayTo origin eventID:%s succ", ev.EventID, originEventID)
+}
+
+func (s *RoomEventFeedConsumer) processReactionEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent) {
+	var content map[string]interface{}
+	err := json.Unmarshal(ev.Content, &content)
+	if err != nil {
+		log.Errorf("processReactionEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID, err)
+		return
+	}
+	v, ok := content["m.relates_to"]
+	if !ok {
+		return
+	}
+	reaction := types.ReactionContent{}
+	b, err := json.Marshal(v)
+	json.Unmarshal(b, &reaction)
+	originEventID := reaction.EventID
+	var originEv gomatrixserverlib.ClientEvent
+	stream := s.roomHistoryTimeLine.GetStreamEv(ctx, ev.RoomID, originEventID)
+	if stream != nil {
+		originEv = *stream.Ev
+	} else {
+		evs, err := s.db.Events(context.TODO(), []string{originEventID})
+		if err == nil && len(evs) > 0 {
+			originEv = evs[0]
+		} else {
+			if err != nil {
+				log.Errorf("eventID:%s annotation origin eventID:%s get from db err:%v", ev.EventID, originEventID, err)
+			} else {
+				log.Warnf("can not found eventID:%s annotation origin eventID:%s", ev.EventID, originEventID)
+			}
+			return
+		}
+	}
+	unsigned := types.Unsigned{}
+	if originEv.Unsigned != nil {
+		err = json.Unmarshal(originEv.Unsigned, &unsigned)
+		if err != nil {
+			log.Errorf("json.Unmarshal eventID:%s annotation origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+			return
+		}
+	}
+	if unsigned.Relations != nil {
+		if unsigned.Relations.Anno == nil {
+			unsigned.Relations.Anno = &types.Annotations{}
+			annotation := &types.Annotation{
+				Type:  ev.Type,
+				Key:   reaction.Key,
+				Count: 1,
+			}
+			unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
+		} else {
+			if unsigned.Relations.Anno.Chunk == nil {
+				annotation := &types.Annotation{
+					Type:  ev.Type,
+					Key:   reaction.Key,
+					Count: 1,
+				}
+				unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
+			} else {
+				hasExsit := false
+				for _, item := range unsigned.Relations.Anno.Chunk {
+					if item.Key == reaction.Key {
+						item.Count++
+						hasExsit = true
+						break
+					}
+				}
+				if !hasExsit {
+					annotation := &types.Annotation{
+						Type:  ev.Type,
+						Key:   reaction.Key,
+						Count: 1,
+					}
+					unsigned.Relations.Anno.Chunk = append(unsigned.Relations.Anno.Chunk, annotation)
+				}
+			}
+		}
+	} else {
+		unsigned.Relations = &types.EventRelations{}
+		unsigned.Relations.Anno = &types.Annotations{}
+		annotation := &types.Annotation{
+			Type:  ev.Type,
+			Key:   reaction.Key,
+			Count: 1,
+		}
+		unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
+	}
+	unsignedBytes, err := json.Marshal(unsigned)
+	if err != nil {
+		log.Errorf("json.Unmarshal eventID:%s annotation origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+		return
+	}
+	originEv.Unsigned = unsignedBytes
+	if stream != nil {
+		stream.Ev = &originEv
+	}
+	log.Infof("eventID:%s annotation origin eventID:%s succ", ev.EventID, originEventID)
+}
+
 func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	ctx context.Context, msg *roomserverapi.OutputNewRoomEvent,
 ) error {
@@ -250,7 +508,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 			log.Panicf("%v\n%s\n", e, stack)
 		}
 	}()
-
+	bs := time.Now().UnixNano()/1000000
 	ev := msg.Event
 	log.Infof("feedserver onNewRoomEvent start roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
 	domain, _ := common.DomainFromID(ev.Sender)
@@ -262,6 +520,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 		s.receiptDataStreamRepo.LoadHistory(ctx, ev.RoomID, false)
 		preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ctx, ev.RoomID, domain)
 		if preOffset != -1 && preOffset+1 != ev.DomainOffset {
+			log.Infof("feedserver onNewRoomEvent SetRoomMinStream roomID:%s preOffset:%d domainOffset:%d eventOffset:%d", ev.RoomID, preOffset,ev.DomainOffset, ev.EventOffset)
 			s.roomHistoryTimeLine.SetRoomMinStream(ev.RoomID, ev.EventOffset)
 		}
 		spend := time.Now().UnixNano()/1000000 - bs
@@ -289,7 +548,12 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 		}
 		ev.Unsigned = unsignedBytes
 	}
-
+	if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+		s.processMessageEv(ctx, &ev)
+	}
+	if ev.Type == "m.reaction" {
+		s.processReactionEv(ctx, &ev)
+	}
 	if ev.StateKey != nil {
 		msg.TransactionID = &roomservertypes.TransactionID{
 			DeviceID:      *ev.StateKey,
@@ -446,13 +710,15 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 			}
 		}
 	}
-	log.Infof("feedserver onNewRoomEvent add history timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
+	spend := time.Now().UnixNano() / 1000000 - bs
 	s.roomHistoryTimeLine.AddEv(ctx, &ev, ev.EventOffset, true) //更新room timeline
-
+	log.Infof("feedserver onNewRoomEvent add history timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
+	last := time.Now().UnixNano() / 1000000
 	if s.cfg.CalculateReadCount {
-		s.pushConsumer.OnEvent(ctx, &ev, ev.EventOffset)
+		s.pushConsumer.DispthEvent(ctx, &ev)
 	}
-
+	now := time.Now().UnixNano() /1000000
+	log.Infof("feedserver onNewRoomEvent pushConsumer.OnEvent roomID:%s eventID:%s sender:%s type:%s eventoffset:%d push spend:%d onNewRoomEvent spend:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, now-last, now-bs)
 	return nil
 }
 
@@ -479,6 +745,7 @@ func (s *RoomEventFeedConsumer) onBackFillEvent(
 	domain, _ := common.DomainFromID(ev.Sender)
 	preOffset := s.roomHistoryTimeLine.GetDomainMaxStream(ctx, ev.RoomID, domain)
 	if preOffset <= ev.DomainOffset {
+		log.Infof("feedserver onBackFillEvent SetRoomMinStream roomID:%s preOffset:%d domainOffset:%d eventOffset:%d", ev.RoomID, preOffset,ev.DomainOffset, ev.EventOffset)
 		s.roomHistoryTimeLine.SetRoomMinStream(ev.RoomID, ev.EventOffset)
 	}
 
@@ -488,6 +755,11 @@ func (s *RoomEventFeedConsumer) onBackFillEvent(
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
 		s.processRedactEv(ctx, &ev)
 	}
-
+	if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+		s.processMessageEv(ctx, &ev)
+	}
+	if ev.Type == "m.reaction" {
+		s.processReactionEv(ctx, &ev)
+	}
 	return nil
 }

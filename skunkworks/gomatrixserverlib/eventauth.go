@@ -628,7 +628,10 @@ func checkUserLevels(senderLevel int64, senderID string, oldPowerLevels, newPowe
 			// We know that the user is reducing their level because of the previous checks.
 			continue
 		}
-
+		// If the user is the only member of room, they can change the level of other users.
+		if newPowerLevels.thereIsOnlyOneMember() {
+			continue
+		}
 		// Check if the user is changing the level that was above or the same as their own.
 		if senderLevel <= level.old {
 			return errorf(
@@ -890,6 +893,9 @@ func (m *membershipAllower) membershipAllowed(event Event, prevEvent *Event) err
 	}
 	if err := m.create.userIDAllowed(m.targetID); err != nil {
 		return err
+	}
+	if (m.create.IsOrganizationRoom || m.create.IsGroupRoom) && m.senderID == m.targetID && m.newMember.Membership == invite {
+		return nil
 	}
 	// Special case the first join event in the room to allow the creator to join.
 	// https://github.com/matrix-org/synapse/blob/v0.18.5/synapse/api/auth.py#L328

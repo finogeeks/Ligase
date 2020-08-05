@@ -76,7 +76,7 @@ func SetupSyncServerComponent(
 
 	roomHistory.SetPersist(syncDB)
 	roomHistory.SetMonitor(qureyHitCounter)
-
+	roomHistory.SetCache(cacheIn)
 	rsCurState.SetPersist(syncDB)
 
 	rsTimeline.SetPersist(syncDB)
@@ -85,6 +85,7 @@ func SetupSyncServerComponent(
 	displayNameRepo.SetPersist(syncDB)
 	displayNameRepo.LoadHistory()
 	receiptDataStreamRepo.SetRsCurState(rsCurState)
+	receiptDataStreamRepo.SetRsTimeline(rsTimeline)
 	userReceiptRepo.SetPersist(syncDB)
 	userReceiptRepo.SetMonitor(qureyHitCounter)
 
@@ -107,7 +108,7 @@ func SetupSyncServerComponent(
 	pushConsumer.SetEventRepo(eventReadStreamRepo)
 	pushConsumer.SetRoomCurState(rsCurState)
 	pushConsumer.SetRsTimeline(rsTimeline)
-
+	pushConsumer.Start()
 	feedServer := consumers.NewRoomEventFeedConsumer(base.Cfg, syncDB, pushConsumer, rpcClient, idg)
 	feedServer.SetRoomHistory(roomHistory)
 	feedServer.SetRsCurState(rsCurState)

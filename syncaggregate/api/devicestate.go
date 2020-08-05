@@ -63,7 +63,7 @@ func (ReqPostReportDeviceState) Process(ctx context.Context, consumer interface{
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 	req := msg.(*external.PostReportDeviceState)
-	c.sm.GetOnlineRepo().UpdateState(ctx, device.UserID, device.ID, req.State)
+	c.sm.GetOnlineRepo().UpdateState(device.UserID, device.ID, req.State)
 	log.Infof("report device state:%d,user:%s,device:%s", req.State, device.UserID, device.ID)
 	return http.StatusOK, nil
 }

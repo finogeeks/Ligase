@@ -103,6 +103,12 @@ type NotifyDeviceState struct {
 	CurState  int              `json:"cur_state"`
 }
 
+type NotifyUserState struct {
+	UserID    string `json:"user_id"`
+	LastState int    `json:"last_state"`
+	CurState  int    `json:"cur_state"`
+}
+
 type ProfileContent struct {
 	UserID       string `json:"user_id,omitempty"`
 	DisplayName  string `json:"display_name,omitempty"`
@@ -117,6 +123,7 @@ type ProfileContent struct {
 	Mobile    string `json:"mobile,omitempty"`
 	Landline  string `json:"landline,omitempty"`
 	Email     string `json:"email,omitempty"`
+	State     int    `json:"state,omitempty"`
 }
 
 type ReceiptContent struct {
@@ -125,6 +132,7 @@ type ReceiptContent struct {
 	RoomID      string `json:"room_id,omitempty"`
 	ReceiptType string `json:"receipt_type,omitempty"`
 	EventID     string `json:"event_id,omitempty"`
+	Source 		string `json:"source,omitemty"`
 }
 
 type TypingContent struct {
@@ -289,6 +297,11 @@ type PresenceJSON struct {
 	Mobile    string `json:"mobile"`
 	Landline  string `json:"landline"`
 	Email     string `json:"email"`
+	State     int    `json:"state"`
+
+	LastPresence	    string `json:"last_presence"`
+	LastStatusMsg       string `json:"last_status_msg"`
+	LastExtStatusMsg    string `json:"last_ext_status_msg"`
 }
 
 type PresenceShowJSON struct {
@@ -310,11 +323,10 @@ type ActDataStreamUpdate struct {
 }
 
 type ProfileStreamUpdate struct {
-	IsMasterHndle  bool         `json:"is_master_handle"` // 是否只能用户所在syncaggregate分片处理，tru时sync不处理，false时只能其他分片处理，包括syncserer
 	UserID         string       `json:"user_id"`
 	DeviceID       string       `json:"device_id"`
-	IsUpdateStauts bool         `json:"is_update_status"`
 	Presence       PresenceJSON `json:"presence"`
+	IsUpdateBase   bool         `json:"is_update_base"` //matrix /presence/{userID}/status only update presence, status_msg, ext_status_msg
 }
 
 type StdEvent struct {
@@ -337,7 +349,45 @@ type RedactUnsigned struct {
 }
 
 type Unsigned struct {
-	TransactionID string `json:"transaction_id,omitempty"`
+	TransactionID string          `json:"transaction_id,omitempty"`
+	Relations     *EventRelations `json:"m.relations,omitempty"`
+}
+
+type EventRelations struct {
+	RelayTo *OriginInRelayTo `json:"m.in_reply_to,omitempty"`
+	Anno    *Annotations     `json:"m.annotation,omitempty"`
+}
+
+type MInRelayTo struct {
+	MRelayTo InRelayTo `json:"m.in_reply_to"`
+}
+
+type InRelayTo struct {
+	Sender         string      `json:"sender"`
+	EventID        string      `json:"event_id"`
+	Content        interface{} `json:"content"`
+	OriginServerTs int64       `json:"origin_server_ts"`
+}
+
+type OriginInRelayTo struct {
+	Chunk []string `json:"chunk"`
+}
+
+type Annotations struct {
+	Chunk []*Annotation `json:"chunk"`
+}
+
+type Annotation struct {
+	Type  string `json:"type"`
+	Key   string `json:"key"`
+	Count int    `json:"count"`
+}
+
+//emoji message relay
+type ReactionContent struct {
+	EventID string `json:"event_id"`
+	Key     string `json:"key"`
+	RelType string `json:"rel_type"`
 }
 
 type LoginInfoContent struct {

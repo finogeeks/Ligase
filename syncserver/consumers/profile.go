@@ -85,10 +85,6 @@ func (s *ProfileConsumer) OnMessage(ctx context.Context, topic string, partition
 		log.Errorw("output profile consumer log: message parse failure", log.KeysAndValues{"error", err})
 		return
 	}
-
-	if output.IsMasterHndle {
-		return
-	}
 	idx := common.CalcStringHashCode(output.UserID) % s.chanSize
 	s.msgChan[idx] <- &output
 	return

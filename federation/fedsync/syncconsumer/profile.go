@@ -212,6 +212,7 @@ func GetUserInfo(
 		Mobile:    response.Mobile,
 		Landline:  response.Landline,
 		Email:     response.Email,
+		State:     response.State,
 	}
 	return resp
 }

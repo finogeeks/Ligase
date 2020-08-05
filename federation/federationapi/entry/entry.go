@@ -20,14 +20,14 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
+	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 	"github.com/finogeeks/ligase/federation/model/repos"
-
-	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
 	"github.com/finogeeks/ligase/model"
+	modelRepos "github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
@@ -53,6 +53,7 @@ var (
 	rpcClient      *common.RpcClient
 	encryptionDB   dbmodel.EncryptorAPIDatabase
 	complexCache   *common.ComplexCache
+	rsRepo         *modelRepos.RoomServerCurStateRepo
 )
 
 func Register(cmd model.Command, f FedApiEntryCB) {
@@ -120,4 +121,8 @@ func SetEncryptionDB(db dbmodel.EncryptorAPIDatabase) {
 
 func SetComplexCache(cache *common.ComplexCache) {
 	complexCache = cache
+}
+
+func SetRepo(repo *modelRepos.RoomServerCurStateRepo) {
+	rsRepo = repo
 }

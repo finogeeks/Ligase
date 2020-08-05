@@ -78,7 +78,7 @@ func (p *DBAccountUserInfoProcessor) Process(ctx context.Context, inputs []dbupd
 func (p *DBAccountUserInfoProcessor) processUpsert(ctx context.Context, inputs []dbupdatetypes.DBEventDataInput) error {
 	for _, v := range inputs {
 		msg := v.Event.AccountDBEvents.UserInfoInsert
-		err := p.db.OnUpsertUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email)
+		err := p.db.OnUpsertUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email, msg.State)
 		if err != nil {
 			log.Error(p.name, "upsert err", err, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email)
 		}
@@ -89,7 +89,7 @@ func (p *DBAccountUserInfoProcessor) processUpsert(ctx context.Context, inputs [
 func (p *DBAccountUserInfoProcessor) processInit(ctx context.Context, inputs []dbupdatetypes.DBEventDataInput) error {
 	for _, v := range inputs {
 		msg := v.Event.AccountDBEvents.UserInfoInsert
-		err := p.db.OnInitUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email)
+		err := p.db.OnInitUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email, msg.State)
 		if err != nil {
 			log.Error(p.name, "init err", err, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email)
 		}

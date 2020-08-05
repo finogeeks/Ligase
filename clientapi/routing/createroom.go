@@ -114,6 +114,11 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 	accountDB model.AccountsDatabase, rpcCli roomserverapi.RoomserverRPCAPI, cache service.Cache,
 	idg *uid.UidGenerator, complexCache *common.ComplexCache,
 ) (int, core.Coder) {
+	bs := time.Now().UnixNano()/1000000
+	defer func(bs int64, roomID, userID string){
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("userID:%s createRoom roomID:%s spend:%d", userID, roomID, spend)
+	}(bs, roomID, userID)
 	now := time.Now()
 	last := now
 	fields := util.GetLogFields(ctx)
@@ -263,6 +268,16 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 	if ok {
 		val := int(mapVal.(float64))
 		createContent.RoomType = &val
+	}
+	mapVal, ok = r.CreationContent["is_organization_room"]
+	if ok {
+		val := mapVal.(bool)
+		createContent.IsOrganizationRoom = &val
+	}
+	mapVal, ok = r.CreationContent["is_group_room"]
+	if ok {
+		val := mapVal.(bool)
+		createContent.IsGroupRoom = &val
 	}
 
 	eventsToMake := []external.StateEvent{

@@ -56,6 +56,7 @@ func GetUserInfo(
 			Mobile:    user_info.Mobile,
 			Landline:  user_info.Landline,
 			Email:     user_info.Email,
+			State:     user_info.State,
 		}
 	}
 	log.Infof("mssing user_info cache: %s, user_info: %#v", userID, user_info)
@@ -68,14 +69,15 @@ func GetUserInfo(
 				log.Errorf("get user_info from federation error %v", err)
 			} else {
 				log.Infof("get user_info from federation succeed: %s, resp: %#v", userID, resp)
-				cache.SetUserInfo(userID, resp.UserName, resp.JobNumber, resp.Mobile, resp.Landline, resp.Email)
-				accountDB.UpsertUserInfo(ctx, userID, resp.UserName, resp.JobNumber, resp.Mobile, resp.Landline, resp.Email)
+				cache.SetUserInfo(userID, resp.UserName, resp.JobNumber, resp.Mobile, resp.Landline, resp.Email,resp.State)
+				accountDB.UpsertUserInfo(ctx, userID, resp.UserName, resp.JobNumber, resp.Mobile, resp.Landline, resp.Email,resp.State)
 				return http.StatusOK, &external.GetUserInfoResponse{
 					UserName:  resp.UserName,
 					JobNumber: resp.JobNumber,
 					Mobile:    resp.Mobile,
 					Landline:  resp.Landline,
 					Email:     resp.Email,
+					State:     resp.State,
 				}
 			}
 		}
@@ -88,6 +90,7 @@ func GetUserInfo(
 		Mobile:    "",
 		Landline:  "",
 		Email:     "",
+		State:     0,
 	}
 }
 
@@ -110,16 +113,17 @@ func AddUserInfo(
 	oldUserInfo := cache.GetUserInfoByUserID(userID)
 	if oldUserInfo != nil {
 		if oldUserInfo.UserName == r.UserName && oldUserInfo.JobNumber == r.JobNumber &&
-			oldUserInfo.Mobile == r.Mobile && oldUserInfo.Landline == r.Landline && oldUserInfo.Email == r.Email {
+			oldUserInfo.Mobile == r.Mobile && oldUserInfo.Landline == r.Landline &&
+			oldUserInfo.Email == r.Email && oldUserInfo.State == r.State {
 			return http.StatusOK, nil
 		}
 	}
 
-	err := cache.SetUserInfo(userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email)
+	err := cache.SetUserInfo(userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email, r.State)
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
-	err = accountDB.UpsertUserInfo(ctx, userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email)
+	err = accountDB.UpsertUserInfo(ctx, userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email, r.State)
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
@@ -130,6 +134,7 @@ func AddUserInfo(
 		Mobile:    r.Mobile,
 		Landline:  r.Landline,
 		Email:     r.Email,
+		State:     r.State,
 		//Presence:        "online",
 		CurrentlyActive: true,
 		UserID:          userID,
@@ -155,7 +160,6 @@ func AddUserInfo(
 
 	// we use definition of profile to report user_info event
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 
@@ -208,16 +212,17 @@ func SetUserInfo(
 	oldUserInfo := cache.GetUserInfoByUserID(userID)
 	if oldUserInfo != nil {
 		if oldUserInfo.UserName == r.UserName && oldUserInfo.JobNumber == r.JobNumber &&
-			oldUserInfo.Mobile == r.Mobile && oldUserInfo.Landline == r.Landline && oldUserInfo.Email == r.Email {
+			oldUserInfo.Mobile == r.Mobile && oldUserInfo.Landline == r.Landline &&
+			oldUserInfo.Email == r.Email && oldUserInfo.State == r.State {
 			return http.StatusOK, nil
 		}
 	}
 
-	err := cache.SetUserInfo(userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email)
+	err := cache.SetUserInfo(userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email, r.State)
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
-	err = accountDB.UpsertUserInfo(ctx, userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email)
+	err = accountDB.UpsertUserInfo(ctx, userID, r.UserName, r.JobNumber, r.Mobile, r.Landline, r.Email, r.State)
 	if err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
@@ -228,6 +233,7 @@ func SetUserInfo(
 		Mobile:    r.Mobile,
 		Landline:  r.Landline,
 		Email:     r.Email,
+		State:     r.State,
 		//Presence:        "online",
 		CurrentlyActive: true,
 		UserID:          userID,
@@ -253,7 +259,6 @@ func SetUserInfo(
 
 	// we use definition of profile to report user_info event
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputProfileData.Name)
@@ -441,7 +446,7 @@ func GetUserInfoList(
 		userInfoItem.Mobile = respItem.Mobile
 		userInfoItem.Landline = respItem.Landline
 		userInfoItem.Email = respItem.Email
-
+		userInfoItem.State = respItem.State
 		resp.UserInfoList = append(resp.UserInfoList, userInfoItem)
 	}
 	if len(resp.UserInfoList) == 0 {

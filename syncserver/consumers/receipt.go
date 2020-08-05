@@ -36,7 +36,7 @@ import (
 type ReceiptConsumer struct {
 	container       *goSync.Map
 	notifyRoom      *goSync.Map
-	delay           int
+	delay           int64
 	countRepo       *repos.ReadCountRepo
 	rsTimeline      *repos.RoomStateTimeLineRepo
 	receiptRepo     *repos.ReceiptDataStreamRepo
@@ -56,7 +56,7 @@ func NewReceiptConsumer(
 	s := &ReceiptConsumer{}
 	s.container = new(goSync.Map)
 	s.notifyRoom = new(goSync.Map)
-	s.delay = 1000 //1000 ms timer
+	s.delay = cfg.ReceiptDelay
 	s.rpcClient = rpcClient
 	s.cfg = cfg
 	s.idg = idg
@@ -96,7 +96,7 @@ func (s *ReceiptConsumer) SetRsTimeline(rsTimeline *repos.RoomStateTimeLineRepo)
 
 //it's a up to markers
 func (s *ReceiptConsumer) OnReceipt(ctx context.Context, req *types.ReceiptContent) {
-	log.Infof("OnReceipt roomID %s receiptType %s eventID %s userID %s deviceID %s", req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID)
+	log.Infof("OnReceipt roomID %s receiptType %s eventID %s userID %s deviceID %s source %s", req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID, req.Source)
 	rs := s.roomCurState.GetRoomState(req.RoomID)
 	if rs == nil {
 		s.rsTimeline.LoadStreamStates(ctx, req.RoomID, true)
@@ -169,7 +169,7 @@ func (s *ReceiptConsumer) OnReceipt(ctx context.Context, req *types.ReceiptConte
 		s.notifyRoom.Store(req.RoomID, true)
 
 		//重置未读计数
-		s.countRepo.UpdateRoomReadCount(req.RoomID, req.UserID, "reset")
+		s.countRepo.UpdateRoomReadCount(req.RoomID, req.EventID, req.UserID, "reset")
 
 		//federation
 		if s.roomCurState.GetRoomState(req.RoomID) != nil {
@@ -202,7 +202,7 @@ func (s *ReceiptConsumer) OnReceipt(ctx context.Context, req *types.ReceiptConte
 			}
 		}
 	} else {
-		log.Infof("OnReceipt not latest event %s roomID %s receiptType %s eventID %s userID %s deviceID %s", lastEventID, req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID)
+		log.Infof("OnReceipt not latest event %s roomID %s receiptType %s eventID %s userID %s deviceID %s source %s", lastEventID, req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID, req.Source)
 	}
 }
 
@@ -269,6 +269,7 @@ func (s *ReceiptConsumer) fireRoomReceipt(ctx context.Context, roomID string) {
 	}
 
 	offset, _ := s.idg.Next()
+	log.Infof("flushReceiptUpdate roomID:%s evoffset:%d offset:%d", roomID, receipt.EvOffSet, offset)
 	s.flushReceiptUpdate(ctx, roomID, eventJson, receipt.EvOffSet, offset)
 }
 

@@ -342,7 +342,7 @@ type RoomReceipt struct {
 	RoomID   string
 	EvID     string
 	EvOffSet int64
-	Content  *sync.Map
+	Content  *sync.Map //key:user, value: ts
 }
 
 type PusherUsers struct {

@@ -31,7 +31,9 @@ type CreateContent struct {
 	EnableSnapshot  *bool `json:"enable_snapshot,omitempty"`
 	EnableForward   *bool `json:"enable_forward,omitempty"`
 	IsChannel       *bool `json:"is_channel,omitempty"`
-	RoomType        *int  `json:"room_type"`
+	IsOrganizationRoom *bool `json:"is_organization_room,omitempty"`
+	IsGroupRoom        *bool `json:"is_group_room,omitempty"`
+	RoomType           *int  `json:"room_type,omitempty"`
 }
 
 //type CreateContent map[string]interface{}

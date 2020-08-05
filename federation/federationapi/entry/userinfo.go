@@ -60,6 +60,7 @@ func GetUserInfo(ctx context.Context, msg *model.GobMessage, cache service.Cache
 		Mobile:    userInfo.Mobile,
 		Landline:  userInfo.Landline,
 		Email:     userInfo.Email,
+		State:     userInfo.State,
 	}).Encode()
 	retMsg := &model.GobMessage{
 		Body: body,

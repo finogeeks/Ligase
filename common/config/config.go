@@ -161,6 +161,7 @@ type Dendrite struct {
 			DeviceStateUpdate  ProducerConf `yaml:"output_device_state_update"`
 			SettingUpdate      ProducerConf `yaml:"setting_update"`
 			UserInfoUpdate     ProducerConf `yaml:"user_info_update"`
+			DismissRoom        ProducerConf `yaml:"dismiss_room"`
 		} `yaml:"producers"`
 		Consumer struct {
 			OutputRoomEventPublicRooms   ConsumerConf `yaml:"output_room_event_publicroom"`    // OutputRoomEventPublicRooms "public-rooms",
@@ -183,6 +184,7 @@ type Dendrite struct {
 			SetttngUpdateProxy         ConsumerConf `yaml:"setting_update_proxy"`
 			SettingUpdateContent       ConsumerConf `yaml:"setting_update_content"`
 			DownloadMedia              ConsumerConf `yaml:"download_media"`
+			DismissRoom                ConsumerConf `yaml:"dismiss_room"`
 		} `yaml:"consumers"`
 	} `yaml:"kafka"`
 
@@ -474,6 +476,12 @@ type Dendrite struct {
 		RoomStateExt DistLockConf `yaml:"room_state_ext"`
 	} `yaml:"dist_lock_custom"`
 
+	TokenExpire int64 `yaml:"token_expire"`
+	UtlExpire int64 `yaml:"utl_expire"`
+	LatestToken int `yaml:"latest_token"`
+	ReceiptDelay int64 `yaml:"receipt_delay"`
+	CheckReceipt int64 `yaml:"check_receipt"`
+
 	License     string `yaml:"license"`
 	LicenseItem LicenseConf
 }
@@ -696,6 +704,7 @@ func loadConfig(
 	adapter.SetDistLockItemCfg("room_state", config.DistLockCustom.RoomState.Timeout, config.DistLockCustom.RoomState.Wait, config.DistLockCustom.RoomState.Force)
 	adapter.SetDistLockItemCfg("room_state_ext", config.DistLockCustom.RoomStateExt.Timeout, config.DistLockCustom.RoomStateExt.Wait, config.DistLockCustom.RoomStateExt.Force)
 	adapter.SetDebugLevel(config.DebugLevel)
+	adapter.SetCacheCfg(config.TokenExpire, config.UtlExpire, config.LatestToken)
 	config.parseLicense()
 	return nil
 }

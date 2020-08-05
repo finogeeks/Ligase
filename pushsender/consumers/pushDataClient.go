@@ -48,6 +48,7 @@ type PushDataConsumer struct {
 	//msgChan    []chan *pushapitypes.PushPubContents
 	msgChan    []chan common.ContextMsg
 	httpClient *http.Client
+	lock    	*sync.Mutex
 }
 
 func NewPushDataConsumer(
@@ -60,6 +61,7 @@ func NewPushDataConsumer(
 		pushDB:    pushDB,
 		rpcClient: client,
 		chanSize:  16,
+		lock: new(sync.Mutex),
 	}
 	s.pushCount = new(sync.Map)
 	s.httpClient = &http.Client{
@@ -105,7 +107,7 @@ func (s *PushDataConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	}
 
 	idx := common.CalcStringHashCode(result.Input.RoomID) % s.chanSize
-	log.Infof("PushDataConsumer cb slot:%d roomID:%s", idx, result.Input.RoomID)
+	log.Infof("PushDataConsumer cb slot:%d roomID:%s eventID:%s len:%d", idx, result.Input.RoomID, result.Input.EventID, len(s.msgChan[idx]))
 	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &result}
 }
 
@@ -114,10 +116,10 @@ func (s *PushDataConsumer) startWorker(msgChan chan common.ContextMsg) {
 		ctx := msg.Ctx
 		data := msg.Msg.(*pushapitypes.PushPubContents)
 		if s.pushFilter.Lookup([]byte(data.Input.EventID)) {
-			log.Infof("PushDataConsumer startWorker lookup eventID:%s", data.Input.EventID)
+			log.Infof("PushDataConsumer startWorker lookup eventID:%s len(msgChan):%d", data.Input.EventID, len(msgChan))
 			return
 		}
-		log.Infof("start push roomID:%s eventID:%s contents:%d", data.Input.RoomID, data.Input.EventID, len(data.Contents))
+		log.Infof("start push roomID:%s eventID:%s len(msgChan):%d len(contents):%d", data.Input.RoomID, data.Input.EventID, len(msgChan), len(data.Contents))
 		s.pushFilter.Insert([]byte(data.Input.EventID))
 		for _, content := range data.Contents {
 			s.PushData(
@@ -149,6 +151,8 @@ func (s *PushDataConsumer) Start() error {
 }
 
 func (s *PushDataConsumer) SetPushFailTimes(pusherKey string, success bool) int {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	if success {
 		s.pushCount.Store(pusherKey, 0)
 		return 0
@@ -266,38 +270,41 @@ func (s *PushDataConsumer) PushData(
 				url = s.cfg.PushService.AndroidPushServerUrl
 			}
 		}
+		go s.doPush(url, request, pusher)
+	}
+}
 
-		code, body, err := s.HttpRequest(url, request)
-		if err != nil {
-			log.Errorw("http request error", log.KeysAndValues{"content", string(request), "error", err})
-			continue
-		}
+func (s *PushDataConsumer) doPush(url string, request []byte, pusher pushapitypes.Pusher){
+	code, body, err := s.HttpRequest(url, request)
+	if err != nil {
+		log.Errorw("http request error", log.KeysAndValues{"content", string(request), "error", err})
+		return
+	}
 
-		pusherKey := fmt.Sprintf("%s:%s", pusher.AppId, pusher.PushKey)
+	pusherKey := fmt.Sprintf("%s:%s", pusher.AppId, pusher.PushKey)
 
-		if code != http.StatusOK {
-			log.Errorw("http request error", log.KeysAndValues{"status_code", code, "response", string(body), "appId", pusher.AppId, "pushkey", pusher.PushKey, "content", string(request)})
+	if code != http.StatusOK {
+		log.Errorw("http request error", log.KeysAndValues{"status_code", code, "response", string(body), "appId", pusher.AppId, "pushkey", pusher.PushKey, "content", string(request)})
 
-			failCount := s.SetPushFailTimes(pusherKey, false)
-			if failCount > s.cfg.PushService.RemoveFailTimes {
-				log.Warnf("for failed too many del appId:%s, pushKey:%s, display:%s", pusher.AppId, pusher.PushKey, pusher.DeviceDisplayName)
-				if err := s.pushDB.DeletePushersByKey(ctx, pusher.AppId, pusher.PushKey); err != nil {
-					log.Errorw("delete pusher error", log.KeysAndValues{"err", err, "AppId", pusher.AppId, "PushKey", pusher.PushKey})
-				}
+		failCount := s.SetPushFailTimes(pusherKey, false)
+		if failCount > s.cfg.PushService.RemoveFailTimes {
+			log.Warnf("for failed too many del appId:%s, pushKey:%s, display:%s", pusher.AppId, pusher.PushKey, pusher.DeviceDisplayName)
+			if err := s.pushDB.DeletePushersByKey(context.TODO(), pusher.AppId, pusher.PushKey); err != nil {
+				log.Errorw("delete pusher error", log.KeysAndValues{"err", err, "AppId", pusher.AppId, "PushKey", pusher.PushKey})
 			}
-		} else {
-			//用以追踪IOS重复推送问题
-			log.Infof("push content success, appid:%s, pushkey:%s , content:%s", pusher.AppId, pusher.PushKey, string(request))
-			s.SetPushFailTimes(pusherKey, true)
+		}
+	} else {
+		//用以追踪IOS重复推送问题
+		log.Infof("push content success, appid:%s, pushkey:%s , content:%s", pusher.AppId, pusher.PushKey, string(request))
+		s.SetPushFailTimes(pusherKey, true)
 
-			var ack pushapitypes.PushAck
-			err = json.Unmarshal(body, &ack)
-			if len(ack.Rejected) > 0 {
-				for _, v := range ack.Rejected {
-					log.Warnf("for reject del pushKey:%s", v)
-					if err := s.pushDB.DeletePushersByKeyOnly(ctx, v); err != nil {
-						log.Errorw("delete pusher error", log.KeysAndValues{"err", err})
-					}
+		var ack pushapitypes.PushAck
+		err = json.Unmarshal(body, &ack)
+		if len(ack.Rejected) > 0 {
+			for _, v := range ack.Rejected {
+				log.Warnf("for reject del pushKey:%s", v)
+				if err := s.pushDB.DeletePushersByKeyOnly(context.TODO(), v); err != nil {
+					log.Errorw("delete pusher error", log.KeysAndValues{"err", err})
 				}
 			}
 		}
@@ -308,6 +315,7 @@ func (s *PushDataConsumer) HttpRequest(
 	reqUrl string,
 	content []byte,
 ) (int, []byte, error) {
+	bs := time.Now().UnixNano() / 1000000
 	req, err := http.NewRequest(http.MethodPost, reqUrl, bytes.NewReader(content))
 	if err != nil {
 		return -1, nil, err
@@ -322,6 +330,8 @@ func (s *PushDataConsumer) HttpRequest(
 			resp.Body.Close()
 		}
 	}()
+	spend := time.Now().UnixNano()/1000000 - bs
+	log.Infof("post http to push-service spend:%d", spend)
 	if err != nil {
 		return -1, nil, err
 	}

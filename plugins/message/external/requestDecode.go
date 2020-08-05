@@ -1996,3 +1996,7 @@ func (externalReq *PostQueryClientKeysRequest) Decode(data []byte) error {
 func (externalReq *PostClaimClientKeysRequest) Decode(data []byte) error {
 	return json.Unmarshal(data, externalReq)
 }
+
+func (externalReq *DismissRoomRequest) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}

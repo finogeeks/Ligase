@@ -90,10 +90,16 @@ func (s *SyncConsumer) startWorker(msgChan chan common.ContextMsg) {
 	}
 }
 
+type RpcResponse struct {
+	Error   string
+	Payload interface{}
+}
+
 func (s *SyncConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	var request FedEventExtra
 	if err := json.Unmarshal(msg.Data, &request.FedEvent); err != nil {
 		log.Errorf("roomAliasRpcConsumer federationEvent unmarshal error %v", err)
+		s.rpcClient.PubObj(request.FedEvent.Reply, &RpcResponse{Error: "FedSync processRequest invalid destination " + request.FedEvent.Destination})
 		return
 	}
 	request.FedEvent.Reply = msg.Reply
@@ -137,5 +143,5 @@ func (s *SyncConsumer) processRequest(ctx context.Context, request *FedEventExtr
 		response = SendInvite(ctx, s.fedClient, &request.FedEvent, destination)
 	}
 
-	s.rpcClient.PubObj(request.FedEvent.Reply, response)
+	s.rpcClient.PubObj(request.FedEvent.Reply, &RpcResponse{Payload: response})
 }

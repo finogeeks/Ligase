@@ -80,6 +80,23 @@ func Setup(
 	makeMediaAPI(muxR0, true, "/multi-forward-res", processor.MultiResForward, rpcCli, http.MethodPost, http.MethodOptions)
 	makeMediaAPI(muxV1, true, "/multi-forward-res", processor.MultiResForward, rpcCli, http.MethodPost, http.MethodOptions)
 
+	//emote
+	//wait eif emote upload finish
+	makeMediaAPI(muxR0, true, "/wait/emote", processor.WaitEmote, rpcCli, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/wait/emote", processor.WaitEmote, rpcCli, http.MethodGet, http.MethodOptions)
+	//check emote is exsit
+	makeMediaAPI(muxR0, true, "/check/emote/{serverName}/{mediaId}", processor.CheckEmote, rpcCli, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/check/emote/{serverName}/{mediaId}", processor.CheckEmote, rpcCli, http.MethodGet, http.MethodOptions)
+	//favorite emote
+	makeMediaAPI(muxR0, true, "/favorite/emote/{serverName}/{mediaId}", processor.FavoriteEmote, rpcCli, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/favorite/emote/{serverName}/{mediaId}", processor.FavoriteEmote, rpcCli, http.MethodPost, http.MethodOptions)
+	//get emote list
+	makeMediaAPI(muxR0, true, "/list/emote", processor.ListEmote, rpcCli, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/list/emote", processor.ListEmote, rpcCli, http.MethodGet, http.MethodOptions)
+	//favorite file to emote
+	makeMediaAPI(muxR0, true, "/favorite/fileemote/{serverName}/{mediaId}", processor.FavoriteFileEmote, rpcCli, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/favorite/fileemote/{serverName}/{mediaId}", processor.FavoriteFileEmote, rpcCli, http.MethodPost, http.MethodOptions)
+
 	fedV1 := apiMux.PathPrefix("/_matrix/federation/v1/media").Subrouter()
 	makeFedAPI(fedV1, "/download/{serverName}/{mediaId}/{fileType}", processor.FedDownload, http.MethodGet, http.MethodOptions)
 	makeFedAPI(fedV1, "/thumbnail/{serverName}/{mediaId}/{fileType}", processor.FedThumbnail, http.MethodGet, http.MethodOptions)

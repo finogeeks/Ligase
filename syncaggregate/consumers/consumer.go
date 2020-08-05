@@ -20,6 +20,9 @@ package consumers
 import (
 	"context"
 	"github.com/finogeeks/ligase/adapter"
+	"github.com/finogeeks/ligase/model/service"
+	"math"
+	"math/rand"
 	"time"
 
 	"github.com/finogeeks/ligase/plugins/message/external"
@@ -47,7 +50,6 @@ type UtlEvent struct {
 type UtlContent struct {
 	ev     *gomatrixserverlib.ClientEvent
 	user   string
-	result chan int64
 }
 
 type EventFeedConsumer struct {
@@ -57,15 +59,16 @@ type EventFeedConsumer struct {
 	presenceStreamRepo *repos.PresenceDataStreamRepo
 	cfg                *config.Dendrite
 	chanSize           uint32
-	//msgChan            []chan *UtlEvent
 	msgChan     []chan common.ContextMsg
 	utlChanSize uint32
 	utlChan     []chan common.ContextMsg
+	cache              service.Cache
 }
 
 func NewEventFeedConsumer(
 	cfg *config.Dendrite,
 	store model.SyncAPIDatabase,
+	cache service.Cache,
 ) *EventFeedConsumer {
 	val, ok := common.GetTransportMultiplexer().GetChannel(
 		cfg.Kafka.Consumer.OutputRoomEventSyncAggregate.Underlying,
@@ -79,6 +82,7 @@ func NewEventFeedConsumer(
 			cfg:         cfg,
 			chanSize:    64,
 			utlChanSize: 64,
+			cache:       cache,
 		}
 		channel.SetHandler(s)
 
@@ -107,30 +111,30 @@ func (s *EventFeedConsumer) startWorker(msgChan chan common.ContextMsg) {
 
 func (s *EventFeedConsumer) startUtlWorker(utlChan chan common.ContextMsg) {
 	for msg := range utlChan {
+		bs := time.Now().UnixNano() / 1000000
 		data := msg.Msg.(*UtlContent)
 		s.onInsertUserTimeLine(msg.Ctx, data)
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("onInsertUserTimeLine roomID:%s user:%s eventID:%s event_offset:%d spend:%d", data.ev.RoomID, data.user, data.ev.EventID, data.ev.EventOffset, spend)
 	}
 }
 
-func (s *EventFeedConsumer) dispthInsertUserTimeLine(ctx context.Context, ev *gomatrixserverlib.ClientEvent, user string, result chan int64) {
+func (s *EventFeedConsumer) dispthInsertUserTimeLine(ctx context.Context, ev *gomatrixserverlib.ClientEvent, user string) {
 	idx := common.CalcStringHashCode(user) % s.utlChanSize
 	s.utlChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: &UtlContent{
 		ev:     ev,
 		user:   user,
-		result: result,
 	}}
 }
 
 func (s *EventFeedConsumer) onInsertUserTimeLine(ctx context.Context, data *UtlContent) {
-	offset, _ := s.userTimeLine.Idg.Next()
 	//only for debug
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
-		delay := adapter.Random(0, 10)
-		log.Infof("roomId:%s offset:%d event_id:%s user:%s sleep %ds", data.ev.RoomID, offset, data.ev.EventID, data.user, delay)
+		delay := math.Max(0, 11-math.Pow(float64(rand.Intn(200)), 1/1.5))
+		log.Infof("roomId:%s event_id:%s user:%s sleep %ds", data.ev.RoomID,  data.ev.EventID, data.user, delay)
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
-	s.userTimeLine.AddP2PEv(ctx, data.ev, offset, data.user)
-	data.result <- offset
+	s.userTimeLine.AddP2PEv(ctx, data.ev, data.user)
 }
 
 func (s *EventFeedConsumer) Start() error {
@@ -159,6 +163,8 @@ func (s *EventFeedConsumer) OnMessage(ctx context.Context, topic string, partiti
 
 	switch output.Type {
 	case roomserverapi.OutputTypeNewRoomEvent:
+		s.userTimeLine.UpdateRoomOffset(output.NewRoomEvent.Event.RoomID, output.NewRoomEvent.Event.EventOffset)
+		log.Infof("onNewRoomEvent onMessage roomID:%s eventID:%s eventOffset:%d", output.NewRoomEvent.Event.RoomID, output.NewRoomEvent.Event.EventID, output.NewRoomEvent.Event.EventOffset)
 		utlEvent := &UtlEvent{
 			Event:        output.NewRoomEvent.Event,
 			RelateJoined: []string{},
@@ -171,7 +177,7 @@ func (s *EventFeedConsumer) OnMessage(ctx context.Context, topic string, partiti
 			}
 		}
 		if len(utlEvent.RelateJoined) > 0 || (len(utlEvent.RelateJoined) <= 0 && utlEvent.Event.Type == "m.room.member") {
-			log.Infof("sync aggregate received data instance:%d IsRelatedRequest event_id:%s room:%s RelateJoined:%v", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, utlEvent.RelateJoined)
+			log.Infof("sync aggregate received data instance:%d IsRelatedRequest event_id:%s room:%s RelateJoined len:%d", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, len(utlEvent.RelateJoined))
 			idx := common.CalcStringHashCode(utlEvent.Event.RoomID) % s.chanSize
 			s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: utlEvent}
 		} else {
@@ -191,26 +197,24 @@ func (s *EventFeedConsumer) onNewRoomEvent(
 			log.Panicf("%v\n%s\n", e, stack)
 		}
 	}()
-	log.Infof("onNewRoomEvent.addUserTimeLineEvent roomID:%s eventID:%s msg.RelateJoined len:%d msg.Joined len:%d", msg.Event.RoomID, msg.Event.EventID, len(msg.RelateJoined), len(msg.Joined))
+	bs := time.Now().UnixNano() / 1000000
 	s.addUserTimeLineEvent(ctx, &msg.Event, msg.RelateJoined, msg.Joined)
+	spend := time.Now().UnixNano()/1000000 - bs
+	log.Infof("onNewRoomEvent addUserTimeLineEvent roomID:%s eventID:%s eventOffset:%d spend:%d", msg.Event.RoomID, msg.Event.EventID, msg.Event.EventOffset, spend)
 	return nil
 }
 
 func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatrixserverlib.ClientEvent, relateUsers []string, users []string) {
 	var updateProfileUser map[string]map[string]struct{}
-	//offset, _ := s.userTimeLine.Idg.Next()
 	if ev.Type == "m.room.member" && ev.StateKey != nil {
 		member := external.MemberContent{}
 		json.Unmarshal(ev.Content, &member)
 		if member.Membership != "join" {
 			if common.IsRelatedRequest(*ev.StateKey, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, false) {
 				bs := time.Now().UnixNano() / 1000000
-				//s.userTimeLine.AddP2PEv(ctx, ev, offset, *ev.StateKey)
-				result := make(chan int64)
-				s.dispthInsertUserTimeLine(ctx, ev, *ev.StateKey, result)
-				offset := <-result
+				s.dispthInsertUserTimeLine(ctx, ev, *ev.StateKey)
 				spend := time.Now().UnixNano()/1000000 - bs
-				log.Infof("m.room.member not join add to timeline roomId:%s offset:%d event_id:%s user_id:%s spend:%dms", ev.RoomID, offset, ev.EventID, *ev.StateKey, spend)
+				log.Infof("m.room.member not join add to timeline roomId:%s event_id:%s user_id:%s spend:%dms", ev.RoomID, ev.EventID, *ev.StateKey, spend)
 			}
 		} else {
 			updateProfileUser = map[string]map[string]struct{}{}
@@ -247,16 +251,14 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatr
 			log.Infof("m.room.member join add to add friend ship roomId:%s event_id:%s user_id:%s spend:%dms", ev.RoomID, ev.EventID, *ev.StateKey, spend)
 		}
 	}
+	bs := time.Now().UnixNano() / 1000000
 	for _, user := range relateUsers {
-		bs := time.Now().UnixNano() / 1000000
-		//s.userTimeLine.AddP2PEv(ctx, ev, offset, user)
-		result := make(chan int64)
-		s.dispthInsertUserTimeLine(ctx, ev, user, result)
-		offset := <-result
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("m.room.member not join add to timeline roomId:%s offset:%d event_id:%s user_id:%s spend:%dms", ev.RoomID, offset, ev.EventID, user, spend)
+		s.dispthInsertUserTimeLine(ctx, ev, user)
 	}
+	spend := time.Now().UnixNano()/1000000 - bs
+	log.Infof("update relateUsers roomID:%s eventID:%s len(relateUsers):%d spend:%d", ev.RoomID, ev.EventID, len(relateUsers), spend)
 	if updateProfileUser != nil {
+		bs := time.Now().UnixNano() / 100000
 		for domain, users := range updateProfileUser {
 			for user := range users {
 				feed := s.presenceStreamRepo.GetHistoryByUserID(user)
@@ -278,6 +280,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatr
 						Mobile:      presenceContent.Mobile,
 						Landline:    presenceContent.Landline,
 						Email:       presenceContent.Email,
+						State:       presenceContent.State,
 					}
 					content, _ := json.Marshal(fedProfile)
 					log.Infof("send profile to new domain, user:%s, domain:%s, profile:%s", user, domain, content)
@@ -304,5 +307,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ctx context.Context, ev *gomatr
 				}
 			}
 		}
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("update updateProfileUser roomID:%s eventID:%s spend:%d", ev.RoomID, ev.EventID, spend)
 	}
 }

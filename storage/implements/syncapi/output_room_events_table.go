@@ -63,13 +63,9 @@ CREATE TABLE IF NOT EXISTS syncapi_output_room_events (
     CONSTRAINT syncapi_output_room_events_unique UNIQUE (event_id, room_id)
 );
 -- for event selection
---CREATE UNIQUE INDEX IF NOT EXISTS syncapi_event_id_idx ON syncapi_output_room_events(event_id);
-CREATE UNIQUE INDEX IF NOT EXISTS syncapi_event_id_uni_idx ON syncapi_output_room_events(id);
-CREATE INDEX IF NOT EXISTS syncapi_output_event_id_idx ON syncapi_output_room_events(event_id);
-CREATE INDEX  IF NOT EXISTS syncapi_user_history  ON syncapi_output_room_events (type,room_id);
-CREATE INDEX IF NOT EXISTS syncapi_output_room_visibility  ON syncapi_output_room_events (type,room_id,device_id) WHERE device_id IS NOT NULL;
-CREATE INDEX  IF NOT EXISTS syncapi_user_recent  ON syncapi_output_room_events (room_id);
-CREATE INDEX  IF NOT EXISTS syncapi_load_room_history ON syncapi_output_room_events (id,room_id);
+CREATE INDEX IF NOT EXISTS syncapi_output_room_visibility ON syncapi_output_room_events (type,room_id,device_id);
+CREATE INDEX IF NOT EXISTS syncapi_roomid_id_desc on syncapi_output_room_events(room_id, id desc);
+CREATE INDEX IF NOT EXISTS syncapi_load_room_history ON syncapi_output_room_events (id,room_id);
 
 -- mirror table for debug, plaintext storage
 CREATE TABLE IF NOT EXISTS syncapi_output_room_events_mirror (
@@ -123,23 +119,23 @@ const selectEventsSQL = "" +
 
 const selectEventForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND origin_server_ts >= $2" +
-	" ORDER BY origin_server_ts ASC, depth ASC, domain ASC, id ASC LIMIT $3"
+	" WHERE room_id = $1 AND id >= $2" +
+	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
 
 const selectEventBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND  origin_server_ts <= $2" +
-	" ORDER BY origin_server_ts DESC, depth DESC, domain DESC,id DESC LIMIT $3"
+	" WHERE room_id = $1 AND id <= $2" +
+	" ORDER BY id DESC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
 
 const selectEventRangeForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND origin_server_ts >= $2 AND origin_server_ts <= $3" +
-	" ORDER BY origin_server_ts ASC, depth ASC, domain ASC, id ASC"
+	" WHERE room_id = $1 AND id >= $2 AND id <= $3" +
+	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC"
 
 const selectEventRangeBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND origin_server_ts <= $2 AND origin_server_ts >= $3" +
-	" ORDER BY origin_server_ts DESC, depth DESC, domain DESC,id DESC"
+	" WHERE room_id = $1 AND id <= $2 AND id >= $3" +
+	" ORDER BY id DESC, origin_server_ts ASC, depth ASC, domain ASC"
 
 const updateEventSQL = "" +
 	"UPDATE syncapi_output_room_events SET event_json = $1 WHERE event_id = $2 and room_id= $3"
@@ -208,6 +204,9 @@ const selectEventRawSQL = "" +
 const selectEventsByRoomIDSQL = "" +
 	"SELECT id, event_id, event_json FROM syncapi_output_room_events WHERE room_id = $1"
 
+const selectEventsByEventsSQL = "" +
+	"SELECT id, event_id, room_id FROM syncapi_output_room_events WHERE event_id = ANY($1)"
+
 type outputRoomEventsStatements struct {
 	db                          *Database
 	insertEventStmt             *sql.Stmt
@@ -238,6 +237,7 @@ type outputRoomEventsStatements struct {
 	updateSyncMsgEventStmt        *sql.Stmt
 	selectEventRawStmt            *sql.Stmt
 	selectEventsByRoomIDStmt      *sql.Stmt
+	selectEventsByEventsStmt 	  *sql.Stmt
 }
 
 func (s *outputRoomEventsStatements) getSchema() string {
@@ -332,6 +332,9 @@ func (s *outputRoomEventsStatements) prepare(db *sql.DB, d *Database) (err error
 		return
 	}
 	if s.selectEventsByRoomIDStmt, err = db.Prepare(selectEventsByRoomIDSQL); err != nil {
+		return
+	}
+	if s.selectEventsByEventsStmt, err = db.Prepare(selectEventsByEventsSQL); err != nil {
 		return
 	}
 	return
@@ -1065,4 +1068,34 @@ func (s *outputRoomEventsStatements) selectEventsByRoomIDMigration(
 		result = append(result, eventBytes)
 	}
 	return ids, eventIDs, result, nil
+}
+
+func (s *outputRoomEventsStatements) selectEventsByEvents(
+	ctx context.Context, events []string,
+) ([]int64, []string, []string, error) {
+	var rows *sql.Rows
+	var err error
+
+	rows, err = s.selectEventsByEventsStmt.QueryContext(ctx,pq.Array(events))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close() // nolint: errcheck
+
+	var ids []int64
+	var eventIDs []string
+	var roomIDs []string
+	for rows.Next() {
+		var id int64
+		var eventID string
+		var roomID string
+		if err = rows.Scan(&id, &eventID, &roomID); err != nil {
+			return nil, nil, nil, err
+		}
+
+		ids = append(ids, id)
+		eventIDs = append(eventIDs, eventID)
+		roomIDs = append(roomIDs, roomID)
+	}
+	return ids, eventIDs, roomIDs, nil
 }

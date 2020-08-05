@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/feedstypes"
@@ -43,6 +44,9 @@ type PushConsumer struct {
 	roomHistory  *repos.RoomHistoryTimeLineRepo
 	pubTopic     string
 	complexCache *common.ComplexCache
+	msgChan      []chan common.ContextMsg
+	chanSize     uint32
+	slotSize     uint32
 }
 
 func NewPushConsumer(
@@ -54,10 +58,32 @@ func NewPushConsumer(
 		cache:        cache,
 		rpcClient:    client,
 		complexCache: complexCache,
+		chanSize:    20480,
+		slotSize: 	 64,
 	}
 	s.pubTopic = push.PushTopicDef
 
 	return s
+}
+
+func (s *PushConsumer) Start() {
+	s.msgChan = make([]chan common.ContextMsg, s.slotSize)
+	for i := uint32(0); i < s.slotSize; i++ {
+		s.msgChan[i] = make(chan common.ContextMsg, s.chanSize)
+		go s.startWorker(s.msgChan[i])
+	}
+}
+
+func (s *PushConsumer) startWorker(msgChan chan common.ContextMsg) {
+	for msg := range msgChan {
+		data := msg.Msg.(*gomatrixserverlib.ClientEvent)
+		s.OnEvent(msg.Ctx,data,data.EventOffset)
+	}
+}
+
+func (s *PushConsumer) DispthEvent(ctx context.Context, ev *gomatrixserverlib.ClientEvent){
+	idx := common.CalcStringHashCode(ev.RoomID) % s.slotSize
+	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: ev}
 }
 
 func (s *PushConsumer) SetRoomHistory(roomHistory *repos.RoomHistoryTimeLineRepo) *PushConsumer {
@@ -86,6 +112,11 @@ func (s *PushConsumer) SetEventRepo(eventRepo *repos.EventReadStreamRepo) *PushC
 }
 
 func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.ClientEvent, eventOffset int64) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64,input *gomatrixserverlib.ClientEvent){
+		spend := time.Now().UnixNano() /1000000 - bs
+		log.Infof("PushConsumer onevent roomID:%s eventID:%s eventOffset:%d spend:%d", input.RoomID, input.EventID, input.EventOffset, spend)
+	}(bs,input)
 	eventJson, err := json.Marshal(&input)
 	if err != nil {
 		log.Errorf("PushConsumer processEvent marshal error %d, message %s", err, input.EventID)
@@ -177,7 +208,7 @@ func (s *PushConsumer) preProcessPush(
 			if s.eventRepo.GetUserLastOffset(ctx, *member, input.RoomID) < redactOffset || redactOffset == -1 {
 				//如果一个用户读完消息以后，有新的未读，此时hs重启，其他人撤销之前已读消息，计数会不准确
 				//高亮信息撤回，暂时也不好处理计减
-				s.countRepo.UpdateRoomReadCount(input.RoomID, *member, "decrease")
+				s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "decrease")
 			}
 		}
 
@@ -208,7 +239,7 @@ func (s *PushConsumer) preProcessPush(
 	} else {
 		//当前用户在发消息，应该把该用户的未读数置为0
 		s.eventRepo.AddUserReceiptOffset(*member, input.RoomID, eventOffset)
-		s.countRepo.UpdateRoomReadCount(input.RoomID, *member, "reset")
+		s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "reset")
 	}
 }
 
@@ -352,14 +383,14 @@ func (s *PushConsumer) processPush(
 			action := s.getActions(v.Actions)
 
 			if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
-				s.countRepo.UpdateRoomReadCount(input.RoomID, *userID, "increase")
+				s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *userID, "increase")
 			}
 
 			count, _ := s.countRepo.GetRoomReadCount(input.RoomID, *userID)
 
 			if action.HighLight {
 				if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
-					s.countRepo.UpdateRoomReadCount(input.RoomID, *userID, "increase_hl")
+					s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *userID, "increase_hl")
 				}
 			}
 

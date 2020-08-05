@@ -110,8 +110,12 @@ func (s *InputRoomEventConsumer) OnMessage(ctx context.Context, topic string, pa
 	}
 
 	roomId := input.RoomID
-	log.Infow("received data from client api server", log.KeysAndValues{"roomid", roomId, "crc64", common.CalcStringHashCode(roomId)})
-
+	log.Infow("kafka received data from client api server", log.KeysAndValues{"roomid", roomId, "crc64",
+		common.CalcStringHashCode(roomId), "len", len(input.BulkEvents.Events)})
+	for _, event := range input.BulkEvents.Events {
+		log.Infof("rpc room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
+			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
+	}
 	idx := common.CalcStringHashCode(roomId) % s.chanSize
 
 	//log.Infof("InputRoomEventConsumer room:%s slot:%d all:%d have:%d cap:%d", roomId, idx, s.chanSize, len(s.msgChan[idx]), cap(s.msgChan[idx]))
@@ -135,9 +139,15 @@ func (s *InputRoomEventConsumer) cb(ctx context.Context, msg *nats.Msg) {
 	input.Reply = msg.Reply
 	roomId := input.RoomID
 
-	log.Infow("received data from client api server", log.KeysAndValues{
+	log.Infow("rpc received data from client api server", log.KeysAndValues{
 		"roomid", roomId, "crc64", common.CalcStringHashCode(roomId), "reply", input.Reply,
+		"len", len(input.BulkEvents.Events),
 	})
+
+	for _, event := range input.BulkEvents.Events {
+		log.Infof("rpc room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
+			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
+	}
 
 	idx := common.CalcStringHashCode(roomId) % s.chanSize
 
@@ -147,12 +157,14 @@ func (s *InputRoomEventConsumer) cb(ctx context.Context, msg *nats.Msg) {
 
 //worker, replay when needed
 func (s *InputRoomEventConsumer) processEvent(ctx context.Context, input *roomserverapi.RawEvent) error {
-	log.Infof("------------------------client-api processEvent start")
+	log.Infof("------------------------client-api processEvent start roomId:%s len:%d", input.RoomID, len(input.BulkEvents.Events))
 	begin := time.Now()
 	last := begin
 	var respResult roomserverapi.InputRoomEventsResponse
-
-	//log.Infof("------------------------client-api processEvent start ev:%v", input.BulkEvents.Events)
+	for _, event := range input.BulkEvents.Events {
+		log.Infof("processEvent input room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
+			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
+	}
 	n, err := s.input.InputRoomEvents(ctx, input)
 	respResult.N = n
 	if err != nil {

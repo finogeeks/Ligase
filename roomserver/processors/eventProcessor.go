@@ -100,7 +100,9 @@ func (r *EventsProcessor) handleInput(input *InputContext) {
 
 func (r *EventsProcessor) dispthInput(ctx context.Context, input *roomserverapi.RawEvent, result chan InputResult) {
 	hash := common.CalcStringHashCode(input.RoomID)
-	r.inputChan[hash%r.slot] <- &InputContext{
+	slot := hash%r.slot
+	log.Infof("dispth input roomID:%s slot:%d", input.RoomID, slot)
+	r.inputChan[slot] <- &InputContext{
 		ctx:    ctx,
 		input:  input,
 		result: result,
@@ -108,8 +110,13 @@ func (r *EventsProcessor) dispthInput(ctx context.Context, input *roomserverapi.
 }
 
 func (r *EventsProcessor) WriteOutputEvents(ctx context.Context, roomID string, updates []roomserverapi.OutputEvent) error {
+	updateEvents := []string{}
+	for _, event := range updates {
+		updateEvents = append(updateEvents, event.NewRoomEvent.Event.EventID)
+	}
+	log.Infof("before WriteOutputEvents roomID:%s updates:%+v", roomID, updateEvents)
+	bs := time.Now().UnixNano()/1000000
 	roomIDData := []byte(roomID)
-
 	for i := range updates {
 		err := func() error {
 			span, _ := common.StartSpanFromContext(ctx, r.Cfg.Kafka.Producer.OutputRoomEvent.Name)
@@ -127,10 +134,12 @@ func (r *EventsProcessor) WriteOutputEvents(ctx context.Context, roomID string, 
 				})
 		}()
 		if err != nil {
+			log.Errorf("WriteOutputEvents roomID:%s event:%s err:%v", roomID, updates[i].NewRoomEvent.Event.EventID, err)
 			return err
 		}
 	}
-
+	spend := time.Now().UnixNano()/ 1000000 - bs
+	log.Infof("after WriteOutputEvents spend:%d roomID:%s updates:%+v", spend, roomID, updateEvents)
 	return nil
 }
 
@@ -161,8 +170,26 @@ func (r *EventsProcessor) InputRoomEvents(
 	start := time.Now()
 	//n, err := r.processInput(ctx, input)
 	result := make(chan InputResult)
+	if input.TxnID != nil {
+		log.Infof("InputRoomEvents dispatch input txnId:%s", input.TxnID.TransactionID)
+	}else{
+		log.Infof("InputRoomEvents dispatch input")
+	}
+	for _, event := range input.BulkEvents.Events {
+		log.Infof("begin dispatch input room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
+			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
+	}
 	r.dispthInput(ctx, input, result)
 	inputResult := <-result
+	for _, event := range input.BulkEvents.Events {
+		log.Infof("after dispatch input room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
+			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
+	}
+	if input.TxnID != nil {
+		log.Infof("InputRoomEvents dispatch input txnId:%s response", input.TxnID.TransactionID)
+	}else{
+		log.Infof("InputRoomEvents dispatch input response")
+	}
 	// monitor report
 	duration := float64(time.Since(start)) / float64(time.Microsecond)
 	if len(input.Query) >= 2 {
@@ -199,7 +226,11 @@ func (r *EventsProcessor) processRoomEvent(
 	txnID *roomservertypes.TransactionID,
 	svrName string,
 ) error {
-
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("processRoomEvent roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	if kind == roomserverapi.KindNew {
 		return r.processRoomNewEvent(ctx, event, trustedJSON, txnID, svrName)
 	} else if kind == roomserverapi.KindBackfill {
@@ -207,7 +238,6 @@ func (r *EventsProcessor) processRoomEvent(
 	} else {
 		log.Infof("processRoomEvent unknown type: %d", kind)
 	}
-
 	return nil
 }
 
@@ -218,6 +248,11 @@ func (r *EventsProcessor) processRoomNewEvent(
 	txnID *roomservertypes.TransactionID,
 	svrName string,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("processRoomNewEvent roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	lockProcess := common.IsStateEv(&event)
 	if lockProcess {
 		lockKey := types.LOCK_ROOMSTATE_PREFIX + event.RoomID()
@@ -308,6 +343,11 @@ func (r *EventsProcessor) processDirectRoomCreateOrMemberEvent(
 	ctx context.Context,
 	event gomatrixserverlib.Event,
 ) ([]gomatrixserverlib.Event, bool, error) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("processDirectRoomCreateOrMemberEvent roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	inCont := types.RCSInputEventContent{
 		Event: event,
 	}
@@ -335,7 +375,17 @@ func (r *EventsProcessor) processDirectRoomCreateOrMemberEvent(
 }
 
 func (r *EventsProcessor) processFedInvite(ctx context.Context, event gomatrixserverlib.Event, rs *repos.RoomServerState) (gomatrixserverlib.Event, error) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("processFedInvite roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	if event.Type() != gomatrixserverlib.MRoomMember || event.StateKey() == nil {
+		return event, nil
+	}
+	sender := event.Sender()
+	senderDomain, _ := common.DomainFromID(sender)
+	if !common.CheckValidDomain(senderDomain, r.Cfg.Matrix.ServerName) {
 		return event, nil
 	}
 	content := map[string]interface{}{}
@@ -399,6 +449,11 @@ func (r *EventsProcessor) processNew(
 	trustedJSON bool,
 	rs *repos.RoomServerState,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("processNew roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	log.Debugf("------------------------processNew start")
 	begin := time.Now()
 	last := begin
@@ -436,7 +491,7 @@ func (r *EventsProcessor) processNew(
 	log.Debugf("------------------------processNew auth %v", time.Now().Sub(last))
 	last = time.Now()
 	//event.SetDepth(depth)
-	bs := time.Now().UnixNano() / 1000000
+	bs = time.Now().UnixNano() / 1000000
 	rs = r.Repo.OnEvent(ctx, &event, eventNID, rs)
 	spend := time.Now().UnixNano()/1000000 - bs
 	log.Infof("processNew r.Repo.OnEvent roomid:%s spend:%d ms", event.RoomID(), spend)
@@ -488,6 +543,11 @@ func (r *EventsProcessor) processBackfill(
 	txnID *roomservertypes.TransactionID,
 	svrName string,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("processBackfill roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, event)
 	log.Debugf("------------------------processRoomEvent start")
 	eventNID := event.EventNID()
 	var err error
@@ -508,12 +568,17 @@ func (r *EventsProcessor) processBackfill(
 }
 
 func (r *EventsProcessor) updateRoomStateExt(ctx context.Context, event *gomatrixserverlib.Event, rs *repos.RoomServerState, all bool) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("updateRoomStateExt roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, *event)
 	domain, res := common.DomainFromID(event.Sender())
 	if res != nil {
 		return errors.New("event send invalid doamin")
 	}
 	lockKey := types.LOCK_ROOMSTATE_EXT_PREFIX + event.RoomID()
-	bs := time.Now().UnixNano() / 1000
+	bs = time.Now().UnixNano() / 1000
 	token, err := r.Repo.GetCache().Lock(lockKey, adapter.GetDistLockCfg().LockRoomStateExt.Timeout, adapter.GetDistLockCfg().LockRoomStateExt.Wait)
 	if err != nil {
 		log.Errorf("dist lock key:%s token:%s err:%v", lockKey, token, err)
@@ -616,6 +681,11 @@ func (r *EventsProcessor) postProcessNew(
 	transactionID *roomservertypes.TransactionID,
 	curSnap int64,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("postProcessNew roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, *event)
 	last := time.Now()
 	updates, err := r.updateMemberShip(ctx, roomNID, eventNID, *event, pre)
 	if err != nil {
@@ -630,7 +700,9 @@ func (r *EventsProcessor) postProcessNew(
 		r.Repo.FlushRoomState(rs)
 		log.Infof("postProcessNew FlushRoomState roomid:%s spend %v", event.RoomID(), time.Now().Sub(last))
 	}
-
+	if common.CheckValidDomain(sendDomain, r.Cfg.Matrix.ServerName) && event.OriginServerTS() == 0 {
+		event.SetOriginServerTS(gomatrixserverlib.AsTimestamp(time.Now()))
+	}
 	ore := r.buildOutputRoomEvent(transactionID, sendServer, rs, *event, pre)
 
 	updates = append(updates, roomserverapi.OutputEvent{
@@ -701,6 +773,11 @@ func (r *EventsProcessor) postProcessBackfill(
 	transactionID *roomservertypes.TransactionID,
 	curSnap int64,
 ) error {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64, ev gomatrixserverlib.Event){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		log.Infof("postProcessBackfill roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
+	}(bs, *event)
 	last := time.Now()
 
 	refId, refHash := rs.GetRefs(event)

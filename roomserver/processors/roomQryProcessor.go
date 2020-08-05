@@ -175,7 +175,7 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 	request *roomserverapi.QueryBackFillEventsRequest,
 	response *roomserverapi.QueryBackFillEventsResponse,
 ) error {
-	log.Infof("-------RoomQryProcessor QueryBackFillEvents start")
+	log.Infof("-------RoomQryProcessor QueryBackFillEvents start %#v", request)
 	rs := s.Repo.GetRoomState(ctx, request.RoomID)
 	if rs == nil {
 		return errors.New("room not exits")
@@ -192,6 +192,7 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 
 	var eventNIDs []int64
 	var eventNid int64
+	var checkFirstEv = false
 	if eventID != "" {
 		var err error
 		eventNid, err = s.DB.EventNID(ctx, eventID)
@@ -205,13 +206,27 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 		}
 	} else {
 		if request.Dir == "b" {
-			eventNid = math.MaxInt64
+			endEventNID, _ := s.DB.SelectEventNidForBackfill(ctx, rs.RoomNid, request.Origin)
+			log.Infof("-------RoomQryProcessor QueryBackFillEvents rid:%s rnid:%d endEventNID: %d", request.RoomID, rs.RoomNid, endEventNID)
+			if endEventNID == 0 {
+				eventNid = math.MaxInt64
+			} else {
+				checkFirstEv = true
+				eventNid = endEventNID
+			}
 		} else {
 			eventNid = math.MinInt64
 		}
 	}
+
 	// TODO: 验证第一条是否和请求的eventID一致
-	nids, err := s.DB.BackFillNids(ctx, rs.RoomNid, domain, eventNid, request.Limit, request.Dir)
+	var nids []int64
+	var err error
+	if checkFirstEv {
+		nids, err = s.DB.BackFillNids(ctx, rs.RoomNid, domain, eventNid+1, request.Limit, request.Dir)
+	} else {
+		nids, err = s.DB.BackFillNids(ctx, rs.RoomNid, domain, eventNid, request.Limit, request.Dir)
+	}
 	log.Infof("-------RoomQryProcessor QueryBackFillEvents rid:%s domain:%s eventnid:%d backnids:%v", request.RoomID, domain, eventNid, nids)
 	if err != nil {
 		response.Error = err.Error()
@@ -227,25 +242,35 @@ func (s *RoomQryProcessor) QueryBackFillEvents( //fed
 	}
 
 	if request.Dir == "b" && eventID == "" {
-		lastID := rs.GetLastMsgID()
-		if lastID != "" {
-			lastNID, err := s.DB.EventNID(ctx, lastID)
+		lastNID := int64(0)
+		if checkFirstEv {
+			lastNID = eventNid
+		} else if rs.GetLastMsgID() != "" {
+			lastID := rs.GetLastMsgID()
+			lastNID, err = s.DB.EventNID(ctx, lastID)
 			if err != nil {
 				log.Errorf("backfill event is not fully store lastID %s roomID: %s", lastID, request.RoomID)
 				response.Error = "backfill event is not fully store"
 				return errors.New("backfill event is not fully store")
 			}
+		}
+		if lastNID != 0 {
 			log.Infof("backfill event nid last %d", lastNID)
 			found := false
-			for _, ev := range evs {
+			ignoreIdx := -1
+			for idx, ev := range evs {
 				log.Infof("backfill event nid ast %d", ev.EventNID())
 				if ev.EventNID() >= lastNID {
+					ignoreIdx = idx
 					found = true
 					break
 				}
 			}
+			if checkFirstEv && ignoreIdx >= 0 {
+				evs = append(evs[:ignoreIdx], evs[ignoreIdx+1:]...)
+			}
 			if !found {
-				log.Errorf("backfill event is not fully store 2 lastID %s roomID: %s", lastID, request.RoomID)
+				log.Errorf("backfill event is not fully store 2 lastNID %d roomID: %s", lastNID, request.RoomID)
 				response.Error = "backfill event is not fully store"
 				return errors.New("backfill event is not fully store")
 			}

@@ -14,6 +14,8 @@
 
 package external
 
+import jsonRaw "encoding/json"
+
 //POST /_matrix/client/r0/createRoom
 type PostCreateRoomRequest struct {
 	Visibility      string                 `json:"visibility"`
@@ -251,5 +253,16 @@ type GetRoomInfo struct {
 	IsDirect    bool     `json:"is_direct"`
 	IsChannel   bool     `json:"is_channel"`
 	IsFederate  bool     `json:"is_federate"`
+	Topic       string   `json:"topic"`
 	JoinMembers []string `json:"join_members"`
+	PowerLevels jsonRaw.RawMessage `json:"power_levels"`
+}
+
+// POST /_matrix/client/unstable/{roomID}/dismiss
+type DismissRoomRequest struct {
+	RoomID string `json:"roomID"`
+	UserID string `json:"userID,omitempty"`
+}
+
+type DismissRoomResponse struct {
 }

@@ -240,6 +240,10 @@ func (d Database) SelectRoomEventsByDomainOffset(ctx context.Context, roomNID in
 	return d.statements.selectRoomEventsByDomainOffset(ctx, roomNID, domain, domainOffset, limit)
 }
 
+func (d *Database) SelectEventNidForBackfill(ctx context.Context, roomNID int64, domain string) (int64, error) {
+	return d.statements.selectEventNidForBackfill(ctx, roomNID, domain)
+}
+
 func (d *Database) SelectRoomMaxDomainOffsets(ctx context.Context, roomNID int64) (domains, eventIDs []string, offsets []int64, err error) {
 	return d.statements.selectRoomMaxDomainOffset(ctx, roomNID)
 }
