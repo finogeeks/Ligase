@@ -284,13 +284,13 @@ func (s *AccountDBEVConsumer) OnDeleteRoomTag(
 func (s *AccountDBEVConsumer) OnUpsertUserInfo(
 	ctx context.Context, msg *dbtypes.UserInfoInsert,
 ) error {
-	return s.db.OnUpsertUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email)
+	return s.db.OnUpsertUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email, msg.State)
 }
 
 func (s *AccountDBEVConsumer) OnInitUserInfo(
 	ctx context.Context, msg *dbtypes.UserInfoInsert,
 ) error {
-	return s.db.OnInitUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email)
+	return s.db.OnInitUserInfo(ctx, msg.UserID, msg.UserName, msg.JobNumber, msg.Mobile, msg.Landline, msg.Email, msg.State)
 }
 
 func (s *AccountDBEVConsumer) OnDeleteUserInfo(

@@ -72,8 +72,14 @@ func PostEvent(
 				EventID: eventIDRef,
 			}
 		}
+	}else{
+		txnAndDeviceID = &roomservertypes.TransactionID{
+			TransactionID: "",
+			DeviceID:      deviceID,
+			IP:            IP,
+		}
 	}
-
+	log.Infof("PostEvent txnid:%s userID %s roomID %s", txnAndDeviceID.TransactionID, userID, roomID)
 	builder := gomatrixserverlib.EventBuilder{
 		Sender:   userID,
 		RoomID:   roomID,
@@ -82,7 +88,7 @@ func PostEvent(
 	}
 	err := builder.SetContent(r)
 	if err != nil {
-		log.Errorf("PostEvent error, userID %s roomID %s eventType %s stateKey %s err %v", userID, roomID, eventType, stateKey, err)
+		log.Errorf("PostEvent SetContent error, txnid:%s userID %s roomID %s eventType %s stateKey %s err %v", txnAndDeviceID.TransactionID, userID, roomID, eventType, stateKey, err)
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
@@ -91,14 +97,16 @@ func PostEvent(
 	queryReq.RoomID = roomID
 	err = rpcCli.QueryRoomState(ctx, &queryReq, &queryRes)
 	if err != nil {
+		log.Errorf("PostEvent QueryRoomState error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID,  err)
 		return http.StatusNotFound, jsonerror.NotFound(err.Error()) //err
 	}
 
 	domainID, _ := common.DomainFromID(userID)
 	e, err := common.BuildEvent(&builder, domainID, cfg, idg)
-	log.Debugf("------------------------PostEvent build-event %v", (time.Now().UnixNano()-last)/1000)
+	log.Infof("------------------------PostEvent txnId:%s build-event %v", txnAndDeviceID.TransactionID, (time.Now().UnixNano()-last)/1000)
 	last = time.Now().UnixNano()
 	if err != nil {
+		log.Errorf("PostEvent BuildEvent error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID,  err)
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
@@ -107,6 +115,7 @@ func PostEvent(
 		log.Infof("------------------------PostEvent %v", *e)
 	}
 	if err = gomatrixserverlib.Allowed(*e, &queryRes); err != nil {
+		log.Errorf("PostEvent Allowed error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID,  err)
 		return http.StatusForbidden, jsonerror.Forbidden(err.Error()) // TODO: Is this error string comprehensible to the client?
 	}
 
@@ -129,7 +138,7 @@ func PostEvent(
 	_, err = rpcCli.InputRoomEvents(ctx, &rawEvent)
 
 	if err != nil {
-		log.Errorf("PostEvent error, userID %s roomID %s eventType %s stateKey %s err %v", userID, roomID, eventType, stateKey, err)
+		log.Errorf("PostEvent error, userID %s roomID %s txnId:%s err %v", userID, roomID, txnAndDeviceID.TransactionID, err)
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
@@ -138,7 +147,7 @@ func PostEvent(
 	}
 
 	log.Debugf("------------------------PostEvent send-event-to-server %v", (time.Now().UnixNano()-last)/1000)
-	log.Infof("------------------------PostEvent all %d us remote:%s dev:%s", (time.Now().UnixNano()-start)/1000, IP, deviceID)
+	log.Infof("------------------------PostEvent all %v remote:%s dev:%s eventId:%s txnId:%s", (time.Now().UnixNano()-start)/1000, IP, deviceID, e.EventID(), txnAndDeviceID.TransactionID)
 
 	return http.StatusOK, &external.PutRoomStateByTypeWithTxnIDResponse{
 		EventID: e.EventID(),

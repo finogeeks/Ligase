@@ -37,6 +37,7 @@ type DisplayNameRepo struct {
 	mobile    *sync.Map
 	landline  *sync.Map
 	email     *sync.Map
+	state     *sync.Map
 }
 
 func NewDisplayNameRepo() *DisplayNameRepo {
@@ -48,7 +49,7 @@ func NewDisplayNameRepo() *DisplayNameRepo {
 	tls.mobile = new(sync.Map)
 	tls.landline = new(sync.Map)
 	tls.email = new(sync.Map)
-
+	tls.state = new(sync.Map)
 	return tls
 }
 
@@ -85,6 +86,10 @@ func (tl *DisplayNameRepo) AddPresenceDataStream(dataStream *types.PresenceStrea
 	value = gjson.Get(string(dataStream.Content), "content.email")
 	if value.String() != "" {
 		tl.email.Store(dataStream.UserID, value.String())
+	}
+	value = gjson.Get(string(dataStream.Content), "content.state")
+	if value.Int() != 0 {
+		tl.state.Store(dataStream.UserID, value.Int())
 	}
 }
 
@@ -163,4 +168,10 @@ func (tl *DisplayNameRepo) GetEmail(userID string) string {
 		return value.(string)
 	}
 	return ""
+}
+func (tl *DisplayNameRepo) GetState(userID string) int {
+	if value, ok := tl.state.Load(userID); ok {
+		return int(value.(int64))
+	}
+	return 0
 }

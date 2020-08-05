@@ -77,6 +77,7 @@ func (ReqPostRoomReceipt) Process(ctx context.Context, consumer interface{}, msg
 		DeviceID:    device.Identifier,
 		EventID:     req.EventID,
 		ReceiptType: req.ReceiptType,
+		Source: 	 "receipt api",
 	}
 	c.receiptConsumer.OnReceipt(ctx, data)
 	return http.StatusOK, nil

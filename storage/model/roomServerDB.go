@@ -139,6 +139,7 @@ type RoomServerDatabase interface {
 	RoomDomainsInsertRaw(ctx context.Context, room_nid int64, domain string, offset int64) error
 	GetRoomDomainsOffset(ctx context.Context, room_nid int64) ([]string, []int64, error)
 	BackFillNids(ctx context.Context, roomNID int64, domain string, eventNid int64, limit int, dir string) ([]int64, error)
+	SelectEventNidForBackfill(ctx context.Context, roomNID int64, domain string) (int64, error)
 	SelectRoomEventsByDomainOffset(ctx context.Context, roomNID int64, domain string, domainOffset int64, limit int) ([]int64, error)
 	UpdateRoomEvent(ctx context.Context, eventNID, roomNID, depth, domainOffset int64, domain string) error
 	OnUpdateRoomEvent(ctx context.Context, eventNID, roomNID, depth, domainOffset int64, domain string) error

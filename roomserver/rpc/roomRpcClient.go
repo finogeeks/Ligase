@@ -257,7 +257,11 @@ func (c *RoomserverRpcClient) InputRoomEvents(
 ) (int, error) {
 	log.Infof("-------RoomserverRpcClient InputRoomEvents start")
 	if c.input != nil {
-		log.Infof("-------RoomserverRpcClient input not nil, direct call")
+		if rawEvent.TxnID != nil {
+			log.Infof("-------RoomserverRpcClient input not nil, direct call txnId:%s", rawEvent.TxnID)
+		}else{
+			log.Infof("-------RoomserverRpcClient input not nil, direct call")
+		}
 		return c.input.InputRoomEvents(ctx, rawEvent)
 	}
 

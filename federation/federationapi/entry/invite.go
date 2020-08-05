@@ -17,6 +17,8 @@ package entry
 import (
 	"context"
 	"encoding/json"
+	"github.com/finogeeks/ligase/federation/model/repos"
+	"strings"
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
@@ -57,52 +59,75 @@ func Invite(ctx context.Context, msg *model.GobMessage, cache service.Cache, rpc
 
 	// TODO: check if can invite user
 
-	log.Infof("invite event: %v", event)
-	log.Infof("invite states: %s", event.Unsigned())
-
 	resp := gomatrixserverlib.RespInvite{}
 	resp.Code = 200
-	// states := inviteRoomState.States
-	// states = append(states, event)
-	// err = backfillProc.AddRequest(states, false)
-	// if err != nil {
-	// 	if strings.Contains(err.Error(), "backfill finished") {
-	// 		resp.Code = 200
-	// 		rawEvent := roomserverapi.RawEvent{
-	// 			RoomID: event.RoomID(),
-	// 			Kind:   roomserverapi.KindNew,
-	// 			Trust:  true,
-	// 			BulkEvents: roomserverapi.BulkEvent{
-	// 				Events: []gomatrixserverlib.Event{event},
-	// 			},
-	// 		}
 
-	// 		_, err := rpcCli.InputRoomEvents(context.TODO(), &rawEvent)
-	// 		if err != nil {
-	// 			log.Errorf("invite input event err: %v", err)
-	// 			resp.Code = 500
-	// 			//return retMsg, err
-	// 		}
-	// 	} else {
-	// 		resp.Code = 500
-	// 	}
-	// } else {
-	// 	resp.Code = 200
-	// 	// rawEvent := roomserverapi.RawEvent{
-	// 	// 	RoomID: event.RoomID(),
-	// 	// 	Kind:   roomserverapi.KindNew,
-	// 	// 	Trust:  true,
-	// 	// 	BulkEvents: roomserverapi.BulkEvent{
-	// 	// 		Events: []gomatrixserverlib.Event{states[0]},
-	// 	// 	},
-	// 	// }
+	roomID := event.RoomID()
+	rs := rsRepo.GetRoomState(ctx, roomID)
+	if rs == nil {
+		log.Infof("invite event: %v", event)
+		log.Infof("invite states: %s", event.Unsigned())
 
-	// 	// _, err := rpcCli.InputRoomEvents(context.TODO(), &rawEvent)
-	// 	// if err != nil {
-	// 	// 	log.Errorf("invite input create event error %s", err.Error())
-	// 	// 	// return retMsg, err
-	// 	// }
-	// }
+		states := inviteRoomState.States
+		//states = append(states, event)
+		err = backfillProc.AddRequest(ctx, states, false)
+		if err != nil {
+			if strings.Contains(err.Error(), "backfill finished") {
+				resp.Code = 200
+				// rawEvent := roomserverapi.RawEvent{
+				// 	RoomID: event.RoomID(),
+				// 	Kind:   roomserverapi.KindNew,
+				// 	Trust:  true,
+				// 	BulkEvents: roomserverapi.BulkEvent{
+				// 		Events: []gomatrixserverlib.Event{event},
+				// 	},
+				// }
+
+				// _, err := rpcCli.InputRoomEvents(context.TODO(), &rawEvent)
+				// if err != nil {
+				// 	log.Errorf("invite input event err: %v", err)
+				// 	resp.Code = 500
+				// 	//return retMsg, err
+				// }
+			} else {
+				log.Errorf("api invite add backfill request err: %v", err)
+				resp.Code = 500
+			}
+		} else {
+			resp.Code = 200
+			resp.Event = event
+
+			var joinedRoomsVal *repos.JoinRoomsData
+			joinedRoomsVal, err = joinRoomsRepo.GetData(ctx, event.RoomID())
+			if err != nil {
+				log.Warnf("api handle send get join rooms err %v", err)
+				retMsg.Body, _ = json.Marshal(&resp)
+				return retMsg, nil
+			}
+			if joinedRoomsVal.HasJoined {
+				retMsg.Body, _ = json.Marshal(&resp)
+				return retMsg, nil
+			}
+			joinedRoomsVal.HasJoined = true
+			joinedRoomsVal.EventID = event.EventID()
+			joinRoomsRepo.AddData(ctx, joinedRoomsVal)
+
+			rawEvent := roomserverapi.RawEvent{
+				RoomID: event.RoomID(),
+				Kind:   roomserverapi.KindNew,
+				Trust:  true,
+				BulkEvents: roomserverapi.BulkEvent{
+					Events: states, //[]gomatrixserverlib.Event{states[0]},
+				},
+			}
+
+			_, err := rpcCli.InputRoomEvents(context.TODO(), &rawEvent)
+			if err != nil {
+				log.Errorf("invite input create event error %s", err.Error())
+				// return retMsg, err
+			}
+		}
+	}
 
 	resp.Event = event
 

@@ -28,6 +28,7 @@ import (
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/rcsserver"
+	"github.com/finogeeks/ligase/roomserver/consumers"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 
@@ -60,9 +61,10 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.OutputRoomFedEvent)
 	addProducer(transportMultiplexer, kafka.Producer.SettingUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.UserInfoUpdate)
-
-	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventPublicRooms, 0)
-	addConsumer(transportMultiplexer, kafka.Consumer.InputRoomEvent, 0)
+	addProducer(transportMultiplexer, kafka.Producer.DismissRoom)
+	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventPublicRooms, base.Cfg.MultiInstance.Instance)
+	addConsumer(transportMultiplexer, kafka.Consumer.InputRoomEvent, base.Cfg.MultiInstance.Instance)
+	addConsumer(transportMultiplexer, kafka.Consumer.DismissRoom, base.Cfg.MultiInstance.Instance)
 
 	for _, v := range dbUpdateProducerName {
 		dbUpdates := kafka.Producer.DBUpdates
@@ -96,7 +98,19 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
-
+	consumer := consumers.NewDismissRoomConsumer(
+		kafka.Consumer.DismissRoom.Underlying,
+		kafka.Consumer.DismissRoom.Name,
+		rsRpcCli,
+		cache,
+		accountDB,
+		base.Cfg,
+		newFederation,
+		complexCache,
+		idg)
+	if err := consumer.Start(); err != nil {
+		log.Panicf("failed to start settings consumer err:%v", err)
+	}
 	pushapi.SetupPushAPIComponent(base, cache, rpcClient)
 	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, federation, idg)
 	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, tokenFilter, idg, complexCache, serverConfDB)

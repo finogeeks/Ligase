@@ -165,7 +165,7 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 
 	createEv := rs.GetState(gomatrixserverlib.MRoomCreate, "")
 
-	log.Infof("OnRoomMessagesRequest start:%d end:%d low:%d up:%d user:%s limit:%d filter: %s minOffset: %d from:%s to:%s", start, end, feedlow, feedup, userId, limit, filterStr, roomMinStream, fromStr, toStr)
+	log.Infof("OnRoomMessagesRequest start:%d end:%d low:%d up:%d user:%s limit:%d filter: %s minOffset: %d, dir:%s from:%s to:%s", start, end, feedlow, feedup, userId, limit, filterStr, roomMinStream, dir, fromStr, toStr)
 
 	if toPos > 0 && limit > 0 {
 		limit = 0
@@ -205,7 +205,7 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 			visibilityTime = c.settings.GetMessageVisilibityTime()
 			nowTs          = time.Now().Unix()
 
-			foundAll    = false
+			foundAll    = false // loaded all request event from cache
 			feeds       []feedstypes.Feed
 			low, high   int64
 			checkOffset func(streamOffset, border, roomMinStream int64) bool
@@ -279,6 +279,7 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 			}
 
 			if toPos == 0 && limit == 0 {
+				foundAll = true
 				break
 			}
 		}
@@ -312,7 +313,7 @@ func (r ReqGetRoomMessages) Process(ctx context.Context, consumer interface{}, m
 				endPos = _endPos + 1
 			}
 		}
-		if endPos == 0 {
+		if endPos == 0 || endPos == 1 || endPos == -1 {
 			if dir == "b" {
 				endPos = low - 1
 				if endPos < roomMinStream {
@@ -355,9 +356,9 @@ func (r ReqGetRoomMessages) selectFromDB(
 	)
 
 	if limit > 0 {
-		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDir(ctx, userId, roomID, dir, fromTs, limit*2)
+		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDir(ctx, userId, roomID, dir, fromPos, limit*2)
 	} else {
-		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDirRange(ctx, userId, roomID, dir, fromTs, toTs)
+		events, offsets, _, err, endPos, endTs = c.db.SelectEventsByDirRange(ctx, userId, roomID, dir, fromPos, toPos)
 	}
 	if err != nil {
 		return

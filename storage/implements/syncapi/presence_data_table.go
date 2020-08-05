@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS syncapi_presence_data_stream (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS syncapi_presence_data_stream_user_id ON syncapi_presence_data_stream(user_id);
+CREATE INDEX IF NOT EXISTS syncapi_presence_data_stream_id_idx ON syncapi_presence_data_stream(id ASC);
 `
 
 const insertPresenceDataStreamSQL = "" +

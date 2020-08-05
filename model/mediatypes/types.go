@@ -32,3 +32,61 @@ type UploadResponse struct {
 type UploadError struct {
 	Error string `json:"error,omitempty"`
 }
+
+//emote
+type (
+	EmoteItem struct {
+		NetdiskID string `json:"netdiskID"`
+		FileType  string `json:"fileType"`
+		GroupID   string `json:"groupID"`
+	}
+	UploadEmoteResp struct {
+		Emotes  	[]EmoteItem `json:"emotes"`
+		NetdiskID 	string 		`json:"netdiskID"` //only use for old
+		FileType    string 		`json:"fileType"`
+		Total       int 		`json:"total"`
+		GroupID		string		`json:"groupID"`
+		Finish		bool 		`json:"finish"`
+		WaitId		string 		`json:"waitId"`
+	}
+	listItem struct {
+		NetdiskID  string   `json:"netdiskID"`
+		ResourceID string   `json:"resourceID"`
+		Timestamp  int64    `json:"timestamp"`
+		Operator   string   `json:"operator"`
+		From       string   `json:"from"`
+		Tag        []string `json:"tag"`
+
+		Type         string           `json:"type"`
+		Content      string           `json:"content"`
+		Owner        string           `json:"owner"`
+		Public       bool             `json:"public"`
+		Traceable    bool             `json:"traceable"`
+		Delete       bool             `json:"delete"`
+	}
+	EmoteDetail struct {
+		listItem
+		FileType string `json:"fileType"`
+		GroupID  string `json:"groupID"`
+	}
+	ListEmoteItem struct {
+		Emotes 	[]EmoteDetail 	`json:"emotes"`
+		Total   int 			`json:"total"`
+	}
+
+	MediaContentInfo struct {
+		Body         string        `json:"body"`
+		Info         MediaBaseInfo `json:"info"`
+		Url          string        `json:"url"`
+		MsgType      string        `json:"msgtype"`
+		IsEmote      bool          `json:"isemote"`
+		SrcNetdiskID string        `json:"srcnetdiskid"`
+	}
+
+	MediaBaseInfo struct {
+		Size     int64  `json:"size"`
+		MimeType string `json:"mimetype"`
+		W        int    `json:"w"`
+		H        int    `json:"h"`
+	}
+)

@@ -74,6 +74,7 @@ func (ReqPostRoomReadMarkers) Process(ctx context.Context, consumer interface{},
 		DeviceID:    device.Identifier,
 		EventID:     "",
 		ReceiptType: req.ReceiptType,
+		Source: 	 "remark api",
 	}
 	c.receiptConsumer.OnReceipt(ctx, data)
 	return http.StatusOK, nil

@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS syncapi_user_time_line (
 CREATE INDEX IF NOT EXISTS syncapi_user_time_line_user_idx ON syncapi_user_time_line(user_id);
 CREATE INDEX IF NOT EXISTS syncapi_user_time_line_room_idx ON syncapi_user_time_line(room_id);
 CREATE INDEX IF NOT EXISTS syncapi_user_time_line_evoffset_idx ON syncapi_user_time_line(user_id, event_offset);
-CREATE INDEX IF NOT EXISTS syncapi_user_time_line_user_id_desc_null_last_idx ON syncapi_user_time_line(user_id, id DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS syncapi_user_time_line_user_id_desc_null_last_idx ON syncapi_user_time_line(user_id, id DESC NULLS LAST)
 `
 
 const insertUserTimeLineSQL = "" +

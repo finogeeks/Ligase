@@ -55,6 +55,7 @@ type FedApiUserData struct {
 	CacheIn    service.Cache
 	KeyDB      dmodel.KeyDatabase
 	LocalCache service.LocalCache
+	Origin     string
 }
 
 func genMsgSeq(idg *uid.UidGenerator) string {
@@ -387,7 +388,7 @@ func (ReqPutFedSend) Process(ctx context.Context, ud interface{}, msg core.Coder
 
 	prod := ud.(*FedApiUserData).Cfg.Kafka.Producer.FedBridgeOut
 
-	err = common.GetTransportMultiplexer().SendWithRetry(
+	err = common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		prod.Underlying,
 		prod.Name,
 		&core.TransportPubMsg{
@@ -604,6 +605,7 @@ func (ReqGetFedBackfill) Process(ctx context.Context, ud interface{}, msg core.C
 	backfill.BackFillIds = eventID
 	backfill.Dir = dir
 	backfill.Domain = req.Domain
+	backfill.Origin = ud.(*FedApiUserData).Origin
 	body, _ := backfill.Encode()
 	gobMsg.Body = body
 
@@ -886,6 +888,7 @@ type ReqGetFedUserInfoResponse struct {
 	Mobile    string `json:"mobile,omitempty"`
 	Landline  string `json:"landline,omitempty"`
 	Email     string `json:"email,omitempty"`
+	State     int    `json:"state,omitempty"`
 }
 
 func (r *ReqGetFedUserInfoResponse) Encode() ([]byte, error) {

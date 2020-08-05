@@ -17,12 +17,12 @@ package repos
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/adapter"
+	"github.com/finogeeks/ligase/model/service"
 	"sync"
 	"time"
 
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/model/feedstypes"
-	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
@@ -32,29 +32,9 @@ import (
 	"github.com/finogeeks/ligase/storage/model"
 )
 
-type UserRoomOffset struct {
-	userOffset int64
-	roomOffset int64
-	roomId     string
-}
-
-func (u UserRoomOffset) GetRoomId() string {
-	return u.roomId
-}
-
-func (u UserRoomOffset) GetUserOffset() int64 {
-	return u.userOffset
-}
-
-func (u UserRoomOffset) GetRoomOffset() int64 {
-	return u.roomOffset
-}
-
 type UserTimeLineRepo struct {
 	persist model.SyncAPIDatabase
-	repo    *TimeLineRepo
-	loading sync.Map
-	ready   sync.Map
+	cache service.Cache
 
 	userReady sync.Map //ready for loading
 
@@ -64,42 +44,37 @@ type UserTimeLineRepo struct {
 	invite      sync.Map //user invite rooms
 	inviteReady sync.Map //ready for user invite rooms loading
 
-	userLatest     sync.Map //user latest offset
-	userRoomLatest sync.Map // user room latest offset
+	leave        sync.Map //user leave rooms
+	leaveReady   sync.Map //ready for user leave rooms loading
 
 	receiptLatest sync.Map //user latest receipt offset
-	lastFail      sync.Map //user last fail request offset
 
 	friendShip        sync.Map //user friend ship
-	friendshipReverse sync.Map //user friend ship reverse mapping(for the users who is not in this syncaggregate instance)
 
-	userMinPos sync.Map //user min pos in persist
-
-	userMutex     cas.Mutex
-	userRoomMutex cas.Mutex
 	receiptMutex  cas.Mutex
 
 	Idg *uid.UidGenerator
 
 	curRoom sync.Map
-
+	roomOffsets  sync.Map
+	roomMutex    cas.Mutex
 	queryHitCounter mon.LabeledCounter
 }
 
 func NewUserTimeLineRepo(
-	bukSize,
-	maxEntries,
-	gcPerNum int,
 	idg *uid.UidGenerator,
 ) *UserTimeLineRepo {
 	tls := new(UserTimeLineRepo)
-	tls.repo = NewTimeLineRepo(bukSize, 500, true, maxEntries, gcPerNum)
 	tls.Idg = idg
 	return tls
 }
 
 func (tl *UserTimeLineRepo) SetPersist(db model.SyncAPIDatabase) {
 	tl.persist = db
+}
+
+func (tl *UserTimeLineRepo) SetCache(cache service.Cache) {
+	tl.cache = cache
 }
 
 func (tl *UserTimeLineRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
@@ -125,11 +100,6 @@ func (tl *UserTimeLineRepo) addFriendShip(userID, friend string) (hasFriendship 
 	if !v.(bool) {
 		friendMap.(*sync.Map).Store(friend, true)
 	}
-	friendReverseMap, ok := tl.friendshipReverse.Load(friend)
-	if !ok {
-		friendReverseMap, _ = tl.friendshipReverse.LoadOrStore(friend, new(sync.Map))
-	}
-	friendReverseMap.(*sync.Map).Store(userID, true)
 	return v.(bool) && loaded
 }
 
@@ -142,62 +112,6 @@ func (tl *UserTimeLineRepo) GetFriendShip(ctx context.Context, userID string, lo
 		return tl.GetFriendShip(ctx, userID, false)
 	}
 	return nil
-}
-
-func (tl *UserTimeLineRepo) GetFriendshipReverse(userID string) *sync.Map {
-	friendReverseMap, ok := tl.friendshipReverse.Load(userID)
-	if ok {
-		return friendReverseMap.(*sync.Map)
-	}
-	return nil
-}
-
-func (tl *UserTimeLineRepo) SetUserLatest(userID string, offset int64) {
-	tl.userMutex.Lock()
-	defer tl.userMutex.Unlock()
-
-	val, ok := tl.userLatest.Load(userID)
-	if ok {
-		lastoffset := val.(int64)
-		if lastoffset < offset {
-			log.Debugf("update userId:%s,lastoffset:%d,offset:%d", userID, lastoffset, offset)
-			tl.userLatest.Store(userID, offset)
-		}
-	} else {
-		log.Debugf("update userId:%s first offset:%d ", userID, offset)
-		tl.userLatest.Store(userID, offset)
-	}
-}
-
-func (tl *UserTimeLineRepo) SetUserRoomLatset(userID, roomId string, offset int64, roomOffset int64) {
-	tl.userRoomMutex.Lock()
-	defer tl.userRoomMutex.Unlock()
-	val, ok := tl.userRoomLatest.Load(userID)
-	if ok {
-		userRoomOffset := val.(*UserRoomOffset)
-		if userRoomOffset.roomOffset <= roomOffset && userRoomOffset.userOffset <= offset {
-			userRoomOffset.roomOffset = roomOffset
-			userRoomOffset.userOffset = offset
-		} else if userRoomOffset.roomOffset > roomOffset && userRoomOffset.userOffset > offset {
-			return
-		} else {
-			log.Warnf("user:%s roomId:%s offset:%d roomOffset:%d lastOffset:%d lastRoomOffset:%d not consistent",
-				userID, roomId, offset, roomOffset, userRoomOffset.userOffset, userRoomOffset.roomOffset)
-			if userRoomOffset.roomOffset <= roomOffset {
-				userRoomOffset.roomOffset = roomOffset
-			}
-			if userRoomOffset.userOffset <= offset {
-				userRoomOffset.userOffset = offset
-			}
-		}
-	} else {
-		userRoomOffset := &UserRoomOffset{
-			userOffset: offset,
-			roomOffset: roomOffset,
-			roomId:     roomId,
-		}
-		tl.userRoomLatest.Store(userID, userRoomOffset)
-	}
 }
 
 func (tl *UserTimeLineRepo) SetReceiptLatest(userID string, offset int64) {
@@ -216,18 +130,8 @@ func (tl *UserTimeLineRepo) SetReceiptLatest(userID string, offset int64) {
 	}
 }
 
-func (tl *UserTimeLineRepo) AddP2PEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent, offset int64, user string) {
-	tl.loadUserHistory(ctx, user)
-
-	stream := syncapitypes.UserTimeLineStream{
-		Offset:     offset,
-		UserID:     user,
-		RoomID:     ev.RoomID,
-		RoomOffset: ev.EventOffset,
-	}
-
-	stream.RoomState = "join"
-	var membership string
+func (tl *UserTimeLineRepo) AddP2PEv(ctx context.Context, ev *gomatrixserverlib.ClientEvent, user string) {
+	membership := "join"
 	if ev.Type == "m.room.member" {
 		if user == *ev.StateKey {
 			member := external.MemberContent{}
@@ -235,52 +139,66 @@ func (tl *UserTimeLineRepo) AddP2PEv(ctx context.Context, ev *gomatrixserverlib.
 			membership = member.Membership
 			switch membership {
 			case "leave", "ban":
-				stream.RoomState = "leave"
+				membership = "leave"
 			case "invite":
-				stream.RoomState = "invite"
+				membership = "invite"
 			}
 		}
 	}
-
-	err := tl.persist.InsertUserTimeLine(ctx, offset, ev.RoomID, ev.EventNID, user, stream.RoomState, time.Now().UnixNano()/1000000, ev.EventOffset)
-	if err != nil {
-		log.Errorf("UserTimeLineRepo InsertUserTimeLine user %s room %s event %d err %v", user, ev.RoomID, ev.EventNID, err)
-	}
-	log.Infof("UserTimeLineRepo.AddP2PEv insert db offset:%d,roomID:%s,eventNID:%d,user:%s,evoffset:%d,roomstate:%s", offset, ev.RoomID, ev.EventNID, user, ev.EventOffset, stream.RoomState)
-
+	start := time.Now().UnixNano()/ 1000000
 	if ev.Type == "m.room.member" {
 		var userJoin *sync.Map
 		var userInvite *sync.Map
-
+		var userLeave *sync.Map
+		bs := time.Now().UnixNano()/1000000
 		userJoin, _ = tl.GetJoinRooms(ctx, user)
+		spend := time.Now().UnixNano()/1000000 - bs
+		if spend > types.DB_EXCEED_TIME {
+			log.Infof("AddP2PEv user:%s eventID:%s eventOffset:%d get join room spend:%d", user, ev.EventID, ev.EventOffset, spend)
+		}
+		if userJoin == nil {
+			userJoin = new(sync.Map)
+			tl.join.Store(user, userJoin)
+		}
+		bs = time.Now().UnixNano()/1000000
 		userInvite, _ = tl.GetInviteRooms(ctx, user)
-
+		spend = time.Now().UnixNano()/1000000 - bs
+		if spend > types.DB_EXCEED_TIME {
+			log.Infof("AddP2PEv user:%s eventID:%s eventOffset:%d get invite room spend:%d", user, ev.EventID, ev.EventOffset, spend)
+		}
+		if userInvite == nil {
+			userInvite = new(sync.Map)
+			tl.invite.Store(user, userInvite)
+		}
+		bs = time.Now().UnixNano()/1000000
+		userLeave, _ = tl.GetLeaveRooms(ctx, user)
+		spend = time.Now().UnixNano()/1000000 - bs
+		if spend > types.DB_EXCEED_TIME {
+			log.Infof("AddP2PEv user:%s eventID:%s eventOffset:%d get leave room spend:%d", user, ev.EventID, ev.EventOffset, spend)
+		}
+		if userLeave == nil {
+			userLeave = new(sync.Map)
+			tl.leave.Store(user, userLeave)
+		}
 		if user == *ev.StateKey {
 			switch membership {
 			case "join":
-				if _, ok := userJoin.Load(ev.RoomID); !ok {
-					userJoin.Store(ev.RoomID, true)
-				}
+				userJoin.Store(ev.RoomID, ev.EventOffset)
 				userInvite.Delete(ev.RoomID)
+				userLeave.Delete(ev.RoomID)
 			case "leave", "ban":
+				userLeave.Store(ev.RoomID, ev.EventOffset)
 				userJoin.Delete(ev.RoomID)
 				userInvite.Delete(ev.RoomID)
 			case "invite":
-				if _, ok := userInvite.Load(ev.RoomID); !ok {
-					userInvite.Store(ev.RoomID, true)
-				}
 				userJoin.Delete(ev.RoomID)
+				userLeave.Delete(ev.RoomID)
+				userInvite.Store(ev.RoomID, ev.EventOffset)
 			}
 		}
 	}
-
-	sev := new(feedstypes.TimeLineEvent)
-	sev.Ev = &stream
-	sev.Offset = sev.Ev.Offset
-	tl.repo.add(user, sev)
-	log.Infof("update userTimeLineRepo offset user:%s,room:%s,offset:%d,roomoffset:%d,roomstate:%s", user, sev.Ev.RoomID, sev.Ev.Offset, sev.Ev.RoomOffset, sev.Ev.RoomState)
-	tl.SetUserLatest(user, sev.Offset)
-	tl.SetUserRoomLatset(user, sev.Ev.RoomID, sev.Ev.Offset, sev.Ev.RoomOffset)
+	spend := time.Now().UnixNano()/1000000 - start
+	log.Infof("UserTimeLineRepo.AddP2PEv update roomID:%s,eventNID:%d,user:%s,evoffset:%d,membership:%s spend:%d",  ev.RoomID, ev.EventNID, user, ev.EventOffset, membership, spend)
 }
 
 func (tl *UserTimeLineRepo) LoadUserFriendShip(ctx context.Context, userID string) {
@@ -318,8 +236,47 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(ctx context.Context, userID strin
 			tl.friendShip.Store(userID, friendMap)
 		}
 	}
-
 	tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "LoadUserFriendShip").Add(1)
+}
+
+func (tl *UserTimeLineRepo) loadRoomLatest(ctx context.Context, user string, rooms []string) error {
+	bs := time.Now().UnixNano() / 1000000
+	roomMap, err := tl.persist.GetRoomLastOffsets(ctx, rooms)
+	spend := time.Now().UnixNano()/1000000 - bs
+	if err != nil {
+		log.Errorf("user:%s load db failed UserTimeLineRepo.loadRoomLatest spend:%d ms err:%v", user, spend, err)
+		return err
+	}
+	if spend > types.DB_EXCEED_TIME {
+		log.Warnf("user:%s load db exceed %d ms UserTimeLineRepo.loadRoomLatest spend:%d ms", user, types.DB_EXCEED_TIME, spend)
+	} else {
+		log.Infof("user:%s load db succ UserTimeLineRepo.loadRoomLatest spend:%d ms", user, spend)
+	}
+	if roomMap != nil {
+		for roomID, offset := range roomMap {
+			tl.UpdateRoomOffset(roomID, offset)
+		}
+	}
+	return nil
+}
+
+func (tl *UserTimeLineRepo) loadJoinRoomOffsets(ctx context.Context, user string, events []string, res *sync.Map) error {
+	bs := time.Now().UnixNano() / 1000000
+	offsets, _, roomIDs, err := tl.persist.GetJoinRoomOffsets(ctx, events)
+	spend := time.Now().UnixNano()/1000000 - bs
+	if err != nil {
+		log.Errorf("user:%s load db failed UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms err:%v", user, spend, err)
+		return err
+	}
+	if spend > types.DB_EXCEED_TIME {
+		log.Warnf("user:%s load db exceed %d ms UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms", user, types.DB_EXCEED_TIME, spend)
+	} else {
+		log.Infof("user:%s load db succ UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms", user, spend)
+	}
+	for idx, roomID := range roomIDs {
+		res.Store(roomID, offsets[idx])
+	}
+	return nil
 }
 
 func (tl *UserTimeLineRepo) GetJoinRooms(ctx context.Context, user string) (*sync.Map, error) {
@@ -327,7 +284,7 @@ func (tl *UserTimeLineRepo) GetJoinRooms(ctx context.Context, user string) (*syn
 
 	if _, ok := tl.joinReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, _, err := tl.persist.GetRidsForUser(ctx, user)
+		rooms, _, events, err := tl.persist.GetRidsForUser(ctx, user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetJoinRooms user %s spend:%d ms err:%v", user, spend, err)
@@ -338,10 +295,21 @@ func (tl *UserTimeLineRepo) GetJoinRooms(ctx context.Context, user string) (*syn
 		} else {
 			log.Infof("load db succ UserTimeLineRepo.GetJoinRooms user:%s spend:%d ms", user, spend)
 		}
-		for _, id := range rooms {
-			res.Store(id, true)
+		loadrooms := []string{}
+		loadEvents := []string{}
+		for idx, id := range rooms {
+			res.Store(id, -1)
+			if tl.GetRoomOffset(id,user,"join") == -1 {
+				loadrooms = append(loadrooms, id)
+			}
+			loadEvents = append(loadEvents, events[idx])
 		}
-
+		if len(loadrooms)> 0 {
+			tl.loadRoomLatest(ctx, user, loadrooms)
+		}
+		if len(loadEvents) > 0 {
+			tl.loadJoinRoomOffsets(ctx, user, loadEvents, res)
+		}
 		tl.join.Store(user, res)
 		tl.joinReady.Store(user, true)
 
@@ -368,12 +336,35 @@ func (tl *UserTimeLineRepo) CheckIsJoinRoom(ctx context.Context, user, room stri
 	return
 }
 
+func (tl *UserTimeLineRepo) GetUserRoomMembership(user, room string) string {
+	ctx := context.TODO()
+	joined, _ := tl.GetJoinRooms(ctx, user)
+	if joined != nil {
+		if _, ok := joined.Load(room); ok {
+			return  "join"
+		}
+	}
+	invited, _ := tl.GetInviteRooms(ctx, user)
+	if invited != nil {
+		if _, ok := invited.Load(room); ok {
+			return  "invite"
+		}
+	}
+	leaved, _ := tl.GetLeaveRooms(ctx,user)
+	if leaved != nil {
+		if _, ok := leaved.Load(room); ok {
+			return  "leave"
+		}
+	}
+	return "unknown"
+}
+
 func (tl *UserTimeLineRepo) GetInviteRooms(ctx context.Context, user string) (*sync.Map, error) {
 	res := new(sync.Map)
 
 	if _, ok := tl.inviteReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, _, err := tl.persist.GetInviteRidsForUser(ctx, user)
+		rooms, offsets, _, err := tl.persist.GetInviteRidsForUser(ctx, user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms err:%v", user, spend, err)
@@ -384,8 +375,8 @@ func (tl *UserTimeLineRepo) GetInviteRooms(ctx context.Context, user string) (*s
 		} else {
 			log.Infof("load db succ UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms", user, spend)
 		}
-		for _, id := range rooms {
-			res.Store(id, true)
+		for idx, id := range rooms {
+			res.Store(id, offsets[idx])
 		}
 
 		tl.invite.Store(user, res)
@@ -403,6 +394,41 @@ func (tl *UserTimeLineRepo) GetInviteRooms(ctx context.Context, user string) (*s
 	return res, nil
 }
 
+func (tl *UserTimeLineRepo) GetLeaveRooms(ctx context.Context, user string) (*sync.Map, error) {
+	res := new(sync.Map)
+
+	if _, ok := tl.leaveReady.Load(user); !ok {
+		bs := time.Now().UnixNano() / 1000000
+		rooms, _, _, err := tl.persist.GetLeaveRidsForUser(ctx, user)
+		spend := time.Now().UnixNano()/1000000 - bs
+		if err != nil {
+			log.Errorf("load db failed UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms err:%v", user, spend, err)
+			return nil, err
+		}
+		if spend > types.DB_EXCEED_TIME {
+			log.Warnf("load db exceed %d ms UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms", types.DB_EXCEED_TIME, user, spend)
+		} else {
+			log.Infof("load db succ UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms", user, spend)
+		}
+		for _, id := range rooms {
+			res.Store(id, int64(-1))
+		}
+
+		tl.leave.Store(user, res)
+		tl.leaveReady.Store(user, true)
+
+		tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "GetLeaveRooms").Add(1)
+	}
+
+	val, ok := tl.leave.Load(user)
+	if ok == true {
+		tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetLeaveRooms").Add(1)
+		return val.(*sync.Map), nil
+	}
+
+	return res, nil
+}
+
 func (tl *UserTimeLineRepo) CheckUserLoadingReady(user string) bool {
 	_, ok := tl.userReady.Load(user)
 	return ok
@@ -410,26 +436,6 @@ func (tl *UserTimeLineRepo) CheckUserLoadingReady(user string) bool {
 
 func (tl *UserTimeLineRepo) LoadHistory(ctx context.Context, user string, isHuman bool) {
 	if tl.CheckUserLoadingReady(user) == false {
-		if _, ok := tl.userMinPos.Load(user); !ok {
-			bs := time.Now().UnixNano() / 1000000
-			minPos, err := tl.persist.SelectUserTimeLineMinPos(ctx, user)
-			spend := time.Now().UnixNano()/1000000 - bs
-			if err != nil {
-				log.Errorf("load db failed UserTimeLineRepo.SelectUserTimeLineMinPos user %s spend:%d ms err %d", user, spend, err)
-			} else {
-				if spend > types.DB_EXCEED_TIME {
-					log.Warnf("load db exceed %d ms UserTimeLineRepo.SelectUserTimeLineMinPos user:%s spend:%d ms", types.DB_EXCEED_TIME, user, spend)
-				} else {
-					tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "SelectUserTimeLineMinPos").Add(1)
-					log.Infof("load db succ UserTimeLineRepo.SelectUserTimeLineMinPos user:%s spend:%d ms", user, spend)
-				}
-				tl.userMinPos.Store(user, minPos)
-			}
-			tl.loadUserHistory(ctx, user)
-		} else {
-			tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "SelectUserTimeLineMinPos").Add(1)
-		}
-
 		if isHuman {
 			if _, ok := tl.receiptLatest.Load(user); !ok {
 				bs := time.Now().UnixNano() / 1000000
@@ -457,77 +463,180 @@ func (tl *UserTimeLineRepo) LoadHistory(ctx context.Context, user string, isHuma
 	}
 }
 
-func (tl *UserTimeLineRepo) loadUserHistory(ctx context.Context, user string) {
-	for {
-		if _, ok := tl.ready.Load(user); !ok {
-			tl.loadHistory(ctx, user)
-			if _, ok := tl.ready.Load(user); !ok {
-				time.Sleep(time.Millisecond * 3)
-			} else {
-				tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "loadUserHistory").Add(1)
-			}
-		} else {
-			tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "loadUserHistory").Add(1)
-			break
-		}
-	}
-}
-
-func (tl *UserTimeLineRepo) loadHistory(ctx context.Context, user string) {
-	_, loaded := tl.loading.LoadOrStore(user, true)
-	if loaded {
-		return
-	}
-	defer tl.loading.Delete(user)
-	bs := time.Now().UnixNano() / 1000000
-	streams, err := tl.persist.SelectUserTimeLineHistory(ctx, user, 100)
-	spend := time.Now().UnixNano()/1000000 - bs
-	if err != nil {
-		log.Errorf("load db failed UserTimeLineRepo.SelectUserTimeLineHistory user %s spend:%d ms err %d", user, spend, err)
-		return
-	}
-	if spend > types.DB_EXCEED_TIME {
-		log.Warnf("load db exceed %d ms UserTimeLineRepo.SelectUserTimeLineHistory user:%s spend:%d ms", types.DB_EXCEED_TIME, user, spend)
-	} else {
-		log.Infof("load db succ UserTimeLineRepo.SelectUserTimeLineHistory user:%s spend:%d ms", user, spend)
-	}
-
-	length := len(streams)
-	for i := 0; i < length/2; i++ {
-		ev := streams[i]
-		streams[i] = streams[length-1-i]
-		streams[length-1-i] = ev
-	}
-
-	empty := true
-	for _, stream := range streams {
-		empty = false
-		sev := new(feedstypes.TimeLineEvent)
-		ev := stream
-		sev.Ev = &ev
-		sev.Offset = stream.Offset
-		tl.repo.add(user, sev)
-		tl.SetUserLatest(user, sev.Offset)
-		tl.SetUserRoomLatset(user, sev.Ev.RoomID, sev.Offset, sev.Ev.RoomOffset)
-	}
-
-	if empty {
-		tl.repo.setDefault(user)
-	}
-
-	tl.ready.Store(user, true)
-}
-
-func (tl *UserTimeLineRepo) ExistsUserEventUpdate(pos int64, user string) (bool, int64) {
-	val, ok := tl.userLatest.Load(user)
+func (tl *UserTimeLineRepo) UpdateRoomOffset(roomID string, offset int64){
+	tl.roomMutex.Lock()
+	defer tl.roomMutex.Unlock()
+	val, ok := tl.roomOffsets.Load(roomID)
 	if ok {
-		u := val.(int64)
-		if u > pos {
-			return true, u
+		lastoffset := val.(int64)
+		if lastoffset < offset {
+			log.Infof("update roomID:%s lastoffset:%d,offset:%d", roomID, lastoffset, offset)
+			tl.roomOffsets.Store(roomID, offset)
+		}
+	} else {
+		log.Infof("update roomID:%s first offset:%d ", roomID, offset)
+		tl.roomOffsets.Store(roomID, offset)
+	}
+}
+
+func (tl *UserTimeLineRepo) GetRoomOffset(roomID, user, membership string) int64 {
+	switch membership {
+	case "invite", "leave":
+		return tl.GetNotJoinRoomLatestOffset(roomID, user, membership)
+	case "join":
+		return tl.GetJoinRoomOffset(roomID)
+	default:
+		return -1
+	}
+}
+
+func (tl *UserTimeLineRepo) GetJoinMembershipOffset(user,roomID string) (offset int64) {
+	joins, err := tl.GetJoinRooms(context.TODO(),user)
+	if err != nil || joins == nil {
+		return -1
+	}
+	if offset, ok := joins.Load(roomID); ok {
+		return offset.(int64)
+	}else{
+		return -1
+	}
+}
+
+func (tl *UserTimeLineRepo) GetNotJoinRoomLatestOffset(roomID, user, membership string) int64 {
+	switch membership {
+	case "invite":
+		return tl.GetInviteRoomOffset(roomID, user)
+	case "leave":
+		return tl.GetLeaveRoomOffset(roomID, user)
+	default:
+		return -1
+	}
+}
+
+func (tl *UserTimeLineRepo) GetJoinRoomOffset(roomID string) int64 {
+	val, ok := tl.roomOffsets.Load(roomID)
+	if ok {
+		return val.(int64)
+	}else{
+		return -1
+	}
+}
+
+func (tl *UserTimeLineRepo) GetInviteRoomOffset(roomID,user string) int64 {
+	invites, err := tl.GetInviteRooms(context.TODO(), user)
+	if err != nil || invites == nil {
+		return -1
+	}
+	if offset, ok := invites.Load(roomID); ok {
+		return offset.(int64)
+	}else{
+		return -1
+	}
+}
+
+func (tl *UserTimeLineRepo) GetLeaveRoomOffset(roomID, user string) int64 {
+	leaves, err := tl.GetLeaveRooms(context.TODO(), user)
+	if err != nil || leaves == nil {
+		return -1
+	}
+	if offset, ok := leaves.Load(roomID); ok {
+		return offset.(int64)
+	}else{
+		return -1
+	}
+}
+
+func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceId string) (bool, int64) {
+	ctx := context.TODO()
+	curUtl, token, err := tl.LoadToken(user,device,utl)
+	//load token from redis err
+	if err != nil {
+		log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", traceId, user, device, utl, err)
+		return false, utl
+	}
+	//load token miss, cur handle is full sync
+	if token == nil {
+		log.Infof("traceId:%s user:%s device:%s utl:%d load token miss", traceId, user, device, utl)
+		return true, curUtl
+	}
+	joinedRooms, _ := tl.GetJoinRooms(ctx, user)
+	//compare token room offset
+	for roomID, offset := range token {
+		membership := tl.GetUserRoomMembership(user, roomID)
+		roomOffset := tl.GetRoomOffset(roomID, user , membership)
+		if roomOffset != -1 && offset < roomOffset {
+			if membership == "join" {
+				if joinedRooms!=nil && tl.GetJoinMembershipOffset(user, roomID) > 0 {
+					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+					return true, curUtl
+				}
+			}else{
+				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+				return true, curUtl
+			}
 		}
 	}
-
-	return false, 0
+	//compare related room offset
+	//has new joined
+	hasNewJoined := false
+	if joinedRooms != nil {
+		joinedRooms.Range(func(key, value interface{}) bool {
+			if _, ok := token[key.(string)]; ok {
+				return true
+			}else{
+				if tl.GetJoinMembershipOffset(user, key.(string)) > 0 {
+					hasNewJoined = true
+					return false
+				}else{
+					return true
+				}
+			}
+		})
+	}
+	if hasNewJoined {
+		log.Infof("traceId:%s user:%s device:%s utl:%d join new room has event", traceId, user, device, utl)
+		return true, curUtl
+	}
+	//has new invite
+	hasNewInvite := false
+	InvitedRooms, _ := tl.GetInviteRooms(ctx, user)
+	if InvitedRooms != nil {
+		InvitedRooms.Range(func(key, value interface{}) bool {
+			if _, ok := token[key.(string)]; ok {
+				return true
+			}else{
+				hasNewInvite = true
+				return false
+			}
+		})
+	}
+	if hasNewInvite {
+		log.Infof("traceId:%s user:%s device:%s utl:%d invite new room has event", traceId, user, device, utl)
+		return true, curUtl
+	}
+	//has new leave
+	hasNewLeave := false
+	LeavedRooms, _ := tl.GetLeaveRooms(ctx, user)
+	if LeavedRooms != nil {
+		LeavedRooms.Range(func(key, value interface{}) bool {
+			if _, ok := token[key.(string)]; ok {
+				return true
+			}else{
+				//leave room check self has new msg
+				if value.(int64) != -1 {
+					hasNewLeave = true
+					return false
+				}else{
+					return true
+				}
+			}
+		})
+	}
+	if hasNewLeave {
+		log.Infof("traceId:%s user:%s device:%s utl:%d leave new room has event", traceId, user, device, utl)
+		return true, curUtl
+	}
+	return false, curUtl
 }
 
 func (tl *UserTimeLineRepo) ExistsUserReceiptUpdate(pos int64, user string) (bool, int64) {
@@ -539,41 +648,6 @@ func (tl *UserTimeLineRepo) ExistsUserReceiptUpdate(pos int64, user string) (boo
 	}
 
 	return false, 0
-}
-
-func (tl *UserTimeLineRepo) SetUserLastFail(user string, offset int64) {
-	tl.lastFail.Store(user, offset)
-}
-
-func (tl *UserTimeLineRepo) GetUserLastFail(user string) int64 {
-	if val, ok := tl.lastFail.Load(user); ok {
-		return val.(int64)
-	}
-	return int64(-1)
-}
-
-func (tl *UserTimeLineRepo) GetUserLatestOffset(ctx context.Context, user string, isHuman bool) int64 {
-	if tl.CheckUserLoadingReady(user) == false {
-		tl.LoadHistory(ctx, user, isHuman)
-	}
-
-	if val, ok := tl.userLatest.Load(user); ok {
-		return val.(int64)
-	}
-
-	return -1
-}
-
-func (tl *UserTimeLineRepo) GetUserRoomLatestOffset(ctx context.Context, user string, isHuman bool) *UserRoomOffset {
-	if tl.CheckUserLoadingReady(user) == false {
-		tl.LoadHistory(ctx, user, isHuman)
-	}
-	val, ok := tl.userRoomLatest.Load(user)
-	if ok {
-		return val.(*UserRoomOffset)
-	} else {
-		return nil
-	}
 }
 
 func (tl *UserTimeLineRepo) GetUserLatestReceiptOffset(ctx context.Context, user string, isHuman bool) int64 {
@@ -589,30 +663,52 @@ func (tl *UserTimeLineRepo) GetUserLatestReceiptOffset(ctx context.Context, user
 	return -1
 }
 
-func (tl *UserTimeLineRepo) GetHistory(ctx context.Context, user string) *feedstypes.TimeLines {
-	tl.loadUserHistory(ctx, user)
-	if !tl.repo.exits(user) && tl.CheckUserLoadingReady(user) {
-		tl.userReady.Store(user, false)
-		return nil //tl已被兑换出去，等待下次加载
+func (tl *UserTimeLineRepo) LoadToken(user, device string, utl int64) (int64, map[string]int64, error) {
+	token, err := tl.cache.GetToken(user,device,utl)
+	//get token err, return err
+	if err != nil {
+		return 0, nil, err
 	}
-
-	// tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetHistory").Add(1)
-	return tl.repo.getTimeLine(user)
+	//has token, return token
+	if token != nil {
+		return utl, token, nil
+	}else{
+		//not has token
+		//full sync, return
+		if utl == 0 {
+			return 0, nil, nil
+		}else{
+			//get latest token
+			return tl.cache.GetLastValidToken(user, device)
+		}
+	}
 }
 
-func (tl *UserTimeLineRepo) GetUserRange(ctx context.Context, user string) (int64, int64) {
-	timeLine := tl.GetHistory(ctx, user)
-	if timeLine != nil {
-		return timeLine.GetFeedRange()
+func (tl *UserTimeLineRepo) UpdateToken(user, device string, utl int64, roomOffsets map[string]int64) error {
+	bs := time.Now().UnixNano()/1000000
+	defer func(bs int64){
+		spend := time.Now().UnixNano()/1000000 - bs
+		log.Infof("update user:%s device:%s token spend:%d ms", user, device, spend)
+	}(bs)
+	err := tl.cache.SetToken(user, device, utl, roomOffsets)
+	if err != nil {
+		log.Errorf("update user:%s device:%s utl:%d err:%v", user, device, utl, err)
+		return err
 	}
-	return -1, -1
-}
-
-func (tl *UserTimeLineRepo) GetUserMinPos(user string) int64 {
-	if val, ok := tl.userMinPos.Load(user); ok {
-		return val.(int64)
+	err = tl.cache.AddTokenUtl(user,device, utl)
+	if err != nil {
+		log.Warnf("add token utl user:%s device:%s utl:%d err:%v", user, device, utl, err)
+		return nil
 	}
-	return -1
+	utls, err := tl.cache.GetTokenUtls(user,device)
+	if err != nil {
+		log.Warnf("scan user:%s device:%s token err:%v", user, device, err)
+		return nil
+	}
+	if len(utls) > adapter.GetLatestToken() {
+		tl.cache.DelTokens(user, device, utls[adapter.GetLatestToken():])
+	}
+	return nil
 }
 
 func (tl *UserTimeLineRepo) SetUserCurRoom(user, device, room string) {

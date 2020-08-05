@@ -180,11 +180,13 @@ func init() {
 	apiconsumer.SetAPIProcessor(ReqGetSetting{})
 	apiconsumer.SetAPIProcessor(ReqPutSetting{})
 	apiconsumer.SetAPIProcessor(ReqGetRoomInfo{})
+	apiconsumer.SetAPIProcessor(ReqInternalGetRoomInfo{})
 	apiconsumer.SetAPIProcessor(ReqPostReport{})
 	apiconsumer.SetAPIProcessor(ReqGetUserInfo{})
 	apiconsumer.SetAPIProcessor(ReqPutUserInfo{})
 	apiconsumer.SetAPIProcessor(ReqPostUserInfo{})
 	apiconsumer.SetAPIProcessor(ReqDeleteUserInfo{})
+	apiconsumer.SetAPIProcessor(ReqDismissRoom{})
 }
 
 type ReqPostCreateRoom struct{}
@@ -1984,6 +1986,37 @@ func (ReqGetRoomInfo) Process(ctx context.Context, consumer interface{}, msg cor
 	return routing.OnRoomInfoRequest(ctx, device.UserID, req.RoomIDs, c.rsRpcCli, c.cacheIn)
 }
 
+type ReqInternalGetRoomInfo struct{}
+
+func (ReqInternalGetRoomInfo) GetRoute() string       { return "/rooms" }
+func (ReqInternalGetRoomInfo) GetMetricsName() string { return "room_info" }
+func (ReqInternalGetRoomInfo) GetMsgType() int32      { return internals.MSG_INTERNAL_POST_ROOM_INFO }
+func (ReqInternalGetRoomInfo) GetAPIType() int8       { return apiconsumer.APITypeInternalAuth }
+func (ReqInternalGetRoomInfo) GetMethod() []string {
+	return []string{http.MethodPost, http.MethodOptions}
+}
+func (ReqInternalGetRoomInfo) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqInternalGetRoomInfo) NewRequest() core.Coder {
+	return new(external.GetRoomInfoRequest)
+}
+func (ReqInternalGetRoomInfo) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.GetRoomInfoRequest)
+	err := common.UnmarshalJSON(req, msg)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (ReqInternalGetRoomInfo) NewResponse(code int) core.Coder {
+	return new(external.GetRoomInfoResponse)
+}
+func (ReqInternalGetRoomInfo) GetPrefix() []string { return []string{"inr0"} }
+func (ReqInternalGetRoomInfo) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+	c := consumer.(*InternalMsgConsumer)
+	req := msg.(*external.GetRoomInfoRequest)
+	return routing.OnRoomInfoRequest(ctx, device.UserID, req.RoomIDs, c.rsRpcCli, c.cacheIn)
+}
+
 type ReqGetUserNewToken struct{}
 
 func (ReqGetUserNewToken) GetRoute() string                     { return "/user/new_token" }
@@ -2265,5 +2298,36 @@ func (ReqDeleteUserInfo) Process(ctx context.Context, consumer interface{}, msg 
 	req := msg.(*external.DeleteUserInfoRequest)
 	return routing.DeleteUserInfo(
 		ctx, req, c.Cfg, c.federation, c.accountDB, c.cacheIn,
+	)
+}
+
+type ReqDismissRoom struct{}
+
+func (ReqDismissRoom) GetRoute() string                     { return "/{roomID}/dismiss" }
+func (ReqDismissRoom) GetMetricsName() string               { return "dismiss_room" }
+func (ReqDismissRoom) GetMsgType() int32                    { return internals.MSG_POST_ROOM_DISMISS }
+func (ReqDismissRoom) GetAPIType() int8                     { return apiconsumer.APITypeAuth }
+func (ReqDismissRoom) GetMethod() []string                  { return []string{http.MethodPost, http.MethodOptions} }
+func (ReqDismissRoom) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqDismissRoom) NewRequest() core.Coder {
+	return new(external.DismissRoomRequest)
+}
+func (ReqDismissRoom) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.DismissRoomRequest)
+	if vars != nil {
+		msg.RoomID = vars["roomID"]
+	}
+	return nil
+}
+func (ReqDismissRoom) NewResponse(code int) core.Coder { return nil }
+func (ReqDismissRoom) GetPrefix() []string             { return []string{"r0"} }
+func (ReqDismissRoom) Process(ctx context.Context, consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+	c := consumer.(*InternalMsgConsumer)
+	req := msg.(*external.DismissRoomRequest)
+	userID := device.UserID
+	deviceID := device.ID
+	return routing.DismissRoom(
+		ctx, req, c.accountDB, userID, deviceID, req.RoomID,
+		c.Cfg, c.rsRpcCli, c.federation, c.cacheIn, c.idg, c.complexCache,
 	)
 }

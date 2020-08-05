@@ -19,6 +19,7 @@ package consumers
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -27,7 +28,6 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -116,86 +116,46 @@ func (s *ProfileConsumer) OnMessage(ctx context.Context, topic string, partition
 	return
 }
 
+func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
+	//not only base prop change, update presence
+	if !output.IsUpdateBase {
+		return true
+	}
+	//only has base prop change, using /presence/{userID}/status update presence
+	//get precense from cache has err, update presence
+	presence, ok := s.cache.GetPresences(output.UserID)
+	if !ok {
+		return true
+	}
+	log.Infof("update base user:%s server status is:%s last presence:%s set presence:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
+	//other base prop has change, update presence
+	if output.Presence.LastStatusMsg != output.Presence.StatusMsg || output.Presence.LastExtStatusMsg != output.Presence.ExtStatusMsg {
+		if output.Presence.Presence == "offline" && presence.ServerStatus != "offline" {
+			output.Presence.Presence = presence.ServerStatus
+		}
+		s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
+		return true
+	}
+	//set presence is same to serverStatus, not update presence
+	if output.Presence.Presence == presence.ServerStatus {
+		return false
+	}
+	//use is online, set offline, not update presence
+	if presence.ServerStatus != "offline" && output.Presence.Presence == "offline" {
+		return false
+	}
+	s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
+	log.Infof("user:%s server status is:%s set precense from:%s to:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
+	return true
+}
+
 func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileStreamUpdate) {
-	domain, _ := common.DomainFromID(output.UserID)
-	isSelfDomain := common.CheckValidDomain(domain, s.cfg.Matrix.ServerName)
-	isRelate := common.IsRelatedRequest(output.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite)
-	if (!isRelate && output.IsMasterHndle && isSelfDomain) || (isRelate && !output.IsMasterHndle && isSelfDomain) {
+	log.Infof("recv Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
+
+	if !s.checkUpdate(output) {
 		return
 	}
-
-	log.Infof("Profile update, user:%s device:%s presence:%s %t", output.UserID, output.DeviceID, output.Presence.Presence, output.IsUpdateStauts)
-	if isSelfDomain && isRelate && output.IsUpdateStauts {
-		if output.Presence.Presence == "offline" {
-			log.Infof("Profile offline user:%s device:%s", output.UserID, output.DeviceID)
-			s.olRepo.UpdateState(ctx, output.UserID, output.DeviceID, repos.OFFLINE_STATE)
-			if s.olRepo.IsUserOnline(output.UserID) && output.Presence.Presence == "offline" {
-				// 整合在线状态
-				deviceIDs, pos, ts := s.olRepo.GetRemainDevice(output.UserID)
-				log.Infof("Profile update user:%s offline aggregate to online, deviceIDs:%v, pos:%v, ts:%v", output.UserID, deviceIDs, pos, ts)
-				output.Presence.Presence = "online"
-				feed := s.presenceStreamRepo.GetHistoryByUserID(output.UserID)
-				if feed != nil {
-					var ev gomatrixserverlib.ClientEvent
-					var content types.PresenceJSON
-					json.Unmarshal(feed.DataStream.Content, &ev)
-					json.Unmarshal(ev.Content, &content)
-					if content.Presence != "offline" {
-						deviceIDs, pos, ts := s.olRepo.GetRemainDevice(output.UserID)
-						log.Infof("Profile update user:%s online aggregate to %s, deviceIDs:%v, pos:%v, ts:%v", output.UserID, content.Presence, deviceIDs, pos, ts)
-						output.Presence.Presence = content.Presence
-					}
-				}
-				s.cache.SetPresences(output.UserID, output.Presence.Presence, output.Presence.StatusMsg, output.Presence.ExtStatusMsg)
-			}
-			// } else if output.Presence.Presence == "online" {
-			// 	feed := s.presenceStreamRepo.GetHistoryByUserID(output.UserID)
-			// 	if feed != nil {
-			// 		var ev gomatrixserverlib.ClientEvent
-			// 		var content types.PresenceJSON
-			// 		json.Unmarshal(feed.DataStream.Content, &ev)
-			// 		json.Unmarshal(ev.Content, &content)
-			// 		if content.Presence != "offline" && content.Presence != "online" {
-			// 			deviceIDs, pos, ts := s.olRepo.GetRemainDevice(output.UserID)
-			// 			log.Infof("Profile update user:%s online aggregate to %s, deviceIDs:%v, pos:%v, ts:%v", output.UserID, content.Presence, deviceIDs, pos, ts)
-			// 			output.Presence.Presence = content.Presence
-			// 		}
-			// 	}
-		}
-	}
-	if isSelfDomain && isRelate && output.IsMasterHndle {
-		stream := *output
-		stream.IsMasterHndle = false
-		span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.OutputProfileData.Name)
-		defer span.Finish()
-		common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.OutputProfileData.Name,
-			s.cfg.Kafka.Producer.OutputProfileData.Underlying)
-		common.GetTransportMultiplexer().SendWithRetry(
-			s.cfg.Kafka.Producer.OutputProfileData.Underlying,
-			s.cfg.Kafka.Producer.OutputProfileData.Name,
-			&core.TransportPubMsg{
-				Keys:    []byte(output.UserID),
-				Obj:     stream,
-				Headers: common.InjectSpanToHeaderForSending(span),
-			})
-	}
-
-	if !output.IsUpdateStauts {
-		feed := s.presenceStreamRepo.GetHistoryByUserID(output.UserID)
-		if feed != nil {
-			var ev gomatrixserverlib.ClientEvent
-			var content types.PresenceJSON
-			json.Unmarshal(feed.DataStream.Content, &ev)
-			json.Unmarshal(ev.Content, &content)
-			output.Presence.Presence = content.Presence
-			output.Presence.StatusMsg = content.StatusMsg
-			output.Presence.ExtStatusMsg = content.ExtStatusMsg
-		}
-		if output.Presence.Presence == "" {
-			output.Presence.Presence = "offline"
-		}
-	}
-
+	log.Infof("do Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
 	event := &gomatrixserverlib.ClientEvent{}
 	event.Type = "m.presence"
 	event.Sender = output.UserID
@@ -206,7 +166,7 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 		log.Errorw("Marshal json error for profile update", log.KeysAndValues{"userID", output.UserID, "error", err})
 		return
 	}
-
+	isRelate := common.IsRelatedRequest(output.UserID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite)
 	var pos int64
 	if isRelate {
 		offset, _ := s.syncDB.UpsertPresenceDataStream(ctx, output.UserID, string(eventJson))
@@ -214,21 +174,10 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 	} else {
 		pos, _ = s.idg.Next()
 	}
-
 	presenceStream := types.PresenceStream{}
 	presenceStream.UserID = output.UserID
 	presenceStream.Content = eventJson
-	log.Infow("sync profile stream consumer received data", log.KeysAndValues{"userID", output.UserID, "pos", pos, "eventJson", string(eventJson)})
 	s.presenceStreamRepo.AddPresenceDataStream(ctx, &presenceStream, pos, true)
-	if !isRelate || !isSelfDomain {
-		friendReverseMap := s.userTimeLine.GetFriendshipReverse(output.UserID)
-		if friendReverseMap != nil {
-			friendReverseMap.Range(func(k, _ interface{}) bool {
-				s.presenceStreamRepo.UpdateUserMaxPos(k.(string), pos)
-				return true
-			})
-		}
-	}
 
 	friendMap := s.userTimeLine.GetFriendShip(ctx, output.UserID, true)
 	domainMap := make(map[string]bool)
@@ -241,8 +190,8 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 			return true
 		})
 	}
-	senderDomain := domain
-	if isSelfDomain && isRelate && output.IsMasterHndle {
+	senderDomain, _ := common.DomainFromID(output.UserID)
+	if common.CheckValidDomain(senderDomain, s.cfg.Matrix.ServerName) && isRelate {
 		fedProfile := types.ProfileContent{
 			UserID:       output.UserID,
 			DisplayName:  output.Presence.DisplayName,
@@ -257,6 +206,7 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 			Mobile:    output.Presence.Mobile,
 			Landline:  output.Presence.Landline,
 			Email:     output.Presence.Email,
+			State:     output.Presence.State,
 		}
 
 		content, _ := json.Marshal(fedProfile)
@@ -268,20 +218,13 @@ func (s *ProfileConsumer) onMessage(ctx context.Context, output *types.ProfileSt
 				Destination: domain,
 				Content:     content,
 			}
-			func() {
-				span, _ := common.StartSpanFromContext(ctx, s.cfg.Kafka.Producer.FedEduUpdate.Name)
-				defer span.Finish()
-				common.ExportMetricsBeforeSending(span, s.cfg.Kafka.Producer.FedEduUpdate.Name,
-					s.cfg.Kafka.Producer.FedEduUpdate.Underlying)
-				common.GetTransportMultiplexer().SendWithRetry(
-					s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
-					s.cfg.Kafka.Producer.FedEduUpdate.Name,
-					&core.TransportPubMsg{
-						Keys:    userIDData,
-						Obj:     edu,
-						Headers: common.InjectSpanToHeaderForSending(span),
-					})
-			}()
+			common.GetTransportMultiplexer().SendWithRetry(
+				s.cfg.Kafka.Producer.FedEduUpdate.Underlying,
+				s.cfg.Kafka.Producer.FedEduUpdate.Name,
+				&core.TransportPubMsg{
+					Keys: userIDData,
+					Obj:  edu,
+				})
 		}
 	}
 }

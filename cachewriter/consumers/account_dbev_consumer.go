@@ -237,7 +237,7 @@ func (s *AccountDBEvCacheConsumer) OnUpsertUserInfo(
 	conn := s.pool.Pool().Get()
 	defer conn.Close()
 
-	err := conn.Send("hmset", fmt.Sprintf("%s:%s", "user_info", msg.UserID), "user_id", msg.UserID, "user_name", msg.UserName, "job_number", msg.JobNumber, "mobile", msg.Mobile, "landline", msg.Landline, "email", msg.Email)
+	err := conn.Send("hmset", fmt.Sprintf("%s:%s", "user_info", msg.UserID), "user_id", msg.UserID, "user_name", msg.UserName, "job_number", msg.JobNumber, "mobile", msg.Mobile, "landline", msg.Landline, "email", msg.Email, "state", msg.State)
 	if err != nil {
 		return err
 	}

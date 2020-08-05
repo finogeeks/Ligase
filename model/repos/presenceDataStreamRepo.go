@@ -19,14 +19,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/tidwall/gjson"
 )
 
 type PresenceDataStreamRepo struct {
@@ -37,8 +35,6 @@ type PresenceDataStreamRepo struct {
 	ready        sync.Map
 	loading      sync.Map
 	cfg          *config.Dendrite
-	onlineRepo   *OnlineUserRepo
-
 	queryHitCounter mon.LabeledCounter
 }
 
@@ -62,10 +58,6 @@ func (tl *PresenceDataStreamRepo) SetMonitor(queryHitCounter mon.LabeledCounter)
 
 func (tl *PresenceDataStreamRepo) SetCfg(cfg *config.Dendrite) {
 	tl.cfg = cfg
-}
-
-func (tl *PresenceDataStreamRepo) SetOnlineRepo(repo *OnlineUserRepo) {
-	tl.onlineRepo = repo
 }
 
 func (tl *PresenceDataStreamRepo) AddPresenceDataStream(ctx context.Context,
@@ -99,19 +91,6 @@ func (tl *PresenceDataStreamRepo) AddPresenceDataStream(ctx context.Context,
 				return true
 			})
 		}
-	}
-}
-
-func (tl *PresenceDataStreamRepo) UpdateUserMaxPos(userID string, offset int64) {
-	if maxPos, ok := tl.maxPosition.Load(userID); ok {
-		log.Infof("change user update presence user:%s offset:%d exsit:%d", userID, offset, maxPos.(int64))
-		if maxPos.(int64) < offset {
-			log.Infof("change user update presence is men user:%s offset:%d", userID, offset)
-			tl.maxPosition.Store(userID, offset)
-		}
-	} else {
-		tl.maxPosition.Store(userID, offset)
-		log.Infof("change user update presence no mem user:%s offset:%d", userID, offset)
 	}
 }
 
@@ -231,48 +210,4 @@ func (tl *PresenceDataStreamRepo) ExistsPresence(userID string, position int64) 
 		return maxPos.(int64) > position
 	}
 	return false
-}
-
-func (tl *PresenceDataStreamRepo) LoadOnlinePresence() {
-	limit := 1000
-	offset := 0
-	exists := true
-
-	span, ctx := common.StartSobSomSpan(context.Background(), "PresenceDataStreamRepo.LoadOnlinePresence")
-	defer span.Finish()
-	for exists {
-		exists = false
-		streams, offsets, err := tl.persist.GetHistoryPresenceDataStream(ctx, limit, offset)
-		if err != nil {
-			log.Panicf("PresenceDataStreamRepo load history err: %v", err)
-			return
-		}
-
-		for idx := range streams {
-			dataStream := streams[idx]
-			exists = true
-			offset = offset + 1
-
-			if !common.IsRelatedRequest(dataStream.UserID, tl.cfg.MultiInstance.Instance, tl.cfg.MultiInstance.Total, tl.cfg.MultiInstance.MultiWrite) {
-				continue
-			}
-
-			domain, _ := common.DomainFromID(dataStream.UserID)
-			if !common.CheckValidDomain(domain, tl.cfg.Matrix.ServerName) {
-				continue
-			}
-
-			value := gjson.Get(string(dataStream.Content), "content.presence")
-			if value.String() != "offline" {
-				tl.onlineRepo.Pet(ctx, dataStream.UserID, "virtual-restore", -1, 0)
-				stream := new(types.PresenceStream)
-				*stream = dataStream
-				presenceDataStream := new(feedstypes.PresenceDataStream)
-				presenceDataStream.DataStream = stream
-				presenceDataStream.Offset = offsets[idx]
-				tl.repo.LoadOrStore(dataStream.UserID, presenceDataStream)
-				log.Debugf("restore presence stream user: %s, presence: %s", dataStream.UserID, value.String())
-			}
-		}
-	}
 }

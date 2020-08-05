@@ -15,7 +15,7 @@
 package sync
 
 import (
-	"context"
+	"fmt"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
@@ -23,85 +23,97 @@ import (
 	"sort"
 )
 
-func (sm *SyncMng) loadMissOffsetPairFromDb(req *request, loadOffsets []int64) {
-	log.Warnf("traceid:%s getProcessUtl load offset from db", req.traceId)
-	if loadOffsets == nil || len(loadOffsets) <= 0 {
+func (sm *SyncMng) updateHasNewEvent(req *request, data *syncapitypes.SyncServerResponse){
+	if req.hasNewEvent {
 		return
 	}
-	evs, err := sm.db.SelectUserTimeLineOffset(context.TODO(), req.device.UserID, loadOffsets)
-	if err != nil {
-		log.Errorf("traceid:%s SelectUserTimeLineOffset from db err:%v", req.traceId, err)
-		return
+	for _, events := range data.Rooms.Join {
+		if len(events.State.Events) > 0 {
+			req.hasNewEvent = true
+			return
+		}
+		if len(events.Timeline.Events) > 0 {
+			req.hasNewEvent = true
+			return
+		}
 	}
-	if evs == nil || len(evs) <= 0 {
-		return
+	for _, events := range data.Rooms.Invite {
+		if len(events.InviteState.Events) > 0 {
+			req.hasNewEvent = true
+			return
+		}
 	}
-	for _, ev := range evs {
-		sm.updateOffsetPair(req, ev.RoomID, ev.Offset, ev.RoomOffset)
+
+	for _, events := range data.Rooms.Leave {
+		if len(events.State.Events) > 0 {
+			req.hasNewEvent = true
+			return
+		}
+		if len(events.Timeline.Events) > 0 {
+			req.hasNewEvent = true
+			return
+		}
 	}
 }
 
-func (sm *SyncMng) getProcessUtl(req *request, data *syncapitypes.SyncServerResponse) (utl int64) {
-	var userRoomOffset *UserRoomOffset
-	if val, ok := sm.syncOffset.Load(req.traceId); ok {
-		userRoomOffset = val.(*UserRoomOffset)
+func (sm *SyncMng) freshToken(req *request,  res *syncapitypes.Response) {
+	if !req.hasNewEvent {
+		if req.isFullSync {
+			sm.updateFullSyncNotData(req)
+			return
+		}
+		req.marks.utlProcess = req.marks.utlRecv
+		log.Infof("traceid:%s after sync has no new event userId:%s device:%s utl:%d token not change isfullsync:%t", req.traceId, req.device.UserID, req.device.Identifier, req.marks.utlRecv, req.isFullSync)
+		return
 	}
-	loadOffsets := []int64{}
-	for roomId, offset := range data.MaxRoomOffset {
-		if userRoomOffset != nil {
-			if pair, ok := userRoomOffset.Offsets[roomId]; !ok {
-				loadOffsets = append(loadOffsets, offset)
-			} else {
-				if _, ok := pair[offset]; !ok {
-					loadOffsets = append(loadOffsets, offset)
-				}
-			}
-		} else {
-			loadOffsets = append(loadOffsets, offset)
+	//maxroomoffset to large
+	//log.Infof("traceid:%s freshToken maxroomoffset:%+v", req.traceId, req.MaxRoomOffset)
+	offsets := make(map[string]int64)
+	for roomId, offset := range req.MaxRoomOffset {
+		offsets[roomId] = offset
+	}
+	for k ,v := range req.offsets {
+		if _, ok := offsets[k]; !ok {
+			offsets[k] = v
 		}
 	}
-	if len(loadOffsets) > 0 {
-		sm.loadMissOffsetPairFromDb(req, loadOffsets)
+	utl, _ := sm.userTimeLine.Idg.Next()
+	err := sm.userTimeLine.UpdateToken(req.device.UserID, req.device.ID, utl, offsets)
+	if err != nil {
+		sm.clearSyncData(res)
+		req.marks.utlProcess = req.marks.utlRecv
+		log.Infof("traceid:%s after sync update token err:%v reset token userId:%s device:%s utl:%d", req.traceId, err, req.device.UserID, req.device.Identifier, req.marks.utlProcess)
+		return
 	}
-	if val, ok := sm.syncOffset.Load(req.traceId); ok {
-		userRoomOffset = val.(*UserRoomOffset)
+	req.marks.utlProcess = utl
+	//offsets too large
+	//log.Infof("traceid:%s after sync update token info userId:%s device:%s utl:%d offsets:%+v", req.traceId, req.device.UserID, req.device.Identifier, utl, offsets)
+	return
+}
+
+func (sm *SyncMng) clearSyncData(res *syncapitypes.Response) {
+	res.Rooms.Join = nil
+	res.Rooms.Join = nil
+	res.Rooms.Leave = nil
+}
+
+func (sm *SyncMng) updateFullSyncNotData(req *request){
+	utl, _ := sm.userTimeLine.Idg.Next()
+	roomOffset := make(map[string]int64)
+	roomOffset[fmt.Sprintf("!default:%s", common.GetDomainByUserID(req.device.UserID))] = -1
+	err := sm.userTimeLine.UpdateToken(req.device.UserID, req.device.ID,utl, roomOffset)
+	if err != nil {
+		req.marks.utlProcess = req.marks.utlRecv
+		log.Infof("traceid:%s after full sync not data update token err:%v reset token userId:%s device:%s utl:%d ishuman:%t", req.traceId, err, req.device.UserID, req.device.ID, req.marks.utlProcess, req.device.IsHuman)
+		return
 	}
-	if userRoomOffset == nil {
-		return req.marks.utlProcess
-	}
-	utlProcess := int64(0)
-	utlRoomProcess := int64(0)
-	hasMissOffset := false
-	for roomId, offset := range data.MaxRoomOffset {
-		if pair, ok := userRoomOffset.Offsets[roomId]; ok {
-			if utl, ok := pair[offset]; ok {
-				if utlProcess < utl {
-					utlProcess = utl
-				}
-			} else {
-				hasMissOffset = true
-				log.Warnf("traceid:%d user:%s roomId:%s roomoffset:%d userRoomOffset miss offset pair", req.traceId, req.device.UserID, roomId, offset)
-			}
-		} else {
-			hasMissOffset = true
-			log.Warnf("traceid:%d user:%s roomId:%s roomoffset:%d userRoomOffset miss whole offsets", req.traceId, req.device.UserID, roomId, offset)
-		}
-		if utlRoomProcess < offset {
-			utlRoomProcess = offset
-		}
-	}
-	sm.syncOffset.Delete(req.traceId)
-	if hasMissOffset {
-		return utlRoomProcess
-	} else {
-		return utlProcess
-	}
+	req.marks.utlProcess = utl
+	log.Infof("traceid:%s after full sync not data update token userId:%s device:%s utl:%d ishuman:%t", req.traceId, req.device.UserID, req.device.ID, req.marks.utlProcess, req.device.IsHuman)
 }
 
 func (sm *SyncMng) addSyncData(req *request, res *syncapitypes.Response, data *syncapitypes.SyncServerResponse) bool {
 	res.Lock.Lock()
 	defer res.Lock.Unlock()
-
 	if data.Rooms.Join != nil {
 		for roomID, resp := range data.Rooms.Join {
 			res.Rooms.Join[roomID] = resp
@@ -123,16 +135,20 @@ func (sm *SyncMng) addSyncData(req *request, res *syncapitypes.Response, data *s
 			}
 		}
 	}
-	aggProcess := req.marks.utlProcess
-	req.marks.utlProcess = sm.getProcessUtl(req, data)
-	log.Infof("update utlProcess addSyncData traceid:%s userid:%s process:%d aggprocess:%d", req.traceId, req.device.UserID, req.marks.utlProcess, aggProcess)
-
+	for roomId, offset := range data.MaxRoomOffset {
+		req.MaxRoomOffset[roomId] = offset
+	}
+	sm.updateHasNewEvent(req,data)
 	if req.device.IsHuman {
+		log.Infof("traceid:%s addSyncData user:%s recpProcess:%d maxReceiptOffset:%d", req.traceId, req.device.UserID, req.marks.recpProcess, data.MaxReceiptOffset)
 		if req.marks.recpProcess < data.MaxReceiptOffset {
 			req.marks.recpProcess = data.MaxReceiptOffset
 		}
 		if data.NewUsers != nil { //初次加入房间，把房间成员的presence信息带回去以更新头像昵称 TODO 去重
 			for _, user := range data.NewUsers {
+				if user == req.device.UserID {
+					continue
+				}
 				feed := sm.presenceStreamRepo.GetHistoryByUserID(user)
 				if feed == nil {
 					continue
@@ -182,42 +198,16 @@ func (sm *SyncMng) filterSyncData(req *request, res *syncapitypes.Response) *syn
 }
 
 func (sm *SyncMng) FillSortEventOffset(res *syncapitypes.Response, req *request) {
-	maxOffset := int64(-1)
 	for _, join := range res.Rooms.Join {
 		sort.Sort(syncapitypes.ClientEvents(join.State.Events))
-		if len(join.State.Events) > 0 {
-			if maxOffset < join.State.Events[len(join.State.Events)-1].EventOffset {
-				maxOffset = join.State.Events[len(join.State.Events)-1].EventOffset
-			}
-		}
 		sort.Sort(syncapitypes.ClientEvents(join.Timeline.Events))
-		if len(join.Timeline.Events) > 0 {
-			if maxOffset < join.Timeline.Events[len(join.Timeline.Events)-1].EventOffset {
-				maxOffset = join.Timeline.Events[len(join.Timeline.Events)-1].EventOffset
-			}
-		}
 	}
 	for _, invite := range res.Rooms.Invite {
 		sort.Sort(syncapitypes.ClientEvents(invite.InviteState.Events))
-		if len(invite.InviteState.Events) > 0 {
-			if maxOffset < invite.InviteState.Events[len(invite.InviteState.Events)-1].EventOffset {
-				maxOffset = invite.InviteState.Events[len(invite.InviteState.Events)-1].EventOffset
-			}
-		}
 	}
 	for _, leave := range res.Rooms.Leave {
 		sort.Sort(syncapitypes.ClientEvents(leave.State.Events))
-		if len(leave.State.Events) > 0 {
-			if maxOffset < leave.State.Events[len(leave.State.Events)-1].EventOffset {
-				maxOffset = leave.State.Events[len(leave.State.Events)-1].EventOffset
-			}
-		}
 		sort.Sort(syncapitypes.ClientEvents(leave.Timeline.Events))
-		if len(leave.Timeline.Events) > 0 {
-			if maxOffset < leave.Timeline.Events[len(leave.Timeline.Events)-1].EventOffset {
-				maxOffset = leave.Timeline.Events[len(leave.Timeline.Events)-1].EventOffset
-			}
-		}
 	}
-	log.Infof("SyncMng FillSortEventOffset traceid:%s, maxoffset:%d, next:%s", req.traceId, maxOffset, res.NextBatch)
+	log.Infof("SyncMng FillSortEventOffset traceid:%s, next:%s", req.traceId, res.NextBatch)
 }

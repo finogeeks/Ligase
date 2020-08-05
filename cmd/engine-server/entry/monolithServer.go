@@ -91,6 +91,11 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	base.Cfg.Matrix.InstanceId = inst
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
+
+	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
+	rpcClient.Start(true)
+
 	addProducer(transportMultiplexer, kafka.Producer.OutputRoomEvent)
 	addProducer(transportMultiplexer, kafka.Producer.InputRoomEvent)
 	addProducer(transportMultiplexer, kafka.Producer.OutputClientData)
@@ -103,6 +108,7 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.DeviceStateUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.SettingUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.UserInfoUpdate)
+	addProducer(transportMultiplexer, kafka.Producer.DismissRoom)
 	addConsumer(transportMultiplexer, kafka.Consumer.InputRoomEvent, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventPublicRooms, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventAppservice, base.Cfg.MultiInstance.Instance)
@@ -118,7 +124,7 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdateSyncAggregate, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdateSyncServer, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.SetttngUpdateProxy, base.Cfg.MultiInstance.Instance)
-
+	addConsumer(transportMultiplexer, kafka.Consumer.DismissRoom, base.Cfg.MultiInstance.Instance)
 	for _, v := range dbUpdateProducerName {
 		dbUpdates := kafka.Producer.DBUpdates
 		dbUpdates.Topic = dbUpdates.Topic + "_" + v
@@ -127,10 +133,6 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	}
 
 	transportMultiplexer.PreStart()
-
-	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
-	rpcClient.Start(true)
 
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
 	base.CheckDomainCfg()

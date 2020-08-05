@@ -126,7 +126,7 @@ func (p *BackfillProcessor) Process(job *BackFillJob) {
 
 				sitem := new(senderItem)
 				sitem.domain = domain
-				sitem.fedClient, _ = client.GetFedClient(domain)
+				sitem.fedClient, _ = client.GetFedClient(p.cfg.GetServerName()[0])
 				val, _ = p.clientMap.LoadOrStore(domain, sitem)
 			}
 			item := val.(*senderItem)

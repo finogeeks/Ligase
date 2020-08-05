@@ -37,6 +37,8 @@ type createContent struct {
 	Federate *bool `json:"m.federate"`
 	// The creator of the room tells us what the default power levels are.
 	Creator string `json:"creator"`
+	IsOrganizationRoom bool   `json:"is_organization_room"`
+	IsGroupRoom        bool   `json:"is_group_room"`
 }
 
 // newCreateContentFromAuthEvents loads the create event content from the create event in the
@@ -221,6 +223,7 @@ type powerLevelContent struct {
 	eventLevels       map[string]int64
 	eventDefaultLevel int64
 	stateDefaultLevel int64
+	onlyOneMember     bool
 }
 
 // userLevel returns the power level a user has in the room.
@@ -248,6 +251,11 @@ func (c *powerLevelContent) eventLevel(eventType string, isState bool) int64 {
 		return c.stateDefaultLevel
 	}
 	return c.eventDefaultLevel
+}
+
+// thereIsOnlyOneMember returns if current user is the only one member of room.
+func (c *powerLevelContent) thereIsOnlyOneMember() bool {
+	return c.onlyOneMember
 }
 
 // newPowerLevelContentFromAuthEvents loads the power level content from the
@@ -293,7 +301,7 @@ func (c *powerLevelContent) defaults() {
 	// https://github.com/matrix-org/synapse/blob/v0.18.5/synapse/api/auth.py#L991
 	c.eventDefaultLevel = 0
 	c.stateDefaultLevel = 50
-
+	c.onlyOneMember = false
 }
 
 // newPowerLevelContentFromEvent loads the power level content from an event.
@@ -313,6 +321,7 @@ func newPowerLevelContentFromEvent(event Event) (c powerLevelContent, err error)
 		EventLevels       map[string]levelJSONValue `json:"events"`
 		StateDefaultLevel levelJSONValue            `json:"state_default"`
 		EventDefaultLevel levelJSONValue            `json:"events_default"`
+		OnlyOneMember     *bool                     `json:"only_one_member,omitempty"`
 	}
 	if err = json.Unmarshal(event.Content(), &content); err != nil {
 		err = errorf("unparsable power_levels event content: %s", err.Error())
@@ -341,7 +350,9 @@ func newPowerLevelContentFromEvent(event Event) (c powerLevelContent, err error)
 		}
 		c.eventLevels[k] = v.value
 	}
-
+	if content.OnlyOneMember != nil {
+		c.onlyOneMember = *(content.OnlyOneMember)
+	}
 	return
 }
 

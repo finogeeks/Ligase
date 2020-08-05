@@ -131,7 +131,7 @@ func (c *FederationDispatch) writeFedEvents(ctx context.Context, roomID, domain 
 	defer span.Finish()
 	common.ExportMetricsBeforeSending(span, c.cfg.Kafka.Producer.DispatchOutput.Name,
 		c.cfg.Kafka.Producer.DispatchOutput.Underlying)
-	return common.GetTransportMultiplexer().SendWithRetry(
+	return common.GetTransportMultiplexer().SendAndRecvWithRetry(
 		c.cfg.Kafka.Producer.DispatchOutput.Underlying,
 		c.cfg.Kafka.Producer.DispatchOutput.Name,
 		&core.TransportPubMsg{

@@ -95,6 +95,7 @@ const selectRoomBackfillNIDSQL = "SELECT event_nid FROM roomserver_events WHERE 
 const selectRoomBackfillNIDUnLimitedSQL = "SELECT event_nid FROM roomserver_events WHERE room_nid = $1 and domain = $2 and event_nid < $3 order by event_nid desc"
 const selectRoomBackfillForwardNIDSQL = "SELECT event_nid FROM roomserver_events WHERE room_nid = $1 and domain = $2 and event_nid > $3 order by event_nid asc limit $4"
 const selectRoomBackfillForwardNIDUnLimitedSQL = "SELECT event_nid FROM roomserver_events WHERE room_nid = $1 and domain = $2 and event_nid > $3 order by event_nid asc"
+const selectEventNidForBackfillSQL = `SELECT event_nid FROM roomserver_events WHERE room_nid = $1 AND event_type_id = 'm.room.member' AND event_state_key_id like $2 ORDER BY event_nid LIMIT 1`
 
 const selectRoomEventsByDomainOffsetSQL = "SELECT event_nid FROM roomserver_events WHERE room_nid = $1 AND domain = $2 AND offsets >= $3 order by offsets limit $4"
 
@@ -139,6 +140,7 @@ type eventStatements struct {
 	selectRoomBackFillNIDSUnLimitedStmt        *sql.Stmt
 	selectRoomBackFillForwardNIDStmt           *sql.Stmt
 	selectRoomBackFillForwardNIDSUnLimitedStmt *sql.Stmt
+	selectEventNidForBackfillStmt              *sql.Stmt
 	selectRoomEventsByDomainOffsetStmt         *sql.Stmt
 	selectEventStateSnapshotNIDStmt            *sql.Stmt
 	selectRoomStateNIDByStateBlockNIDStmt      *sql.Stmt
@@ -170,6 +172,7 @@ func (s *eventStatements) prepare(db *sql.DB, d *Database) (err error) {
 		{&s.selectRoomBackFillForwardNIDStmt, selectRoomBackfillForwardNIDSQL},
 		{&s.selectRoomBackFillForwardNIDSUnLimitedStmt, selectRoomBackfillForwardNIDUnLimitedSQL},
 		{&s.selectRoomBackFillForwardNIDSUnLimitedStmt, selectRoomBackfillForwardNIDUnLimitedSQL},
+		{&s.selectEventNidForBackfillStmt, selectEventNidForBackfillSQL},
 		{&s.selectRoomEventsByDomainOffsetStmt, selectRoomEventsByDomainOffsetSQL},
 		{&s.selectEventStateSnapshotNIDStmt, selectEventStateSnapshotNIDSQL},
 		{&s.selectRoomStateNIDByStateBlockNIDStmt, selectRoomStateNIDByStateBlockNIDSQL},
@@ -535,6 +538,23 @@ func (s *eventStatements) selectBackFillEvForwardNIDUnLimited(ctx context.Contex
 	}
 
 	return res, nil
+}
+
+func (s *eventStatements) selectEventNidForBackfill(ctx context.Context, roomNID int64, domain string) (int64, error) {
+	rows, err := s.selectEventNidForBackfillStmt.QueryContext(ctx, roomNID, "%"+domain)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var eventNID = int64(0)
+	for rows.Next() {
+		err = rows.Scan(&eventNID)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return eventNID, nil
 }
 
 func (s *eventStatements) selectRoomEventsByDomainOffset(ctx context.Context, roomNID int64, domain string, domainOffset int64, limit int) ([]int64, error) {

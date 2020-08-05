@@ -387,7 +387,7 @@ func (r RespInvite) MarshalJSON() ([]byte, error) {
 	// of a two element list where the first element is the constant integer 200.
 	// (This protocol oddity is the result of a typo in the synapse matrix
 	//  server, and is preserved to maintain compatibility.)
-	return json.Marshal([]interface{}{200, respInviteFields{r.Event}})
+	return json.Marshal([]interface{}{r.Code, respInviteFields{r.Event}})
 }
 
 // UnmarshalJSON implements json.Unmarshaller
@@ -445,6 +445,7 @@ type RespUserInfo struct {
 	Mobile    string `json:"mobile"`
 	Landline  string `json:"landline"`
 	Email     string `json:"email"`
+	State     int    `json:"state,omitempty"`
 }
 
 type ReqGetMissingEventContent struct {

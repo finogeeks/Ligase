@@ -269,7 +269,7 @@ func startFedMonolith() {
 	serverConfDB := cdb.(model.ConfigDatabase)
 	domain.GetDomainMngInstance(cache, serverConfDB, cfg.GetServerName(), cfg.GetServerFromDB(), idg)
 	checkDomainCfg(cfg)
-
+	fedAPIEntry.SetRepo(repo)
 	sendRecRepo := fedrepos.NewSendRecRepo(fedDB, cache)
 	err = sendRecRepo.LoadRooms()
 	if err != nil {

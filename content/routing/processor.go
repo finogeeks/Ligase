@@ -43,6 +43,8 @@ import (
 
 const contentUri = "mxc://%s/%s"
 
+var jsonContentType = []string{"application/json; charset=utf-8"}
+
 type Processor struct {
 	cfg       *config.Dendrite
 	histogram mon.LabeledHistogram
@@ -103,13 +105,21 @@ func (p *Processor) buildUrl(req *http.Request, reqUrl string) string {
 	return u.String()
 }
 
+func (p *Processor) WriteHeader(resp *http.Response, w http.ResponseWriter) {
+	header := w.Header()
+	if val := header["Content-Type"]; len(val) == 0 {
+		header["Content-Type"] = jsonContentType
+	}
+}
+
 // /upload
 func (p *Processor) Upload(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
 	if req.Method != http.MethodPost {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-
+	vs := req.URL.Query()
+	isEmote := vs.Get("isemote") == "true"
 	thumbnail := "false"
 	contentType := req.Header.Get("Content-Type")
 	mediaType := contentType
@@ -122,9 +132,13 @@ func (p *Processor) Upload(rw http.ResponseWriter, req *http.Request, device *au
 	reqUrl = p.buildUrl(req, reqUrl)
 	res, err := p.httpRequest(device.UserID, req.Method, reqUrl, req)
 	if err != nil {
-		log.Errorw("upload file error 1", log.KeysAndValues{"user_id", device.UserID, "err", err})
+		log.Errorw("upload file error 1", log.KeysAndValues{"user_id", device.UserID, "err", err,"url", reqUrl})
 		rw.WriteHeader(http.StatusInternalServerError)
 		rw.Write([]byte("Internal Server Error. " + err.Error()))
+		return
+	}
+	if isEmote {
+		p.uploadEmoteResp(rw, res, device.UserID)
 		return
 	}
 	if res.StatusCode != http.StatusOK {
@@ -162,9 +176,11 @@ func (p *Processor) Upload(rw http.ResponseWriter, req *http.Request, device *au
 	}
 
 	data, _ := json.Marshal(resJson)
-
+	//set header must before write header code, if not, set header cannot take effect
+	p.WriteHeader(res, rw)
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(data)
+	log.Infof("userID:%s upload media succ", device.UserID)
 }
 
 // /download/{serverName}/{mediaId}
@@ -260,19 +276,24 @@ func (p *Processor) doDownload(
 		reqUrl = fmt.Sprintf(cfg.Media.DownloadUrl, netdiskID)
 	case "thumbnail":
 		req.ParseForm()
-		method = req.Form.Get("method")
-		width = req.Form.Get("width")
-		widthInt, _ := strconv.Atoi(width)
-		if method == "scale" {
-			if widthInt <= 100 {
-				reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "small")
-			} else if widthInt <= 300 {
-				reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "middle")
+		scaleType := req.Form.Get("type")
+		if scaleType != "" {
+			reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, scaleType)
+		}else{
+			method = req.Form.Get("method")
+			width = req.Form.Get("width")
+			widthInt, _ := strconv.Atoi(width)
+			if method == "scale" {
+				if widthInt <= 100 {
+					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "small")
+				} else if widthInt <= 300 {
+					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "middle")
+				} else {
+					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
+				}
 			} else {
 				reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
 			}
-		} else {
-			reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
 		}
 	}
 

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS device_devices (
 
 -- Device IDs must be unique for a given user.
 CREATE UNIQUE INDEX IF NOT EXISTS device_user_id_idx ON device_devices(user_id, identifier);
+CREATE INDEX IF NOT EXISTS device_ts_idx ON device_devices(created_ts);
 `
 
 const upsertDeviceSQL = "" +

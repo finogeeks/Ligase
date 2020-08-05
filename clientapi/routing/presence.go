@@ -16,6 +16,7 @@ package routing
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/model/authtypes"
 	"net/http"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
@@ -75,11 +76,13 @@ func UpdatePresenceByID(
 	if userID != reqContent.UserID {
 		return http.StatusForbidden, jsonerror.Forbidden("Can't set presence for others")
 	}
+	lastPresence := &authtypes.Presences{}
+	presence, statusMsg, extStatusMsg := getPresence(userID, cache, rpcCli)
+	lastPresence.Status = presence
+	lastPresence.StatusMsg = statusMsg
+	lastPresence.ExtStatusMsg = extStatusMsg
+	log.Infof("get last presence userID:%s Presence:%s StatusMsg:%s ExtStatusMsg:%s", reqContent.UserID, lastPresence.Status, lastPresence.StatusMsg, lastPresence.ExtStatusMsg)
 
-	var presence, statusMsg, extStatusMsg string
-	if reqContent.Presence == nil || reqContent.StatusMsg == nil || reqContent.ExtStatusMsg == nil {
-		presence, statusMsg, extStatusMsg = getPresence(userID, cache, rpcCli)
-	}
 	if reqContent.Presence != nil {
 		presence = *reqContent.Presence
 	}
@@ -95,7 +98,7 @@ func UpdatePresenceByID(
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 	cache.SetPresences(reqContent.UserID, presence, statusMsg, extStatusMsg)
-	log.Infof("Set Presences success %s %s %s %s", reqContent.UserID, presence, statusMsg, extStatusMsg)
+	log.Infof("Set Presences success userID:%s Presence:%s StatusMsg:%s ExtStatusMsg:%s", reqContent.UserID, reqContent.Presence, reqContent.StatusMsg, reqContent.ExtStatusMsg)
 
 	displayName, avatarURL, _ := complexCache.GetProfileByUserID(ctx, reqContent.UserID)
 	user_info := cache.GetUserInfoByUserID(reqContent.UserID)
@@ -122,15 +125,16 @@ func UpdatePresenceByID(
 		content.Mobile = user_info.Mobile
 		content.Landline = user_info.Landline
 		content.Email = user_info.Email
+		content.State = user_info.State
 	}
-
+	content.LastPresence = lastPresence.Status
+	content.LastStatusMsg = lastPresence.StatusMsg
+	content.LastExtStatusMsg = lastPresence.ExtStatusMsg
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = reqContent.UserID
 	data.Presence = content
-	data.IsUpdateStauts = true
 	data.DeviceID = deviceID
-
+	data.IsUpdateBase = true
 	span, ctx := common.StartSpanFromContext(ctx, cfg.Kafka.Producer.OutputProfileData.Name)
 	defer span.Finish()
 	common.ExportMetricsBeforeSending(span, cfg.Kafka.Producer.OutputProfileData.Name,

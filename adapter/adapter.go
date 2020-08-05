@@ -59,6 +59,13 @@ type CommonCfg struct {
 	Domain   DomainCfg
 	DistLock DistLockCfg
 	Debug    DebugCfg
+	Cache  	 CacheCfg
+}
+
+type CacheCfg struct {
+	TokenExpire   int64
+	UtlExpire int64
+	LatestToken int
 }
 
 var AdapterCfg CommonCfg
@@ -169,4 +176,22 @@ func GetDebugLevel() string {
 func Random(min, max int) int {
 	rand.Seed(time.Now().UnixNano())
 	return rand.Intn(max-min) + min
+}
+
+func SetCacheCfg(tokenExpire, utlExpire int64, latestToken int) {
+	AdapterCfg.Cache.TokenExpire = tokenExpire
+	AdapterCfg.Cache.UtlExpire = utlExpire
+	AdapterCfg.Cache.LatestToken = latestToken
+}
+
+func GetTokenExpire() int64 {
+	return AdapterCfg.Cache.TokenExpire
+}
+
+func GetUtlExpire() int64 {
+	return AdapterCfg.Cache.UtlExpire
+}
+
+func GetLatestToken() int {
+	return AdapterCfg.Cache.LatestToken
 }

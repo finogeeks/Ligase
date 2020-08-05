@@ -81,9 +81,9 @@ type AccountsDatabase interface {
 	GetAllProfile() ([]authtypes.Profile, error)
 	GetProfileByUserID(ctx context.Context, userID string) (authtypes.Profile, error)
 
-	UpsertUserInfo(ctx context.Context, userID, userName, jobNumber, mobile, landline, email string) error
-	OnUpsertUserInfo(ctx context.Context, userID, userName, jobNumber, mobile, landline, email string) error
-	OnInitUserInfo(ctx context.Context, userID, userName, jobNumber, mobile, landline, email string) error
+	UpsertUserInfo(ctx context.Context, userID, userName, jobNumber, mobile, landline, email string, state int) error
+	OnUpsertUserInfo(ctx context.Context, userID, userName, jobNumber, mobile, landline, email string, state int) error
+	OnInitUserInfo(ctx context.Context, userID, userName, jobNumber, mobile, landline, email string, state int) error
 	GetAllUserInfo() ([]authtypes.UserInfo, error)
 	DeleteUserInfo(ctx context.Context, userID string) error
 	OnDeleteUserInfo(ctx context.Context, userID string) error

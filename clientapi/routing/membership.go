@@ -171,6 +171,14 @@ func SendMembership(
 			log.Errorf("handle SendMembership traceId:%s membership:%s, kickee:%s aren't a member of the room:%s kicker:%s ", traceId, membership, body.UserID, roomID, userID)
 			return http.StatusForbidden, jsonerror.Forbidden("kickee aren't a member of the room")
 		}
+	} else if membership == "dismiss" {
+		body.UserID = deviceID
+		_, ok1 := queryRes.Join[body.UserID]
+		_, ok2 := queryRes.Invite[body.UserID]
+		if !ok1 && !ok2 {
+			log.Warnf("handle SendMembership traceId:%s membership:%s, dismiss force leave member:%s aren't a member of the room:%s kicker:%s ", traceId, membership, body.UserID, roomID, userID)
+			return http.StatusForbidden, jsonerror.Forbidden("dismiss member aren't in the room")
+		}
 	} else if membership == "leave" {
 		_, ok1 := queryRes.Join[userID]
 		_, ok2 := queryRes.Invite[userID]
@@ -224,7 +232,7 @@ func SendMembership(
 		log.Errorf("handle SendMembership traceId:%s ErrRoomNoExists membership:%s, user:%s room:%s err:%v", traceId, membership, userID, roomID, err)
 		return http.StatusNotFound, jsonerror.NotFound(err.Error())
 	} else if err != nil {
-		if membership == "invite" || membership == "join" || membership == "ban" || membership == "unban" || membership == "kick" || membership == "leave" {
+		if membership == "invite" || membership == "join" || membership == "ban" || membership == "unban" || membership == "kick" || membership == "leave" || membership == "dismiss" {
 			//log.Errorf("%v", err)
 			log.Errorf("handle SendMembership traceId:%s build err membership:%s, user:%s room:%s err:%v", traceId, membership, userID, roomID, err)
 			return http.StatusForbidden, jsonerror.Forbidden(err.Error())
@@ -298,7 +306,7 @@ func SendMembership(
 		Query: []string{"membership", membership},
 	}
 
-	_, err = rpcCli.InputRoomEvents(ctx, &rawEvent)
+	_, err = rpcCli.InputRoomEvents(context.Background(), &rawEvent)
 
 	if err != nil {
 		log.Errorf("handle SendMembership traceId:%s membership:%s, user:%s room:%s input err:%v", traceId, membership, userID, roomID, err)
@@ -310,11 +318,10 @@ func SendMembership(
 				return inviteResp.Code, jsonerror.Unknown("invitee reject from remote server")
 			}
 		}
-
 		if strings.Index(err.Error(), "timeout") >= 0 {
 			return http.StatusGatewayTimeout, jsonerror.Timeout(err.Error())
 		}
-		if membership == "invite" || membership == "join" || membership == "ban" || membership == "unban" || membership == "kick" || membership == "leave" {
+		if membership == "invite" || membership == "join" || membership == "ban" || membership == "unban" || membership == "kick" || membership == "leave" || membership == "dismiss" {
 			//log.Errorf("%v", err)
 			return http.StatusForbidden, jsonerror.Forbidden(fmt.Sprintf("can't %s.", membership))
 		}
@@ -356,7 +363,7 @@ func buildMembershipEvent(
 	rawMemberShip := membership
 
 	// "unban" or "kick" isn't a valid membership value, change it to "leave"
-	if membership == "unban" || membership == "kick" {
+	if membership == "unban" || membership == "kick" || membership == "dismiss" {
 		membership = "leave"
 	}
 

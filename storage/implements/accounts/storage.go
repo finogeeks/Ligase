@@ -180,7 +180,7 @@ func (d *Database) CreateAccount(
 	if err := d.profiles.initProfile(ctx, userID, displayName, ""); err != nil {
 		return nil, err
 	}
-	if err := d.userInfo.initUserInfo(ctx, userID, displayName, "", "", "", ""); err != nil {
+	if err := d.userInfo.initUserInfo(ctx, userID, displayName, "", "", "", "", 0); err != nil {
 		return nil, err
 	}
 	return d.accounts.insertAccount(ctx, userID, hash, appServiceID)
@@ -197,7 +197,7 @@ func (d *Database) CreateAccountWithCheck(
 	if err := d.profiles.initProfile(ctx, userID, displayName, ""); err != nil {
 		return nil, err
 	}
-	if err := d.userInfo.initUserInfo(ctx, userID, displayName, "", "", "", ""); err != nil {
+	if err := d.userInfo.initUserInfo(ctx, userID, displayName, "", "", "", "", 0); err != nil {
 		return nil, err
 	}
 	if oldAccount == nil || oldAccount.UserID == "" {
@@ -390,21 +390,21 @@ func (d *Database) GetProfileByUserID(ctx context.Context, userID string) (autht
 }
 
 func (d *Database) UpsertUserInfo(
-	ctx context.Context, userID, userName, jobNumber, mobile, landline, email string,
+	ctx context.Context, userID, userName, jobNumber, mobile, landline, email string, state int,
 ) error {
-	return d.userInfo.upsertUserInfo(ctx, userID, userName, jobNumber, mobile, landline, email)
+	return d.userInfo.upsertUserInfo(ctx, userID, userName, jobNumber, mobile, landline, email, state)
 }
 
 func (d *Database) OnUpsertUserInfo(
-	ctx context.Context, userID, userName, jobNumber, mobile, landline, email string,
+	ctx context.Context, userID, userName, jobNumber, mobile, landline, email string, state int,
 ) error {
-	return d.userInfo.onUpsertUserInfo(ctx, userID, userName, jobNumber, mobile, landline, email)
+	return d.userInfo.onUpsertUserInfo(ctx, userID, userName, jobNumber, mobile, landline, email, state)
 }
 
 func (d *Database) OnInitUserInfo(
-	ctx context.Context, userID, userName, jobNumber, mobile, landline, email string,
+	ctx context.Context, userID, userName, jobNumber, mobile, landline, email string, state int,
 ) error {
-	return d.userInfo.onInitUserInfo(ctx, userID, userName, jobNumber, mobile, landline, email)
+	return d.userInfo.onInitUserInfo(ctx, userID, userName, jobNumber, mobile, landline, email, state)
 }
 
 func (d *Database) GetAllUserInfo() ([]authtypes.UserInfo, error) {

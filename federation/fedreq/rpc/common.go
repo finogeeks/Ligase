@@ -16,12 +16,19 @@ package rpc
 
 import (
 	// "github.com/finogeeks/ligase/skunkworks/log"
+	"errors"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	jsoniter "github.com/json-iterator/go"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
+
+type RpcResponse struct {
+	Error   string
+	Payload jsoniter.RawMessage
+}
 
 func RpcRequest(
 	rpcClient *common.RpcClient,
@@ -38,6 +45,21 @@ func RpcRequest(
 	bytes, err := json.Marshal(content)
 	// log.Infof("-------------------- fed rpc request, topic: %s, bytes: %s", topic, string(bytes))
 	data, err := rpcClient.Request(topic, bytes, 30000)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("-------------------- fed rpc response, topic: %s, bytes: %s", topic, data)
 
-	return data, err
+	resp := RpcResponse{}
+	err = json.Unmarshal(data, &resp)
+	if err != nil {
+		log.Errorf("-------------------- fed rpc response, topic: %s, err: %#v", topic, err)
+		return nil, err
+	}
+	log.Infof("-------------------- fed rpc response, topic: %s, data: %s %s", topic, resp.Error, resp.Payload)
+	if resp.Error != "" {
+		return nil, errors.New(resp.Error)
+	}
+
+	return resp.Payload, err
 }

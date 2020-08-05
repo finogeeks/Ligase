@@ -32,4 +32,5 @@ type UserInfo struct {
 	Mobile    string
 	Landline  string
 	Email     string
+	State 	  int
 }

@@ -119,6 +119,10 @@ kafka:
             topic: userInfoUpdate
             underlying: kafka
             name: userInfoUpdateProd
+        dismiss_room:
+            topic: dismissRoom
+            underlying: kafka
+            name: dismissRoomProd
     consumers:
         output_room_event_publicroom:
             topic: roomserverOutput
@@ -215,6 +219,11 @@ kafka:
             group: downloadmedia-fed
             underlying: kafka
             name: fedDownloadMediaCons
+        dismiss_room:
+            topic: dismissRoom
+            group: dismissRoom-front
+            underlying: kafka
+            name: dismissRoomCons
 rpc:
     rs_qry_topic: roomserver_query
     alias_topic: roomserver_alias
@@ -420,5 +429,11 @@ dist_lock_custom:
         timeout: 15
         wait: 0
         force: false
+
+token_expire: 604800
+utl_expire: 608400
+latest_token: 3
+receipt_delay: 5000
+check_receipt: 3000
 
 license: '{"organ_name":"community","expire_time":1627920000000,"total_users":100,"total_rooms":1,"room_members":1,"desc":"community","organ_domain":"community","reg_organ":"community","encryption":false,"secret":"pTRiLIHpGVgT0jsk"}'

@@ -190,3 +190,8 @@ func (rc *RedisCache) HMSet(key string, val interface{}) (err error) {
 func (rc *RedisCache) HMGet(key string, fields []string) ([]interface{}, error) {
 	return redis.Values(rc.SafeDo("HMGET", redis.Args{}.Add(key).AddFlat(fields)...))
 }
+
+func (c *RedisCache) Expire(key string, expire int64) error {
+	_, err := Bool(c.SafeDo("EXPIRE", key, expire))
+	return err
+}

@@ -215,6 +215,7 @@ func SetAvatarURL(
 		content.Mobile = userInfo.Mobile
 		content.Landline = userInfo.Landline
 		content.Email = userInfo.Email
+		content.State = userInfo.State
 	}
 
 	presences, ok := cache.GetPresences(userID)
@@ -231,7 +232,6 @@ func SetAvatarURL(
 	}
 
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 
@@ -345,6 +345,7 @@ func SetDisplayName(
 		content.Mobile = userInfo.Mobile
 		content.Landline = userInfo.Landline
 		content.Email = userInfo.Email
+		content.State = userInfo.State
 	}
 
 	presences, ok := cache.GetPresences(userID)
@@ -361,7 +362,6 @@ func SetDisplayName(
 	}
 
 	data := new(types.ProfileStreamUpdate)
-	data.IsMasterHndle = true
 	data.UserID = userID
 	data.Presence = content
 

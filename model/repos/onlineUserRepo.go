@@ -15,8 +15,6 @@
 package repos
 
 import (
-	"context"
-	"github.com/finogeeks/ligase/common"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,14 +31,25 @@ const (
 	BACK_GROUND_STATE
 )
 
+//user state differ foreground, background online
+const (
+	USER_OFFLINE_STATE = iota
+	USER_ONLINE_STATE
+)
+
 type StateChangeHandler interface {
-	OnStateChange(context.Context, *types.NotifyDeviceState)
+	OnStateChange(*types.NotifyDeviceState)
+	OnUserStateChange(*types.NotifyUserState)
 }
 
 type DefaultHander struct {
 }
 
-func (d *DefaultHander) OnStateChange(ctx context.Context, state *types.NotifyDeviceState) {
+func (d *DefaultHander) OnStateChange(*types.NotifyDeviceState) {
+}
+
+func (d *DefaultHander) OnUserStateChange(*types.NotifyUserState) {
+
 }
 
 type Device struct {
@@ -53,6 +62,9 @@ type Device struct {
 
 type User struct {
 	id     string
+	ts 	   int64
+	lastState int
+	curState  int
 	devMap sync.Map
 }
 
@@ -66,9 +78,16 @@ func (u *User) isEmpty() bool {
 	return cnt == 0
 }
 
-func (u *User) checkDeviceTtl(ctx context.Context, ol *OnlineUserRepo, now, ttl int64) int {
+func (u *User) checkDeviceTtl(ol *OnlineUserRepo, now, ttl int64) int {
 	cnt := 0
 	hasDelete := false
+	if u.ts+ttl < now {
+		u.lastState = u.curState
+		u.curState = OFFLINE_STATE
+		if u.lastState != u.curState {
+			ol.UpdateUserState(u.id, u.lastState, u.curState)
+		}
+	}
 	u.devMap.Range(func(key, value interface{}) bool {
 		dev := value.(*Device)
 		if dev.ts+ttl < now {
@@ -78,7 +97,7 @@ func (u *User) checkDeviceTtl(ctx context.Context, ol *OnlineUserRepo, now, ttl 
 			dev.lastState = dev.curState
 			dev.curState = OFFLINE_STATE
 			if dev.lastState != dev.curState {
-				ol.Notify(ctx, u.id, key.(string), dev.lastState, dev.curState)
+				ol.Notify(u.id, key.(string), dev.lastState, dev.curState)
 			}
 		} else {
 			cnt = cnt + 1
@@ -111,19 +130,26 @@ func NewOnlineUserRepo(ttl, ttlIOS int64) *OnlineUserRepo {
 	return ol
 }
 
-func (ol *OnlineUserRepo) Pet(ctx context.Context, uid, devId string, pos, ttl int64) {
+func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 	var user *User
 	var dev *Device
 	if val, ok := ol.userMap.Load(uid); ok {
 		user = val.(*User)
+		user.ts = time.Now().Unix()
+		user.lastState = user.curState
+		user.curState = USER_ONLINE_STATE
 	} else {
 		user = new(User)
 		user.id = uid
+		user.ts = time.Now().Unix()
+		user.lastState = user.curState
+		user.curState = USER_ONLINE_STATE
 		ol.userMap.Store(uid, user)
-
 		atomic.AddInt32(&ol.onlineUserCnt, 1)
 	}
-
+	if user.lastState != user.curState {
+		ol.UpdateUserState(user.id, user.lastState, user.curState)
+	}
 	if val, ok := user.devMap.Load(devId); ok {
 		dev = val.(*Device)
 		dev.ts = time.Now().Unix()
@@ -140,19 +166,20 @@ func (ol *OnlineUserRepo) Pet(ctx context.Context, uid, devId string, pos, ttl i
 	}
 	if dev != nil {
 		if dev.curState == OFFLINE_STATE {
-			ol.UpdateState(ctx, uid, devId, FORE_GROUND_STATE)
-		}
-	}
-	if devId != "virtual-restore" {
-		if val, ok := user.devMap.Load("virtual-restore"); ok {
-			if val.(*Device).curState != OFFLINE_STATE {
-				ol.UpdateState(ctx, uid, "virtual-restore", OFFLINE_STATE)
-			}
+			ol.UpdateState(uid, devId, FORE_GROUND_STATE)
 		}
 	}
 }
 
-func (ol *OnlineUserRepo) UpdateState(ctx context.Context, uid, devId string, state int) {
+func (ol *OnlineUserRepo) UpdateUserState(uid string, lastState,curState int){
+	ol.handler.OnUserStateChange(&types.NotifyUserState{
+		UserID:    uid,
+		LastState: lastState,
+		CurState:  curState,
+	})
+}
+
+func (ol *OnlineUserRepo) UpdateState(uid, devId string, state int) {
 	var user *User
 	var dev *Device
 	if val, ok := ol.userMap.Load(uid); ok {
@@ -170,7 +197,7 @@ func (ol *OnlineUserRepo) UpdateState(ctx context.Context, uid, devId string, st
 		dev.lastState = dev.curState
 		dev.curState = state
 		if dev.lastState != dev.curState {
-			ol.Notify(ctx, uid, devId, dev.lastState, dev.curState)
+			ol.Notify(uid, devId, dev.lastState, dev.curState)
 		}
 	} else {
 		dev = new(Device)
@@ -181,7 +208,7 @@ func (ol *OnlineUserRepo) UpdateState(ctx context.Context, uid, devId string, st
 		user.devMap.Store(devId, dev)
 		atomic.AddInt32(&ol.onlineDeviceCnt, 1)
 		if dev.lastState != dev.curState {
-			ol.Notify(ctx, uid, devId, dev.lastState, dev.curState)
+			ol.Notify(uid, devId, dev.lastState, dev.curState)
 		}
 	}
 }
@@ -222,9 +249,7 @@ func (ol *OnlineUserRepo) clean(ttl, ttlIOS int64) {
 			now := time.Now().Unix()
 			ol.userMap.Range(func(key, value interface{}) bool {
 				user := value.(*User)
-				span, ctx := common.StartSobSomSpan(context.Background(), "OnlineUserRepo.clean")
-				defer span.Finish()
-				remain := user.checkDeviceTtl(ctx, ol, now, ttl)
+				remain := user.checkDeviceTtl(ol, now, ttl)
 				if remain == 0 {
 					ol.userMap.Delete(key)
 					atomic.AddInt32(&ol.onlineUserCnt, -1)
@@ -244,51 +269,11 @@ func (ol *OnlineUserRepo) SetHandler(handler StateChangeHandler) {
 	ol.handler = handler
 }
 
-func (ol *OnlineUserRepo) Notify(ctx context.Context, userID, devID string, lastState, curState int) {
-	ol.handler.OnStateChange(ctx, &types.NotifyDeviceState{
+func (ol *OnlineUserRepo) Notify(userID, devID string, lastState, curState int) {
+	ol.handler.OnStateChange(&types.NotifyDeviceState{
 		UserID:    userID,
 		DeviceID:  devID,
 		LastState: lastState,
 		CurState:  curState,
 	})
-}
-
-func (ol *OnlineUserRepo) IsUserOnline(userID string) bool {
-	var user *User
-	if val, ok := ol.userMap.Load(userID); ok {
-		user = val.(*User)
-	}
-	if user == nil {
-		return false
-	}
-	count := 0
-	user.devMap.Range(func(k, v interface{}) bool {
-		if v.(*Device).curState != OFFLINE_STATE {
-			count++
-		}
-		return true
-	})
-	return count > 0
-}
-
-func (ol *OnlineUserRepo) GetRemainDevice(userID string) ([]string, []int64, []int64) {
-	deviceIDs := []string{}
-	pos := []int64{}
-	ts := []int64{}
-	var user *User
-	if val, ok := ol.userMap.Load(userID); ok {
-		user = val.(*User)
-	}
-	if user == nil {
-		return deviceIDs, pos, ts
-	}
-	user.devMap.Range(func(k, v interface{}) bool {
-		if v.(*Device).curState != OFFLINE_STATE {
-			deviceIDs = append(deviceIDs, v.(*Device).id)
-			pos = append(pos, v.(*Device).pos)
-			ts = append(ts, v.(*Device).ts)
-		}
-		return true
-	})
-	return deviceIDs, pos, ts
 }

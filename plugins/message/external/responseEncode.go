@@ -1133,3 +1133,7 @@ func (r *PostQueryClientKeysResponse) Encode() ([]byte, error) {
 func (r *PostClaimClientKeysResponse) Encode() ([]byte, error) {
 	return json.Marshal(r)
 }
+
+func (res *DismissRoomResponse) Encode() ([]byte, error) {
+	return json.Marshal(res)
+}
