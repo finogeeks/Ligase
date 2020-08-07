@@ -25,7 +25,7 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 	"github.com/opentracing/opentracing-go"
 )
 

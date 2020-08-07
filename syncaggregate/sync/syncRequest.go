@@ -169,6 +169,7 @@ type request struct {
 	slot           uint32
 	hasNewEvent    bool
 	MaxRoomOffset  map[string]int64
+	offsets        map[string]int64
 }
 
 func (req *request) checkNoWait() bool {
@@ -296,6 +297,7 @@ func (sm *SyncMng) buildRequest(
 	res.traceId = req.TraceId
 	res.hasNewEvent = false
 	res.MaxRoomOffset = make(map[string]int64)
+	res.offsets = make(map[string]int64)
 	log.Infof("SyncMng buildRequest traceid:%s now:%d diff:%d user:%s device:%s utlRecv:%d request:%v", res.traceId, now, res.latest-now, device.UserID, device.ID, res.marks.utlRecv, res)
 	return res
 }
@@ -364,7 +366,7 @@ func (sm *SyncMng) OnSyncRequest(
 		}
 
 		hasReceiptUpdate, lastReceipt := sm.userTimeLine.ExistsUserReceiptUpdate(request.marks.recpRecv, device.UserID)
-		if hasReceiptUpdate && now-start > 500 && request.device.IsHuman == true {
+		if hasReceiptUpdate && now-start > sm.cfg.CheckReceipt && request.device.IsHuman == true {
 			log.Infof("SyncMng break has receipt traceid:%s user:%s dev:%s now:%d latest:%d recpRecv:%d lastReceipt:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.recpRecv, lastReceipt)
 			break
 		}

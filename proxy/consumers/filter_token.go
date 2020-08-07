@@ -20,7 +20,7 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/json-iterator/go"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary

@@ -23,7 +23,7 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	syncapi "github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 	"net/http"
 )
 

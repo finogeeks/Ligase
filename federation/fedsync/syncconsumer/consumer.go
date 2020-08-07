@@ -25,7 +25,7 @@ import (
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 )
 
 type FedEventExtra struct {

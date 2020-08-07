@@ -476,6 +476,8 @@ type Dendrite struct {
 	TokenExpire int64 `yaml:"token_expire"`
 	UtlExpire   int64 `yaml:"utl_expire"`
 	LatestToken int   `yaml:"latest_token"`
+	ReceiptDelay int64 `yaml:"receipt_delay"`
+	CheckReceipt int64 `yaml:"check_receipt"`
 }
 
 type LicenseConf struct {

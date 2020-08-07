@@ -254,11 +254,51 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 	tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "LoadUserFriendShip").Add(1)
 }
 
+func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) error {
+	bs := time.Now().UnixNano() / 1000000
+	roomMap, err := tl.persist.GetRoomLastOffsets(context.TODO(), rooms)
+	spend := time.Now().UnixNano()/1000000 - bs
+	if err != nil {
+		log.Errorf("user:%s load db failed UserTimeLineRepo.loadRoomLatest spend:%d ms err:%v", user, spend, err)
+		return err
+	}
+	if spend > types.DB_EXCEED_TIME {
+		log.Warnf("user:%s load db exceed %d ms UserTimeLineRepo.loadRoomLatest spend:%d ms", user, types.DB_EXCEED_TIME, spend)
+	} else {
+		log.Infof("user:%s load db succ UserTimeLineRepo.loadRoomLatest spend:%d ms", user, spend)
+	}
+	if roomMap != nil {
+		for roomID, offset := range roomMap {
+			tl.UpdateRoomOffset(roomID, offset)
+		}
+	}
+	return nil
+}
+
+func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map) error {
+	bs := time.Now().UnixNano() / 1000000
+	offsets, _, roomIDs, err := tl.persist.GetJoinRoomOffsets(context.TODO(), events)
+	spend := time.Now().UnixNano()/1000000 - bs
+	if err != nil {
+		log.Errorf("user:%s load db failed UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms err:%v", user, spend, err)
+		return err
+	}
+	if spend > types.DB_EXCEED_TIME {
+		log.Warnf("user:%s load db exceed %d ms UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms", user, types.DB_EXCEED_TIME, spend)
+	} else {
+		log.Infof("user:%s load db succ UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms", user, spend)
+	}
+	for idx, roomID := range roomIDs {
+		res.Store(roomID, offsets[idx])
+	}
+	return nil
+}
+
 func (tl *UserTimeLineRepo) GetJoinRooms(user string) (*sync.Map, error) {
 	res := new(sync.Map)
 	if _, ok := tl.joinReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, offsets, err := tl.persist.GetRidsForUser(context.TODO(), user)
+		rooms, _, events, err := tl.persist.GetRidsForUser(context.TODO(), user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetJoinRooms user %s spend:%d ms err:%v", user, spend, err)
@@ -269,10 +309,21 @@ func (tl *UserTimeLineRepo) GetJoinRooms(user string) (*sync.Map, error) {
 		} else {
 			log.Infof("load db succ UserTimeLineRepo.GetJoinRooms user:%s spend:%d ms", user, spend)
 		}
+		loadrooms := []string{}
+		loadEvents := []string{}
 		for idx, id := range rooms {
-			res.Store(id, offsets[idx])
+			res.Store(id, -1)
+			if tl.GetRoomOffset(id,user,"join") == -1 {
+				loadrooms = append(loadrooms, id)
+			}
+			loadEvents = append(loadEvents, events[idx])
 		}
-
+		if len(loadrooms)> 0 {
+			tl.loadRoomLatest(user, loadrooms)
+		}
+		if len(loadEvents) > 0 {
+			tl.loadJoinRoomOffsets(user, loadEvents, res)
+		}
 		tl.join.Store(user, res)
 		tl.joinReady.Store(user, true)
 
@@ -326,7 +377,7 @@ func (tl *UserTimeLineRepo) GetInviteRooms(user string) (*sync.Map, error) {
 
 	if _, ok := tl.inviteReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, offsets, err := tl.persist.GetInviteRidsForUser(context.TODO(), user)
+		rooms, offsets, _, err := tl.persist.GetInviteRidsForUser(context.TODO(), user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms err:%v", user, spend, err)
@@ -361,7 +412,7 @@ func (tl *UserTimeLineRepo) GetLeaveRooms(user string) (*sync.Map, error) {
 
 	if _, ok := tl.leaveReady.Load(user); !ok {
 		bs := time.Now().UnixNano() / 1000000
-		rooms, offsets, err := tl.persist.GetLeaveRidsForUser(context.TODO(), user)
+		rooms, _, _, err := tl.persist.GetLeaveRidsForUser(context.TODO(), user)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
 			log.Errorf("load db failed UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms err:%v", user, spend, err)
@@ -372,8 +423,8 @@ func (tl *UserTimeLineRepo) GetLeaveRooms(user string) (*sync.Map, error) {
 		} else {
 			log.Infof("load db succ UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms", user, spend)
 		}
-		for idx, id := range rooms {
-			res.Store(id, offsets[idx])
+		for _, id := range rooms {
+			res.Store(id, int64(-1))
 		}
 
 		tl.leave.Store(user, res)
@@ -452,6 +503,18 @@ func (tl *UserTimeLineRepo) GetRoomOffset(roomID, user, membership string) int64
 	}
 }
 
+func (tl *UserTimeLineRepo) GetJoinMembershipOffset(user,roomID string) (offset int64) {
+	joins, err := tl.GetJoinRooms(user)
+	if err != nil || joins == nil {
+		return -1
+	}
+	if offset, ok := joins.Load(roomID); ok {
+		return offset.(int64)
+	}else{
+		return -1
+	}
+}
+
 func (tl *UserTimeLineRepo) GetNotJoinRoomLatestOffset(roomID, user, membership string) int64 {
 	switch membership {
 	case "invite":
@@ -496,8 +559,8 @@ func (tl *UserTimeLineRepo) GetLeaveRoomOffset(roomID, user string) int64 {
 	}
 }
 
-func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, traceId string) (bool, int64) {
-	curUtl, token, err := tl.LoadToken(user, device, utl)
+func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceId string) (bool, int64) {
+	curUtl, token, err := tl.LoadToken(user,device,utl)
 	//load token from redis err
 	if err != nil {
 		log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", traceId, user, device, utl, err)
@@ -508,25 +571,37 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 		log.Infof("traceId:%s user:%s device:%s utl:%d load token miss", traceId, user, device, utl)
 		return true, curUtl
 	}
+	joinedRooms, _ := tl.GetJoinRooms(user)
 	//compare token room offset
 	for roomID, offset := range token {
-		roomOffset := tl.GetRoomOffset(roomID, user, tl.GetUserRoomMembership(user, roomID))
+		membership := tl.GetUserRoomMembership(user, roomID)
+		roomOffset := tl.GetRoomOffset(roomID, user , membership)
 		if roomOffset != -1 && offset < roomOffset {
-			log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d has event", traceId, user, device, utl, roomID, offset, roomOffset)
-			return true, curUtl
+			if membership == "join" {
+				if joinedRooms!=nil && tl.GetJoinMembershipOffset(user, roomID) > 0 {
+					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+					return true, curUtl
+				}
+			}else{
+				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+				return true, curUtl
+			}
 		}
 	}
 	//compare related room offset
 	//has new joined
 	hasNewJoined := false
-	joinedRooms, _ := tl.GetJoinRooms(user)
 	if joinedRooms != nil {
 		joinedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			} else {
-				hasNewJoined = true
-				return false
+			}else{
+				if tl.GetJoinMembershipOffset(user, key.(string)) > 0 {
+					hasNewJoined = true
+					return false
+				}else{
+					return true
+				}
 			}
 		})
 	}
@@ -536,12 +611,12 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 	}
 	//has new invite
 	hasNewInvite := false
-	InvitedRooms, _ := tl.GetJoinRooms(user)
+	InvitedRooms, _ := tl.GetInviteRooms(user)
 	if InvitedRooms != nil {
 		InvitedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			} else {
+			}else{
 				hasNewInvite = true
 				return false
 			}
@@ -558,9 +633,14 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 		LeavedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			} else {
-				hasNewLeave = true
-				return false
+			}else{
+				//leave room check self has new msg
+				if value.(int64) != -1 {
+					hasNewLeave = true
+					return false
+				}else{
+					return true
+				}
 			}
 		})
 	}
