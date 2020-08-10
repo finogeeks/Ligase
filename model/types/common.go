@@ -327,6 +327,7 @@ type RedactUnsigned struct {
 	TransactionID   string                         `json:"transaction_id,omitempty"`
 	RedactedBecause *gomatrixserverlib.ClientEvent `json:"redacted_because,omitempty"`
 	UpdatedBecause  *gomatrixserverlib.ClientEvent `json:"updated_because,omitempty"`
+	IsRelated 		*bool 						   `json:"is_related,omitempty"`
 }
 
 type Unsigned struct {
