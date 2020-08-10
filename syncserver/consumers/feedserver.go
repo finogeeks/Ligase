@@ -220,6 +220,8 @@ func (s *RoomEventFeedConsumer) processRedactEv(ev *gomatrixserverlib.ClientEven
 		reaction := s.parseRelatesContent(redactEv)
 		if reaction != nil {
 			s.updateReactionEvent(ev.RoomID, reaction)
+			isRelated := true
+			unsigned.IsRelated = &isRelated
 		}
 		content := map[string]interface{}{}
 		empty, _ := json.Marshal(content)
