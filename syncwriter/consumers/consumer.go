@@ -206,6 +206,12 @@ func (s *RoomEventConsumer) processRedactEv(ctx context.Context, ev *gomatrixser
 
 	unsigned := types.RedactUnsigned{}
 	if ev.Type == "m.room.redaction" {
+		reaction := s.parseRelatesContent(redactEv)
+		if reaction != nil {
+			s.updateReactionEvent(ctx, ev.RoomID, reaction)
+			isRelated := true
+			unsigned.IsRelated = &isRelated
+		}
 		content := map[string]interface{}{}
 		empty, _ := json.Marshal(content)
 		redactEv.Content = empty
