@@ -222,6 +222,29 @@ func (tl *RoomHistoryTimeLineRepo) GetLastEvent(ctx context.Context, roomID stri
 	return sev
 }
 
+func (tl *RoomHistoryTimeLineRepo) GetLastMessageEvent(ctx context.Context, roomID string) (*feedstypes.StreamEvent, *feedstypes.StreamEvent) {
+	history := tl.GetHistory(ctx, roomID)
+	if history == nil {
+		return nil, nil
+	}
+	var lastMessageSev *feedstypes.StreamEvent
+	var lastSev *feedstypes.StreamEvent
+	history.ForRangeReverse(func(offset int, feed feedstypes.Feed) bool {
+		if feed != nil {
+			ev := feed.(*feedstypes.StreamEvent)
+			if lastSev == nil {
+				lastSev = ev
+			}
+			if ev.GetEv().Type == "m.room.message" || ev.GetEv().Type == "m.room.encrypted" {
+				lastMessageSev = ev
+				return false
+			}
+		}
+		return true
+	})
+	return lastMessageSev, lastSev
+}
+
 func (tl *RoomHistoryTimeLineRepo) GetRoomLastOffset(roomID string) int64 {
 	if val, ok := tl.roomLatest.Load(roomID); ok {
 		return val.(int64)

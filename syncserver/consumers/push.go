@@ -17,6 +17,7 @@ package consumers
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/model/types"
 	"regexp"
 	"strconv"
 	"strings"
@@ -111,6 +112,20 @@ func (s *PushConsumer) SetEventRepo(eventRepo *repos.EventReadStreamRepo) *PushC
 	return s
 }
 
+func (s *PushConsumer) IsRelatesContent(redactEv gomatrixserverlib.ClientEvent) bool {
+	var unsigned *types.RedactUnsigned
+	err := json.Unmarshal(redactEv.Unsigned, &unsigned)
+	if err != nil {
+		log.Errorf("json.Unmarshal redactEv.RedactUnsigned err:%v", err)
+		return false
+	}
+	if unsigned.IsRelated != nil {
+		return *unsigned.IsRelated
+	}else{
+		return false
+	}
+}
+
 func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.ClientEvent, eventOffset int64) {
 	bs := time.Now().UnixNano() / 1000000
 	defer func(bs int64,input *gomatrixserverlib.ClientEvent){
@@ -124,6 +139,7 @@ func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.Cli
 	}
 
 	redactOffset := int64(-1)
+	isRelatesContent := false
 	var members []string
 
 	switch input.Type {
@@ -139,6 +155,7 @@ func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.Cli
 		stream := s.roomHistory.GetStreamEv(ctx, input.RoomID, redactID)
 		if stream != nil {
 			redactOffset = stream.Offset
+			isRelatesContent = s.IsRelatesContent(*stream.GetEv())
 		}
 	case "m.room.member":
 		members = s.getRoomMembers(input)
@@ -177,9 +194,9 @@ func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.Cli
 			eventJson *[]byte,
 			pushContents *push.PushPubContents,
 		) {
-			s.preProcessPush(ctx, &member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents)
+			s.preProcessPush(ctx, &member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent)
 			wg.Done()
-		}(member, input, senderDisplayName, memCount, eventOffset, redactOffset, &eventJson, &pushContents)
+		}(member, input, senderDisplayName, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent)
 	}
 	wg.Wait()
 
@@ -202,13 +219,16 @@ func (s *PushConsumer) preProcessPush(
 	redactOffset int64,
 	eventJson *[]byte,
 	pushContents *push.PushPubContents,
+	isRelatesContent bool,
 ) {
 	if *member != input.Sender {
-		if input.Type == "m.room.redaction" || input.Type == "m.room.update" {
+		if input.Type == "m.room.redaction" {
 			if s.eventRepo.GetUserLastOffset(ctx, *member, input.RoomID) < redactOffset || redactOffset == -1 {
 				//如果一个用户读完消息以后，有新的未读，此时hs重启，其他人撤销之前已读消息，计数会不准确
 				//高亮信息撤回，暂时也不好处理计减
-				s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "decrease")
+				if !isRelatesContent {
+					s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "decrease")
+				}
 			}
 		}
 
