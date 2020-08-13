@@ -369,3 +369,19 @@ func (p *PushersRes) Encode() ([]byte, error) {
 func (p *PushersRes) Decode(input []byte) error {
 	return json.Unmarshal(input, p)
 }
+
+type StaticObj struct {
+	TraceId		string		`json:"traceid"`
+	EventSpend	int64 		`json:"event_spend"`
+	MemSpend    int64 		`json:"mem_spend"`
+	MemAllSpend int64 		`json:"mem_all_spend"`
+	RuleSpend   int64 		`json:"rule_spend"`
+	RuleCount   int64 		`json:"rule_count"`
+	MemCount 	int 		`json:"mem_count"`
+	RoomID 		string 		`json:"room_id"`
+	EventID 	string 		`json:"event_id"`
+	Type 		string 		`json:"type"`
+	Start  		int64 		`json:"start"`
+	UnreadSpend int64 		`json:"unread_spend"`
+	CacheSpend  int64 		`json:"cache_spend"`
+}
