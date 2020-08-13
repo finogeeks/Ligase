@@ -141,7 +141,10 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 	if stream != nil {
 		receiptOffSet = stream.Offset
 	}
-
+	if lastEventID != req.EventID && lastEventID != "" {
+		log.Warnf("force change req eventID %s to lastEventID %s OnReceipt roomID %s receiptType %s userID %s deviceID %s source %s", req.EventID, lastEventID, req.RoomID, req.ReceiptType, req.UserID, req.DeviceID, req.Source)
+		req.EventID = lastEventID
+	}
 	if lastEventID == req.EventID || lastEventID == "" {
 		var receipt *pushapi.RoomReceipt
 		item, ok := s.container.Load(req.RoomID)

@@ -16,22 +16,22 @@ package consumers
 
 import (
 	"fmt"
-	"github.com/finogeeks/ligase/model/types"
-	"regexp"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/pushapi/routing"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/tidwall/gjson"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type PushConsumer struct {
@@ -44,9 +44,14 @@ type PushConsumer struct {
 	roomHistory  *repos.RoomHistoryTimeLineRepo
 	pubTopic     string
 	complexCache *common.ComplexCache
-	msgChan      []chan *gomatrixserverlib.ClientEvent
+	msgChan      []chan *PushEvent
 	chanSize     uint32
 	slotSize     uint32
+}
+
+type PushEvent struct {
+	Ev *gomatrixserverlib.ClientEvent
+	Static *push.StaticObj
 }
 
 func NewPushConsumer(
@@ -67,22 +72,25 @@ func NewPushConsumer(
 }
 
 func (s *PushConsumer) Start() {
-	s.msgChan = make([]chan *gomatrixserverlib.ClientEvent, s.slotSize)
+	s.msgChan = make([]chan *PushEvent, s.slotSize)
 	for i := uint32(0); i < s.slotSize; i++ {
-		s.msgChan[i] = make(chan *gomatrixserverlib.ClientEvent, s.chanSize)
+		s.msgChan[i] = make(chan *PushEvent, s.chanSize)
 		go s.startWorker(s.msgChan[i])
 	}
 }
 
-func (s *PushConsumer) startWorker(msgChan chan *gomatrixserverlib.ClientEvent) {
+func (s *PushConsumer) startWorker(msgChan chan *PushEvent) {
 	for data := range msgChan {
-		s.OnEvent(data, data.EventOffset)
+		s.OnEvent(data.Ev, data.Ev.EventOffset,data.Static)
 	}
 }
 
-func (s *PushConsumer) DispthEvent(ev *gomatrixserverlib.ClientEvent) {
+func (s *PushConsumer) DispthEvent(ev *gomatrixserverlib.ClientEvent, static *push.StaticObj) {
 	idx := common.CalcStringHashCode(ev.RoomID) % s.slotSize
-	s.msgChan[idx] <- ev
+	s.msgChan[idx] <- &PushEvent{
+		Ev: ev,
+		Static: static,
+	}
 }
 
 func (s *PushConsumer) SetRoomHistory(roomHistory *repos.RoomHistoryTimeLineRepo) *PushConsumer {
@@ -124,12 +132,11 @@ func (s *PushConsumer) IsRelatesContent(redactEv gomatrixserverlib.ClientEvent) 
 	}
 }
 
-func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64) {
-	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64, input *gomatrixserverlib.ClientEvent) {
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("PushConsumer onevent roomID:%s eventID:%s eventOffset:%d spend:%d", input.RoomID, input.EventID, input.EventOffset, spend)
-	}(bs, input)
+func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj) {
+	defer func() {
+		static.EventSpend = time.Now().UnixNano()/1000 - static.Start
+		log.Infof("traceid:%s PushConsumer static:%+v", static.TraceId, static)
+	}()
 	eventJson, err := json.Marshal(&input)
 	if err != nil {
 		log.Errorf("PushConsumer processEvent marshal error %d, message %s", err, input.EventID)
@@ -178,7 +185,7 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	pushContents := push.PushPubContents{
 		Contents: []*push.PushPubContent{},
 	}
-
+	bs := time.Now().UnixNano() / 1000
 	var wg sync.WaitGroup
 	for _, member := range members {
 		wg.Add(1)
@@ -192,13 +199,15 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 			eventJson *[]byte,
 			pushContents *push.PushPubContents,
 			isRelatesContent bool,
+			static *push.StaticObj,
 		) {
-			s.preProcessPush(&member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent)
+			s.preProcessPush(&member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent, static)
 			wg.Done()
-		}(member, input, senderDisplayName, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent)
+		}(member, input, senderDisplayName, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent, static)
 	}
 	wg.Wait()
-
+	static.MemCount = len(members)
+	static.MemSpend = time.Now().UnixNano() / 1000 - bs
 	//将需要推送的消息聚合一次推送
 	if s.rpcClient != nil && len(pushContents.Contents) > 0 {
 		pushContents.Input = input
@@ -218,8 +227,15 @@ func (s *PushConsumer) preProcessPush(
 	eventJson *[]byte,
 	pushContents *push.PushPubContents,
 	isRelatesContent bool,
+	static *push.StaticObj,
 ) {
+	bs := time.Now().UnixNano()/1000
+	defer func(bs int64){
+		spend := time.Now().UnixNano()/1000 - bs
+		atomic.AddInt64(&static.MemAllSpend,spend)
+	}(bs)
 	if *member != input.Sender {
+		ss := time.Now().UnixNano() / 1000
 		if input.Type == "m.room.redaction" {
 			if s.eventRepo.GetUserLastOffset(*member, input.RoomID) < redactOffset || redactOffset == -1 {
 				//如果一个用户读完消息以后，有新的未读，此时hs重启，其他人撤销之前已读消息，计数会不准确
@@ -252,8 +268,10 @@ func (s *PushConsumer) preProcessPush(
 		}
 
 		displayName, _, _ := s.complexCache.GetProfileByUserID(*member)
-
-		s.processPush(&pushers, &rules, input, &displayName, member, memCount, eventJson, pushContents)
+		sp := time.Now().UnixNano()/1000 - ss
+		atomic.AddInt64(&static.CacheSpend, sp)
+		atomic.AddInt64(&static.RuleCount, int64(len(rules)))
+		s.processPush(&pushers, &rules, input, &displayName, member, memCount, eventJson, pushContents, static)
 	} else {
 		//当前用户在发消息，应该把该用户的未读数置为0
 		s.eventRepo.AddUserReceiptOffset(*member, input.RoomID, eventOffset)
@@ -386,13 +404,18 @@ func (s *PushConsumer) processPush(
 	memCount int,
 	eventJson *[]byte,
 	pushContents *push.PushPubContents,
+	static *push.StaticObj,
 ) {
+	bs := time.Now().UnixNano() / 1000
+	defer func(bs int64)(){
+		spend := time.Now().UnixNano() / 1000 - bs
+		atomic.AddInt64(&static.RuleSpend, spend)
+	}(bs)
 	//这种写法真的很挫，但没找到其他的处理方式
 	result := gjson.Get(string(*eventJson), "content.msgtype")
 	if result.Str == "m.notice" {
 		return
 	}
-
 	for _, v := range *rules {
 		if !v.Enabled {
 			continue
@@ -401,7 +424,10 @@ func (s *PushConsumer) processPush(
 			action := s.getActions(v.Actions)
 
 			if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
+				ss := time.Now().UnixNano() / 1000
 				s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *userID, "increase")
+				sp := time.Now().UnixNano() / 1000 - ss
+				atomic.AddInt64(&static.UnreadSpend, sp)
 			}
 
 			count, _ := s.countRepo.GetRoomReadCount(input.RoomID, *userID)
