@@ -718,6 +718,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 			RuleCount: 0,
 			UnreadSpend: 0,
 			CacheSpend: 0,
+			ChanSpend: 0,
 		}
 		s.pushConsumer.DispthEvent(&ev,staticObj)
 	}

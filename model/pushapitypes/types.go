@@ -384,4 +384,7 @@ type StaticObj struct {
 	Start  		int64 		`json:"start"`
 	UnreadSpend int64 		`json:"unread_spend"`
 	CacheSpend  int64 		`json:"cache_spend"`
+	ChanSpend   int64 		`json:"chan_spend"`
+	ChanStart   int64 		`json:"chan_start"`
+	NoneMemSpend int64 		`json:"none_mem_spend"`
 }

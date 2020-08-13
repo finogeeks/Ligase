@@ -133,6 +133,8 @@ func (s *PushConsumer) IsRelatesContent(redactEv gomatrixserverlib.ClientEvent) 
 }
 
 func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj) {
+	static.ChanStart = time.Now().UnixNano() / 1000
+	static.ChanSpend = static.ChanStart - static.Start
 	defer func() {
 		static.EventSpend = time.Now().UnixNano()/1000 - static.Start
 		log.Infof("traceid:%s PushConsumer static:%+v", static.TraceId, static)
@@ -186,6 +188,7 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 		Contents: []*push.PushPubContent{},
 	}
 	bs := time.Now().UnixNano() / 1000
+	static.NoneMemSpend = bs - static.ChanStart
 	var wg sync.WaitGroup
 	for _, member := range members {
 		wg.Add(1)
