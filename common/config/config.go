@@ -473,6 +473,11 @@ type Dendrite struct {
 
 	License     string `yaml:"license"`
 	LicenseItem LicenseConf
+	TokenExpire int64 `yaml:"token_expire"`
+	UtlExpire   int64 `yaml:"utl_expire"`
+	LatestToken int   `yaml:"latest_token"`
+	ReceiptDelay int64 `yaml:"receipt_delay"`
+	CheckReceipt int64 `yaml:"check_receipt"`
 }
 
 type LicenseConf struct {
@@ -678,6 +683,7 @@ func loadConfig(
 	adapter.SetKafkaNumPartitions(config.Kafka.CommonCfg.NumPartitions)
 	adapter.SetKafkaNumProducers(config.Kafka.CommonCfg.NumProducers)
 	adapter.SetDebugLevel(config.DebugLevel)
+	adapter.SetCacheCfg(config.TokenExpire, config.UtlExpire, config.LatestToken)
 	return nil
 }
 

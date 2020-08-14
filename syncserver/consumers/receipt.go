@@ -35,7 +35,7 @@ import (
 type ReceiptConsumer struct {
 	container       *goSync.Map
 	notifyRoom      *goSync.Map
-	delay           int
+	delay           int64
 	countRepo       *repos.ReadCountRepo
 	rsTimeline      *repos.RoomStateTimeLineRepo
 	receiptRepo     *repos.ReceiptDataStreamRepo
@@ -55,7 +55,7 @@ func NewReceiptConsumer(
 	s := &ReceiptConsumer{}
 	s.container = new(goSync.Map)
 	s.notifyRoom = new(goSync.Map)
-	s.delay = 1000 //1000 ms timer
+	s.delay = cfg.ReceiptDelay
 	s.rpcClient = rpcClient
 	s.cfg = cfg
 	s.idg = idg
@@ -95,7 +95,7 @@ func (s *ReceiptConsumer) SetRsTimeline(rsTimeline *repos.RoomStateTimeLineRepo)
 
 //it's a up to markers
 func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
-	log.Infof("OnReceipt roomID %s receiptType %s eventID %s userID %s deviceID %s", req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID)
+	log.Infof("OnReceipt roomID %s receiptType %s eventID %s userID %s deviceID %s source:%s", req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID, req.Source)
 	rs := s.roomCurState.GetRoomState(req.RoomID)
 	if rs == nil {
 		s.rsTimeline.LoadStreamStates(req.RoomID, true)
@@ -112,11 +112,21 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 	}
 
 	lastEventID := ""
-	stream := s.roomHistory.GetLastEvent(req.RoomID)
+	stream, lastEvStream := s.roomHistory.GetLastMessageEvent(req.RoomID)
 	if stream != nil {
 		lastEventID = stream.GetEv().EventID
 	}
-
+	if stream != nil && lastEvStream != nil {
+		log.Infof("roomID:%s last message event:%s last event:%s", req.RoomID, stream.GetEv().EventID, lastEvStream.GetEv().EventID)
+	}else{
+		if stream == nil && lastEvStream != nil {
+			log.Warnf("roomID:%s last message event is nil, last event is:%s", req.RoomID, lastEvStream.GetEv().EventID)
+		}else if lastEvStream == nil && stream != nil {
+			log.Warnf("roomID:%s last message event is:%s, last event is nil", req.RoomID, stream.GetEv().EventID)
+		}else{
+			log.Warnf("roomID:%s both last message event and last event is nil", req.RoomID)
+		}
+	}
 	if req.EventID == "" {
 		req.EventID = lastEventID
 	}
@@ -131,7 +141,10 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 	if stream != nil {
 		receiptOffSet = stream.Offset
 	}
-
+	if lastEventID != req.EventID && lastEventID != "" {
+		log.Warnf("force change req eventID %s to lastEventID %s OnReceipt roomID %s receiptType %s userID %s deviceID %s source %s", req.EventID, lastEventID, req.RoomID, req.ReceiptType, req.UserID, req.DeviceID, req.Source)
+		req.EventID = lastEventID
+	}
 	if lastEventID == req.EventID || lastEventID == "" {
 		var receipt *pushapi.RoomReceipt
 		item, ok := s.container.Load(req.RoomID)
@@ -168,7 +181,7 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 		s.notifyRoom.Store(req.RoomID, true)
 
 		//重置未读计数
-		s.countRepo.UpdateRoomReadCount(req.RoomID, req.UserID, "reset")
+		s.countRepo.UpdateRoomReadCount(req.RoomID, req.EventID, req.UserID, "reset")
 
 		//federation
 		if s.roomCurState.GetRoomState(req.RoomID) != nil {
@@ -201,7 +214,7 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 			}
 		}
 	} else {
-		log.Infof("OnReceipt not latest event %s roomID %s receiptType %s eventID %s userID %s deviceID %s", lastEventID, req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID)
+		log.Infof("OnReceipt not latest event %s roomID %s receiptType %s eventID %s userID %s deviceID %s source:%s", lastEventID, req.RoomID, req.ReceiptType, req.EventID, req.UserID, req.DeviceID, req.Source)
 	}
 }
 
@@ -264,6 +277,7 @@ func (s *ReceiptConsumer) fireRoomReceipt(roomID string) {
 	}
 
 	offset, _ := s.idg.Next()
+	log.Infof("flushReceiptUpdate roomID:%s evoffset:%d offset:%d", roomID, receipt.EvOffSet, offset)
 	s.flushReceiptUpdate(roomID, eventJson, receipt.EvOffSet, offset)
 }
 

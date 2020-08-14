@@ -31,15 +31,15 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 var errMissingUserID = errors.New("'user_id' must be supplied")
@@ -59,7 +59,7 @@ func SendMembership(
 	traceId := fmt.Sprintf("%d", tid)
 	log.Infof("------- traceId:%s handle SendMembership QueryRoomState send room %s membership:%s user:%s", traceId, roomID, membership, userID)
 	var body threepid.MembershipRequest
-	if membership != "leave" && membership != "dismiss" && len(r.Content) > 0 {
+	if membership != "leave" && len(r.Content) > 0 {
 		if err := json.Unmarshal(r.Content, &body); err != nil {
 			log.Errorf("------- traceId:%s handle SendMembership The request body could not be decoded into valid JSON room %s membership:%s user:%s", traceId, roomID, membership, userID)
 			return http.StatusBadRequest, jsonerror.BadJSON("handle SendMembership The request body could not be decoded into valid JSON. " + err.Error())
@@ -79,13 +79,6 @@ func SendMembership(
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
-	// on dismiss
-	// userId is the member who dismiss Room
-	// deviceID is the member who should leave the room
-	// TODO, how to ensure get deviceID via userID
-	if membership == "dismiss" {
-		body.UserID = deviceID
-	}
 	// If an invite has been stored on an identity server, it means that a
 	// m.room.third_party_invite event has been emitted and that we shouldn't
 	// emit a m.room.member one.

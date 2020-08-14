@@ -25,6 +25,7 @@ type GetUserInfoResponse struct {
 	Mobile    string `json:"mobile"`
 	Landline  string `json:"landline"`
 	Email     string `json:"email"`
+	State     int    `json:"state,omitempty"`
 }
 
 // PUT /_matrix/client/r0/user_info/{userID}
@@ -35,6 +36,7 @@ type PutUserInfoRequest struct {
 	Mobile    string `json:"mobile"`
 	Landline  string `json:"landline"`
 	Email     string `json:"email"`
+	State     int    `json:"state,omitempty"`
 }
 
 // POST /_matrix/client/r0/user_info/{userID}
@@ -45,6 +47,7 @@ type PostUserInfoRequest struct {
 	Mobile    string `json:"mobile"`
 	Landline  string `json:"landline"`
 	Email     string `json:"email"`
+	State     int    `json:"state,omitempty"`
 }
 
 // GET /_matrix/client/r0/user_info_list
@@ -63,6 +66,7 @@ type UserInfoItem struct {
 	Mobile    string `json:"mobile"`
 	Landline  string `json:"landline"`
 	Email     string `json:"email"`
+	State     int    `json:"state,omitempty"`
 }
 
 // DELETE /_matrix/client/r0/user_info/{userID}

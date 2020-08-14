@@ -22,7 +22,7 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )

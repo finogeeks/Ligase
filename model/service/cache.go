@@ -96,6 +96,7 @@ type Cache interface {
 
 	GetPresences(userID string) (*authtypes.Presences, bool)
 	SetPresences(userID, status, statusMsg, extStatusMsg string) error
+	SetPresencesServerStatus(userID, serverStatus string) error
 
 	SetAccountData(userID, roomID, acctType, content string) error
 
@@ -127,8 +128,18 @@ type Cache interface {
 	AddDomain(domain string) error
 
 	GetUserInfoByUserID(userID string) (result *authtypes.UserInfo)
-	SetUserInfo(userID, userName, jobNumber, mobile, landline, email string) error
+	SetUserInfo(userID, userName, jobNumber, mobile, landline, email string, state int) error
 	DeleteUserInfo(userID string) error
+
+	SetRoomLatestOffset(roomId string, offset int64) error
+	GetRoomLatestOffset(roomId string) (int64, error)
+
+	SetToken(userID, device string, utl int64, roomoffsets map[string]int64) error
+	GetToken(userID, device string, utl int64) (map[string]int64, error)
+	DelTokens(userID, device string, utls []int64) error
+	AddTokenUtl(userID, device string, utl int64) error
+	GetTokenUtls(userID, device string) (utls []int64, err error)
+	GetLastValidToken(userID, device string) (int64, map[string]int64, error)
 }
 
 type CacheItem struct {

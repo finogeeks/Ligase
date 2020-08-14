@@ -197,6 +197,12 @@ func (s *RoomEventConsumer) processRedactEv(ev *gomatrixserverlib.ClientEvent) {
 
 	unsigned := types.RedactUnsigned{}
 	if ev.Type == "m.room.redaction" {
+		reaction := s.parseRelatesContent(redactEv)
+		if reaction != nil {
+			s.updateReactionEvent(ev.RoomID, reaction)
+			isRelated := true
+			unsigned.IsRelated = &isRelated
+		}
 		content := map[string]interface{}{}
 		empty, _ := json.Marshal(content)
 		redactEv.Content = empty
@@ -219,6 +225,274 @@ func (s *RoomEventConsumer) processRedactEv(ev *gomatrixserverlib.ClientEvent) {
 		s.db.UpdateEvent(context.TODO(), redactEv, ev.Redacts, redactEv.Type, ev.RoomID)
 	} else {
 		log.Errorf("redact err:%v", err)
+	}
+}
+
+func (s *RoomEventConsumer) updateReactionEvent(roomID string, reaction *types.ReactionContent){
+	var originEv gomatrixserverlib.ClientEvent
+	stream := s.roomHistoryTimeLine.GetStreamEv(roomID, reaction.EventID)
+	if stream != nil {
+		originEv = *stream.Ev
+	} else {
+		evs, err := s.db.Events(context.TODO(), []string{reaction.EventID})
+		if err == nil && len(evs) > 0 {
+			originEv = evs[0]
+		} else {
+			if err != nil {
+				log.Errorf("updateReaction room:%s event:%s evs:%v, err:%v", roomID, reaction.EventID, evs, err)
+			}
+			return
+		}
+	}
+	unsigned := types.Unsigned{}
+	if originEv.Unsigned != nil {
+		err := json.Unmarshal(originEv.Unsigned,&unsigned)
+		if err != nil {
+			log.Errorf("updateReactionEvent json.Unmarshal  origin eventID:%s unsigned err:%v", reaction.EventID, err)
+			return
+		}
+	}
+	if unsigned.Relations != nil {
+		if unsigned.Relations.Anno == nil {
+			return
+		}else{
+			if unsigned.Relations.Anno.Chunk == nil {
+				return
+			}else{
+				for idx,item := range unsigned.Relations.Anno.Chunk{
+					if item.Key == reaction.Key {
+						item.Count--
+						if item.Count <= 0 {
+							unsigned.Relations.Anno.Chunk = append(unsigned.Relations.Anno.Chunk[:idx], unsigned.Relations.Anno.Chunk[idx+1:]...)
+						}
+						break
+					}
+				}
+				if len(unsigned.Relations.Anno.Chunk) <= 0 {
+					if unsigned.Relations.RelayTo == nil {
+						unsigned.Relations = nil
+					}else{
+						unsigned.Relations.Anno = nil
+					}
+				}
+			}
+		}
+	}else{
+		return
+	}
+	unsignedBytes, err := json.Marshal(unsigned)
+	if err != nil {
+		log.Errorf("updateReactionEvent json.Unmarshal eventID:%s unsigned err:%v", originEv.EventID, err)
+		return
+	}
+	originEv.Unsigned = unsignedBytes
+	if stream != nil {
+		stream.Ev = &originEv
+	}
+	if err == nil {
+		s.db.UpdateEvent(context.TODO(), originEv, originEv.EventID, originEv.Type, originEv.RoomID)
+		log.Infof("updateReactionEvent eventID:%s  succ", originEv.EventID)
+	} else {
+		log.Errorf("redact err:%v", err)
+	}
+}
+
+
+func (s *RoomEventConsumer) parseRelatesContent(redactEv gomatrixserverlib.ClientEvent)(reaction *types.ReactionContent){
+	var originContent map[string]interface{}
+	err := json.Unmarshal(redactEv.Content, &originContent)
+	if err != nil {
+		log.Errorf("json.Unmarshal redactEv err:%v", err)
+		return nil
+	}
+	v, ok := originContent["m.relates_to"]
+	if !ok {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	json.Unmarshal(b,&reaction)
+	originEventID := reaction.EventID
+	//is reaction relay
+	if originEventID != "" && reaction.RelType == "m.annotation" {
+		return reaction
+	}else{
+		//other ignore
+		return nil
+	}
+}
+
+func (s *RoomEventConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) {
+	var content map[string]interface{}
+	err := json.Unmarshal(ev.Content, &content)
+	if err != nil {
+		log.Errorf("processMessageEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID,  err)
+		return
+	}
+	v, ok := content["m.relates_to"]
+	if !ok {
+		return
+	}
+	mRelayTo := types.MInRelayTo{}
+	b, err := json.Marshal(v)
+	json.Unmarshal(b,&mRelayTo)
+	inRelayTo := mRelayTo.MRelayTo
+	originEventID := inRelayTo.EventID
+	var originEv gomatrixserverlib.ClientEvent
+	stream := s.roomHistoryTimeLine.GetStreamEv(ev.RoomID, originEventID)
+	if stream != nil {
+		originEv = *stream.Ev
+	} else {
+		evs, err := s.db.Events(context.TODO(), []string{originEventID})
+		if err == nil && len(evs) > 0 {
+			originEv = evs[0]
+		} else {
+			if err != nil {
+				log.Errorf("eventID:%s InRelayTo origin eventID:%s get from db err:%v", ev.EventID, originEventID, err)
+			}else{
+				log.Warnf("can not found eventID:%s InRelayTo origin eventID:%s", ev.EventID, originEventID)
+			}
+			return
+		}
+	}
+	unsigned := types.Unsigned{}
+	if originEv.Unsigned != nil {
+		err = json.Unmarshal(originEv.Unsigned,&unsigned)
+		if err != nil {
+			log.Errorf("json.Unmarshal eventID:%s InRelayTo origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+			return
+		}
+	}
+	if unsigned.Relations != nil {
+		if unsigned.Relations.RelayTo == nil {
+			unsigned.Relations.RelayTo = &types.OriginInRelayTo{}
+			unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+		}else{
+			if unsigned.Relations.RelayTo.Chunk == nil {
+				unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+			}else{
+				unsigned.Relations.RelayTo.Chunk = append(unsigned.Relations.RelayTo.Chunk, ev.EventID)
+			}
+		}
+	}else{
+		unsigned.Relations = &types.EventRelations{}
+		unsigned.Relations.RelayTo = &types.OriginInRelayTo{}
+		unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
+	}
+	unsignedBytes, err := json.Marshal(unsigned)
+	if err != nil {
+		log.Errorf("json.Unmarshal eventID:%s InRelayTo origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+		return
+	}
+	originEv.Unsigned = unsignedBytes
+	if stream != nil {
+		stream.Ev = &originEv
+	}
+	if err := s.db.UpdateEvent(context.TODO(), originEv, originEventID, originEv.Type, ev.RoomID); err != nil {
+		log.Errorf("eventID:%s InRelayTo origin eventID:%s update to db err:%v", ev.EventID, originEventID, err)
+	}else{
+		log.Infof("eventID:%s InRelayTo origin eventID:%s succ", ev.EventID, originEventID)
+	}
+}
+
+func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent) {
+	var content map[string]interface{}
+	err := json.Unmarshal(ev.Content, &content)
+	if err != nil {
+		log.Errorf("processReactionEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID,  err)
+		return
+	}
+	v, ok := content["m.relates_to"]
+	if !ok {
+		return
+	}
+	reaction := types.ReactionContent{}
+	b, err := json.Marshal(v)
+	json.Unmarshal(b,&reaction)
+	originEventID := reaction.EventID
+	var originEv gomatrixserverlib.ClientEvent
+	stream := s.roomHistoryTimeLine.GetStreamEv(ev.RoomID, originEventID)
+	if stream != nil {
+		originEv = *stream.Ev
+	} else {
+		evs, err := s.db.Events(context.TODO(), []string{originEventID})
+		if err == nil && len(evs) > 0 {
+			originEv = evs[0]
+		} else {
+			if err != nil {
+				log.Errorf("eventID:%s annotation origin eventID:%s get from db err:%v", ev.EventID, originEventID, err)
+			}else{
+				log.Warnf("can not found eventID:%s annotation origin eventID:%s", ev.EventID, originEventID)
+			}
+			return
+		}
+	}
+	unsigned := types.Unsigned{}
+	if originEv.Unsigned != nil {
+		err = json.Unmarshal(originEv.Unsigned,&unsigned)
+		if err != nil {
+			log.Errorf("json.Unmarshal eventID:%s annotation origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+			return
+		}
+	}
+	if unsigned.Relations != nil {
+		if unsigned.Relations.Anno == nil {
+			unsigned.Relations.Anno = &types.Annotations{}
+			annotation := &types.Annotation{
+				Type : ev.Type,
+				Key : reaction.Key,
+				Count: 1,
+			}
+			unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
+		}else{
+			if unsigned.Relations.Anno.Chunk == nil {
+				annotation := &types.Annotation{
+					Type : ev.Type,
+					Key : reaction.Key,
+					Count: 1,
+				}
+				unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
+			}else{
+				hasExsit := false
+				for _,item := range unsigned.Relations.Anno.Chunk{
+					if item.Key == reaction.Key {
+						item.Count++
+						hasExsit = true
+						break
+					}
+				}
+				if !hasExsit {
+					annotation := &types.Annotation{
+						Type : ev.Type,
+						Key : reaction.Key,
+						Count: 1,
+					}
+					unsigned.Relations.Anno.Chunk = append(unsigned.Relations.Anno.Chunk, annotation)
+				}
+			}
+		}
+	}else{
+		unsigned.Relations = &types.EventRelations{}
+		unsigned.Relations.Anno = &types.Annotations{}
+		annotation := &types.Annotation{
+			Type : ev.Type,
+			Key : reaction.Key,
+			Count: 1,
+		}
+		unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
+	}
+	unsignedBytes, err := json.Marshal(unsigned)
+	if err != nil {
+		log.Errorf("json.Unmarshal eventID:%s annotation origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
+		return
+	}
+	originEv.Unsigned = unsignedBytes
+	if stream != nil {
+		stream.Ev = &originEv
+	}
+	if err := s.db.UpdateEvent(context.TODO(), originEv, originEventID, originEv.Type, ev.RoomID); err != nil {
+		log.Errorf("eventID:%s annotation origin eventID:%s update to db err:%v", ev.EventID, originEventID, err)
+	}else{
+		log.Infof("eventID:%s annotation origin eventID:%s succ", ev.EventID, originEventID)
 	}
 }
 
@@ -256,6 +530,14 @@ func (s *RoomEventConsumer) onNewRoomEvent(
 			log.Errorf("RoomEventFeedConsumer.onNewRoomEvent Marshal:%s evs:%v, err:%v", ev.Redacts, unsigned, err)
 		}
 		ev.Unsigned = unsignedBytes
+	}
+
+	if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+		s.processMessageEv(&ev)
+	}
+
+	if ev.Type == "m.reaction" {
+		s.processReactionEv(&ev)
 	}
 
 	if ev.StateKey != nil {
@@ -309,6 +591,15 @@ func (s *RoomEventConsumer) onBackFillEvent(
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)
 	}
+
+	if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
+		s.processMessageEv(&ev)
+	}
+
+	if ev.Type == "m.reaction" {
+		s.processReactionEv(&ev)
+	}
+
 	err := s.db.WriteEvent(ctx, &ev, []gomatrixserverlib.ClientEvent{}, msg.AddsStateEventIDs, msg.RemovesStateEventIDs, msg.TransactionID, -ev.EventOffset, ev.DomainOffset, ev.Depth, domain, int64(ev.OriginServerTS))
 	if err != nil {
 		log.Errorw("syncwriter: write event failure", log.KeysAndValues{"event_id", string(ev.EventID), "error", err, "add", msg.AddsStateEventIDs, "del", msg.RemovesStateEventIDs})

@@ -342,7 +342,7 @@ type RoomReceipt struct {
 	RoomID   string
 	EvID     string
 	EvOffSet int64
-	Content  *sync.Map
+	Content  *sync.Map	//key:user, value: ts
 }
 
 type PusherUsers struct {
@@ -368,4 +368,48 @@ func (p *PushersRes) Encode() ([]byte, error) {
 
 func (p *PushersRes) Decode(input []byte) error {
 	return json.Unmarshal(input, p)
+}
+
+type StaticPercent struct {
+	Chan 			string 		`json:"chan"`
+	Other    		string 		`json:"other"`
+	RuleHandle 		string 		`json:"rule_handle"`
+	RuleCache 		string   	`json:"rule_cache"`
+	SenderCache     string      `json:"send_cache"`
+}
+
+type StaticAvg struct {
+	AvgMemSpend    	int64  	`json:"avg_mem_spend"`
+	AvgRuleSpend   	int64 	`json:"avg_rule_spend"`
+	AvgUnreadSpend 	int64 	`json:"avg_unread_spend"`
+	AvgProfileSpend int64   `json:"avg_profile_spend"`
+	AvgPushCacheSpend int64 `json:"avg_push_cache_spend"`
+}
+
+type StaticObj struct {
+	TraceId			string		`json:"traceid"`
+	TotalSpend		int64 		`json:"total_spend"`
+	MemSpend    	int64 		`json:"mem_spend"`
+	MemAllSpend 	int64 		`json:"mem_all_spend"`
+	RuleSpend   	int64 		`json:"rule_spend"`
+	RuleCount   	int64 		`json:"rule_count"`
+	MemCount 		int 		`json:"mem_count"`
+	RoomID 			string 		`json:"room_id"`
+	EventID 		string 		`json:"event_id"`
+	Type 			string 		`json:"type"`
+	Start  			int64 		`json:"start"`
+	UnreadSpend 	int64 		`json:"unread_spend"`
+	PushCacheSpend  int64 		`json:"push_cache_spend"`
+	ChanSpend   	int64 		`json:"chan_spend"`
+	ChanStart   	int64 		`json:"chan_start"`
+	NoneMemSpend 	int64 		`json:"none_mem_spend"`
+	PusherCount    	int64 	`json:"pusher_count"`
+	PushRuleCount  	int64 	`json:"pushrule_count"`
+	ProfileSpend    int64 	`json:"profile_spend"`
+	ProfileCount 	int64 	`json:"profile_count"`
+	SenderCache  	int64   `json:"sender_cache"`
+	MemCache 		int64   `json:"mem_cache"`
+	MemRule   		int64   `json:"mem_rule"`
+	Avg 			StaticAvg `json:"avg"`
+	Percent			StaticPercent `json:"percent"`
 }
