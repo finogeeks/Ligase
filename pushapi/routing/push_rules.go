@@ -198,10 +198,14 @@ func GetUserPushRules(userID string, cache service.Cache, forRequest bool, stati
 	var rules pushapitypes.PushRuleCacheDataArray
 
 	ruleIDs, _ := cache.GetUserPushRuleIds(userID)
-	atomic.AddInt64(&static.PushRuleCount, 1)
+	if static != nil {
+		atomic.AddInt64(&static.PushRuleCount, 1)
+	}
 	for _, rid := range ruleIDs {
 		rule, _ := cache.GetPushRuleCacheData(rid)
-		atomic.AddInt64(&static.PushRuleCount, 1)
+		if static != nil {
+			atomic.AddInt64(&static.PushRuleCount, 1)
+		}
 		if rule != nil {
 			if rule.PriorityClass == -1 {
 				bases[rid] = *rule
