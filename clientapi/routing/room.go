@@ -21,17 +21,18 @@ import (
 	"net/http"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
+	"github.com/finogeeks/ligase/clientapi/threepid"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 //handle GET /rooms/{roomId}/joined_members
@@ -231,7 +232,10 @@ func DismissRoom(
 	msg := external.PostRoomsMembershipRequest{}
 	msg.Membership = "dismiss"
 	msg.RoomID = req.RoomID
-	msg.Content = []byte("kick")
+	var body threepid.MembershipRequest
+	body.UserID = ownerID
+	content, _ := json.Marshal(body)
+	msg.Content = content
 	// sender leaves the room
 	res, _ := SendMembership(ctx, &msg, accountDB, ownerID, ownerID, roomID, "dismiss", cfg, rpcCli, federation, cache, idg, complexCache)
 	if res != http.StatusOK {

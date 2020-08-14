@@ -114,16 +114,12 @@ func filterTokenCheck(userId string) bool {
 // error message MUST be human-readable and comprehensible to the client.
 func extractAccessToken(req *http.Request) (string, error) {
 	// cf https://github.com/matrix-org/synapse/blob/v0.19.2/synapse/api/auth.py#L631
-	authBearer := req.Header.Get("Authorization")
 	queryToken := req.URL.Query().Get("access_token")
-	if authBearer != "" && queryToken != "" {
-		return "", fmt.Errorf("mixing Authorization headers and access_token query parameters")
-	}
-
 	if queryToken != "" {
 		return queryToken, nil
 	}
 
+	authBearer := req.Header.Get("Authorization")
 	if authBearer != "" {
 		parts := strings.SplitN(authBearer, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {

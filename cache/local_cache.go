@@ -15,11 +15,12 @@
 package cache
 
 import (
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/finogeeks/ligase/model/service"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type LocalCacheRepo struct {

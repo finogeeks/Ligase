@@ -34,6 +34,7 @@ type ReceiptStreamContent struct {
 
 type ReceiptDataStreamRepo struct {
 	roomCurState  *RoomCurStateRepo
+	rsTimeline    *RoomStateTimeLineRepo
 	persist       model.SyncAPIDatabase
 	container     *sync.Map
 	loading       sync.Map
@@ -99,6 +100,10 @@ func (tl *ReceiptDataStreamRepo) SetRsCurState(rsCurState *RoomCurStateRepo) {
 	tl.roomCurState = rsCurState
 }
 
+func (tl *ReceiptDataStreamRepo) SetRsTimeline(rsTimeline *RoomStateTimeLineRepo){
+	tl.rsTimeline = rsTimeline
+}
+
 func (tl *ReceiptDataStreamRepo) AddReceiptDataStream(dataStream *types.ReceiptStream, offset int64) {
 	roomID := dataStream.RoomID
 	tl.LoadHistory(roomID, true)
@@ -135,21 +140,37 @@ func (tl *ReceiptDataStreamRepo) addReceiptDataStream(dataStream *types.ReceiptS
 	}
 	receipt.Content.Add(receiptDataStream)
 
-	rs := tl.roomCurState.GetRoomState(roomID)
-
-	if rs != nil {
-		joined := rs.GetJoinMap()
-		joined.Range(func(key, _ interface{}) bool {
-			tl.setUserLatest(key.(string), offset)
-			return true
-		})
-	}
+	tl.setJoinUsersLatest(roomID, offset)
 
 	if loaded == false {
 		tl.updatedRoom.Store(roomID, true)
 	}
 
 	tl.setRoomLatest(roomID, offset)
+}
+
+func (tl *ReceiptDataStreamRepo) setJoinUsersLatest(roomID string, offset int64){
+	rs := tl.roomCurState.GetRoomState(roomID)
+	if rs != nil {
+		joined := rs.GetJoinMap()
+		joined.Range(func(key, _ interface{}) bool {
+			tl.setUserLatest(key.(string), offset)
+			return true
+		})
+	}else{
+		log.Infof("load roomID:%s stream state sync to init user latest receipt", roomID)
+		tl.rsTimeline.LoadStreamStates(roomID, true)
+		rs = tl.roomCurState.GetRoomState(roomID)
+		if rs == nil {
+			log.Errorf("after sync LoadStreamStates roomID:%s rs is still nil", roomID)
+		}else{
+			joined := rs.GetJoinMap()
+			joined.Range(func(key, _ interface{}) bool {
+				tl.setUserLatest(key.(string), offset)
+				return true
+			})
+		}
+	}
 }
 
 func (tl *ReceiptDataStreamRepo) LoadHistory(roomID string, sync bool) {

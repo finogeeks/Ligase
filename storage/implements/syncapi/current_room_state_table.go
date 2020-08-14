@@ -64,7 +64,7 @@ const upsertRoomStateSQL = "" +
 	" DO UPDATE SET event_id = $2, event_json = $5, membership = $6, added_at = $7"
 
 const selectRoomIDsWithMembershipSQL = "" +
-	"SELECT room_id, added_at FROM syncapi_current_room_state WHERE type = 'm.room.member' AND state_key = $1 AND membership = ANY($2)"
+	"SELECT room_id, added_at, event_id FROM syncapi_current_room_state WHERE type = 'm.room.member' AND state_key = $1 AND membership = ANY($2)"
 
 const selectCurrentStateSQL = "" +
 	"SELECT event_json, type, added_at FROM syncapi_current_room_state WHERE room_id = $1 order by added_at asc"
@@ -163,25 +163,28 @@ func (s *currentRoomStateStatements) selectRoomIDsWithMembership(
 	ctx context.Context,
 	userID string,
 	memberships []string, // nolint: unparam
-) ([]string, []int64, error) {
+) ([]string, []int64, []string, error) {
 	rows, err := s.selectRoomIDsWithMembershipStmt.QueryContext(ctx, userID, pq.Array(memberships))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer rows.Close() // nolint: errcheck
 
 	var result []string
 	var offsets []int64
+	var events []string
 	for rows.Next() {
 		var roomID string
 		var addAt int64
-		if err := rows.Scan(&roomID, &addAt); err != nil {
-			return nil, nil, err
+		var eventID string
+		if err := rows.Scan(&roomID, &addAt, &eventID); err != nil {
+			return nil, nil, nil, err
 		}
 		result = append(result, roomID)
 		offsets = append(offsets, addAt)
+		events = append(events, eventID)
 	}
-	return result, offsets, nil
+	return result, offsets, events, nil
 }
 
 // CurrentState returns all the current state events for the given room.

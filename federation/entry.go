@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package federation
 
 import (
 	"flag"
@@ -56,7 +56,7 @@ var (
 	httpsBindAddr = flag.String("https-address", "", "The HTTPS listening port for the server")
 )
 
-func main() {
+func Entry() {
 	flag.Parse()
 	if *configPath == "" {
 		log.Fatal("config must be supplied")

@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	e2e "github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -817,14 +817,14 @@ func (rc *RedisCache) GetRoomUnreadCount(userID, roomID string) (int64, int64, e
 func (rc *RedisCache) GetPresences(userID string) (*authtypes.Presences, bool) {
 	key := fmt.Sprintf("%s:%s", "presences", userID)
 
-	reply, err := redis.Values(rc.SafeDo("hmget", key, "user_id", "status", "status_msg", "ext_status_msg"))
+	reply, err := redis.Values(rc.SafeDo("hmget", key, "user_id", "status", "status_msg", "ext_status_msg", "server_status"))
 	if err != nil {
 		log.Errorw("cache missed for presences", log.KeysAndValues{"userID", userID, "error", err})
 		return nil, false
 	} else {
 		var presences authtypes.Presences
 
-		reply, err = redis.Scan(reply, &presences.UserID, &presences.Status, &presences.StatusMsg, &presences.ExtStatusMsg)
+		reply, err = redis.Scan(reply, &presences.UserID, &presences.Status, &presences.StatusMsg, &presences.ExtStatusMsg, &presences.ServerStatus)
 		if err != nil {
 			log.Errorw("Scan error for presences", log.KeysAndValues{"userID", userID, "error", err})
 			return nil, false
@@ -840,6 +840,18 @@ func (rc *RedisCache) SetPresences(userID, status, statusMsg, extStatusMsg strin
 
 	key := fmt.Sprintf("%s:%s", "presences", userID)
 	err := conn.Send("hmset", key, "status", status, "status_msg", statusMsg, "ext_status_msg", extStatusMsg)
+	if err != nil {
+		return err
+	}
+	return conn.Flush()
+}
+
+func (rc *RedisCache) SetPresencesServerStatus(userID, serverStatus string) error {
+	conn := rc.pool().Get()
+	defer conn.Close()
+
+	key := fmt.Sprintf("%s:%s", "presences", userID)
+	err := conn.Send("hmset", key, "server_status", serverStatus)
 	if err != nil {
 		return err
 	}
@@ -1080,12 +1092,12 @@ func (rc *RedisCache) GetDomains() ([]string, error) {
 }
 
 func (rc *RedisCache) GetUserInfoByUserID(userID string) (result *authtypes.UserInfo) {
-	reply, err := redis.Values(rc.SafeDo("hmget", fmt.Sprintf("%s:%s", "user_info", userID), "user_id", "user_name", "job_number", "mobile", "landline", "email"))
+	reply, err := redis.Values(rc.SafeDo("hmget", fmt.Sprintf("%s:%s", "user_info", userID), "user_id", "user_name", "job_number", "mobile", "landline", "email", "state"))
 	if err != nil {
 		log.Errorw("cache missed for user_info", log.KeysAndValues{"userID", userID, "error", err})
 	} else {
 		result = &authtypes.UserInfo{}
-		reply, err = redis.Scan(reply, &result.UserID, &result.UserName, &result.JobNumber, &result.Mobile, &result.Landline, &result.Email)
+		reply, err = redis.Scan(reply, &result.UserID, &result.UserName, &result.JobNumber, &result.Mobile, &result.Landline, &result.Email, &result.State)
 		if err != nil {
 			log.Errorw("Scan error for user_info", log.KeysAndValues{"userID", userID, "error", err})
 		}
@@ -1093,11 +1105,11 @@ func (rc *RedisCache) GetUserInfoByUserID(userID string) (result *authtypes.User
 	return
 }
 
-func (rc *RedisCache) SetUserInfo(userID, userName, jobNumber, mobile, landline, email string) error {
+func (rc *RedisCache) SetUserInfo(userID, userName, jobNumber, mobile, landline, email string, state int) error {
 	conn := rc.pool().Get()
 	defer conn.Close()
 
-	err := conn.Send("hmset", fmt.Sprintf("%s:%s", "user_info", userID), "user_id", userID, "user_name", userName, "job_number", jobNumber, "mobile", mobile, "landline", landline, "email", email)
+	err := conn.Send("hmset", fmt.Sprintf("%s:%s", "user_info", userID), "user_id", userID, "user_name", userName, "job_number", jobNumber, "mobile", mobile, "landline", landline, "email", email, "state", state)
 	if err != nil {
 		return err
 	}
@@ -1116,4 +1128,24 @@ func (rc *RedisCache) DeleteUserInfo(userID string) error {
 	}
 
 	return conn.Flush()
+}
+
+func (rc *RedisCache) SetRoomLatestOffset(roomId string, offset int64) error {
+	conn := rc.pool().Get()
+	defer conn.Close()
+	key := fmt.Sprintf("%s:%s", "roomlatestoffset", roomId)
+	err := conn.Send("set", key, offset)
+	if err != nil {
+		return err
+	}
+	return conn.Flush()
+}
+
+func (rc *RedisCache) GetRoomLatestOffset(roomId string) (int64, error) {
+	key := fmt.Sprintf("%s:%s", "roomlatestoffset", roomId)
+	offset, err := redis.Int64(rc.SafeDo("get", key))
+	if err != nil {
+		return -1, err
+	}
+	return offset, err
 }

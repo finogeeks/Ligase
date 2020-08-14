@@ -18,11 +18,11 @@ import (
 	"context"
 
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type SyncAPIDatabase interface {
@@ -90,7 +90,7 @@ type SyncAPIDatabase interface {
 	GetRidsForUser(
 		ctx context.Context,
 		userID string,
-	) (res []string, offsets []int64, err error)
+	) (res []string, offsets []int64, events []string, err error)
 	GetFriendShip(
 		ctx context.Context,
 		roomIDs []string,
@@ -98,7 +98,11 @@ type SyncAPIDatabase interface {
 	GetInviteRidsForUser(
 		ctx context.Context,
 		userID string,
-	) (rids []string, offsets []int64, err error)
+	) (rids []string, offsets []int64, events []string, err error)
+	GetLeaveRidsForUser(
+		ctx context.Context,
+		userID string,
+	) (rids []string, offsets []int64, events []string, err error)
 	InsertStdMessage(
 		ctx context.Context, stdEvent syncapitypes.StdHolder, targetUID, targetDevice, identifier string, offset int64,
 	) (err error)
@@ -138,6 +142,10 @@ type SyncAPIDatabase interface {
 		ctx context.Context,
 		roomIDs []string,
 	) (map[string]int64, error)
+	GetJoinRoomOffsets(
+		ctx context.Context,
+		eventIDs []string,
+	)([]int64,[]string,[]string,error)
 	GetRoomReceiptLastOffsets(
 		ctx context.Context,
 		roomIDs []string,

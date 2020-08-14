@@ -25,7 +25,7 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/model/repos"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
