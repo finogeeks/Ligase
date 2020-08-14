@@ -461,6 +461,10 @@ func (m *InputMsg) Decode(input []byte) error {
 		if err != nil {
 			return err
 		}
+		m.Device.Identifier, err = device.Identifier()
+		if err != nil {
+			return err
+		}
 		m.Device.IsHuman = device.IsHuman()
 		m.Device.CreateTs = device.CreateTs()
 		m.Device.LastActiveTs = device.LastActiveTs()

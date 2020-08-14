@@ -887,6 +887,7 @@ type ReqGetFedUserInfoResponse struct {
 	Mobile    string `json:"mobile,omitempty"`
 	Landline  string `json:"landline,omitempty"`
 	Email     string `json:"email,omitempty"`
+	State     int    `json:"state,omitempty"`
 }
 
 func (r *ReqGetFedUserInfoResponse) Encode() ([]byte, error) {

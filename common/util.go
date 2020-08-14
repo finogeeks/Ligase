@@ -32,10 +32,10 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/common/utils"
+	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/authtypes"
 	"gopkg.in/macaroon.v2"
 )
 
@@ -451,4 +451,12 @@ func SplitMxc(s string) (domain, netdiskID string) {
 	} else {
 		return ss[0], ss[1]
 	}
+}
+
+func GetDomainByUserID(userID string) string {
+	if userID == "" {
+		return userID
+	}
+	ss := strings.Split(userID, ":")
+	return ss[len(ss)-1]
 }

@@ -33,9 +33,9 @@ import (
 	"github.com/finogeeks/ligase/content/storage/model"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/model/mediatypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/mediatypes"
 )
 
 const kDefaultWorkerCount = 10
@@ -336,7 +336,12 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		log.Errorf("federation Download get media info error: %v", err)
 		return errors.New("federation Download get media info error:" + err.Error())
 	}
-
+	isEmote := false
+	var contentParam mediatypes.MediaContentInfo
+	err = json.Unmarshal([]byte(info.Content), &contentParam)
+	if err == nil {
+		isEmote = contentParam.IsEmote
+	}
 	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, "", "", "download", func(response *http.Response) error {
 		if response == nil || response.Body == nil {
 			log.Errorf("download fed netdisk response nil")
@@ -368,6 +373,10 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		q := newReq.URL.Query()
 		q.Add("type", info.Type)
 		q.Add("content", info.Content)
+		if isEmote {
+			q.Add("isemote", "true")
+			q.Add("isfed", "true")
+		}
 		if thumbnail {
 			q.Add("thumbnail", "true")
 		} else {
@@ -420,7 +429,17 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			log.Errorf("fed download, upload file response %v", errInfo)
 			return errors.New("fed download, upload file response" + string(respData))
 		}
-
+		if isEmote {
+			var resp mediatypes.UploadEmoteResp
+			data_, _ := ioutil.ReadAll(res.Body)
+			err := json.Unmarshal(data_, &resp)
+			if err != nil {
+				log.Errorf("fed download, upload emote unmarhal resp error: %v, data: %v", err, respData)
+				return errors.New("fed download, upload emote unmarhal resp error: %v" + err.Error())
+			}
+			log.Infof("fed download, upload emote succ resp:%+v", resp)
+			return nil
+		}
 		var resp mediatypes.NetDiskResponse
 		err = json.Unmarshal(respData, &resp)
 		if err != nil {

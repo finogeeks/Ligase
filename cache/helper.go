@@ -12,9 +12,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package federation
+package cache
 
-const (
-	VERSION = "2020.623.1"
-	BUILD   = "2020-06-24T14:24:59+0800"
+import (
+	"github.com/gomodule/redigo/redis"
 )
+
+func Int64(reply interface{}, err error) (int64, error) {
+	return redis.Int64(reply, err)
+}
+
+func String(reply interface{}, err error) (string, error) {
+	return redis.String(reply, err)
+}
+
+func Bool(reply interface{}, err error) (bool, error) {
+	return redis.Bool(reply, err)
+}

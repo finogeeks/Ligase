@@ -23,9 +23,9 @@ import (
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/nats-io/go-nats"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/nats-io/nats.go"
 )
 
 type FedEventExtra struct {
@@ -99,11 +99,17 @@ func (s *SyncConsumer) cb(msg *nats.Msg) {
 	s.msgChan[rand.Intn(s.chanSize)] <- &request
 }
 
+type RpcResponse struct {
+	Error   string
+	Payload interface{}
+}
+
 func (s *SyncConsumer) processRequest(request *FedEventExtra) {
 	var response interface{}
 	destination, ok := s.feddomains.GetDomainHost(request.FedEvent.Destination)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s, topic: %s", request.FedEvent.Destination, request.Subject)
+		s.rpcClient.PubObj(request.FedEvent.Reply, &RpcResponse{Error: "FedSync processRequest invalid destination " + request.FedEvent.Destination})
 		return
 	}
 	log.Infof("source dest: %s, topic: %s", destination, request.Subject)
@@ -134,5 +140,5 @@ func (s *SyncConsumer) processRequest(request *FedEventExtra) {
 		response = SendInvite(s.fedClient, &request.FedEvent, destination)
 	}
 
-	s.rpcClient.PubObj(request.FedEvent.Reply, response)
+	s.rpcClient.PubObj(request.FedEvent.Reply, &RpcResponse{Payload: response})
 }

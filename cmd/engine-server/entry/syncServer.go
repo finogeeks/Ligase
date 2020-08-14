@@ -26,6 +26,7 @@ func StartSyncServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
 
+	addProducer(transportMultiplexer, kafka.Producer.FedEduUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventSyncServer, base.Cfg.MultiInstance.Instance)

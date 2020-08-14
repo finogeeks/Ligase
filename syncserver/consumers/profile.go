@@ -85,9 +85,6 @@ func (s *ProfileConsumer) OnMessage(topic string, partition int32, data []byte) 
 		return
 	}
 
-	if output.IsMasterHndle {
-		return
-	}
 	idx := common.CalcStringHashCode(output.UserID) % s.chanSize
 	s.msgChan[idx] <- &output
 	return

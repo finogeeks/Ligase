@@ -18,7 +18,7 @@ import (
 	"errors"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/nats-io/go-nats"
+	"github.com/nats-io/nats.go"
 	"time"
 )
 

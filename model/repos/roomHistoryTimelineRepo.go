@@ -16,21 +16,24 @@ package repos
 
 import (
 	"context"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"sync"
 	"time"
 
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+
 	"github.com/finogeeks/ligase/model/feedstypes"
+	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
 type RoomHistoryTimeLineRepo struct {
 	repo                   *TimeLineRepo
 	persist                model.SyncAPIDatabase
+	cache                  service.Cache
 	loading                sync.Map
 	ready                  sync.Map
 	roomLatest             sync.Map //room latest offset
@@ -56,6 +59,10 @@ func NewRoomHistoryTimeLineRepo(
 
 func (tl *RoomHistoryTimeLineRepo) SetPersist(db model.SyncAPIDatabase) {
 	tl.persist = db
+}
+
+func (tl *RoomHistoryTimeLineRepo) SetCache(cache service.Cache) {
+	tl.cache = cache
 }
 
 func (tl *RoomHistoryTimeLineRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
@@ -215,6 +222,29 @@ func (tl *RoomHistoryTimeLineRepo) GetLastEvent(roomID string) *feedstypes.Strea
 	return sev
 }
 
+func (tl *RoomHistoryTimeLineRepo) GetLastMessageEvent(roomID string) (*feedstypes.StreamEvent, *feedstypes.StreamEvent) {
+	history := tl.GetHistory(roomID)
+	if history == nil {
+		return nil, nil
+	}
+	var lastMessageSev *feedstypes.StreamEvent
+	var lastSev *feedstypes.StreamEvent
+	history.ForRangeReverse(func(offset int, feed feedstypes.Feed) bool {
+		if feed != nil {
+			ev := feed.(*feedstypes.StreamEvent)
+			if lastSev == nil {
+				lastSev = ev
+			}
+			if ev.GetEv().Type == "m.room.message" || ev.GetEv().Type == "m.room.encrypted" {
+				lastMessageSev = ev
+				return false
+			}
+		}
+		return true
+	})
+	return lastMessageSev, lastSev
+}
+
 func (tl *RoomHistoryTimeLineRepo) GetRoomLastOffset(roomID string) int64 {
 	if val, ok := tl.roomLatest.Load(roomID); ok {
 		return val.(int64)
@@ -304,12 +334,20 @@ func (tl *RoomHistoryTimeLineRepo) setRoomLatest(roomID string, offset int64) {
 	if ok {
 		lastoffset := val.(int64)
 		if offset > lastoffset {
-			log.Debugf("update roomId:%s lastoffset:%d,offset:%d", roomID, lastoffset, offset)
+			log.Infof("update roomId:%s lastoffset:%d,offset:%d", roomID, lastoffset, offset)
 			tl.roomLatest.Store(roomID, offset)
+			/*err := tl.cache.SetRoomLatestOffset(roomID, offset)
+			if err != nil {
+				log.Errorf("set roomID:%s offset:%d lastoffset:%d err:%v", roomID, offset, lastoffset,err)
+			}*/
 		}
 	} else {
-		log.Debugf("update roomId:%s first offset:%d ", roomID, offset)
+		log.Infof("update roomId:%s first offset:%d ", roomID, offset)
 		tl.roomLatest.Store(roomID, offset)
+		/*err := tl.cache.SetRoomLatestOffset(roomID, offset)
+		if err != nil {
+			log.Errorf("set roomID:%s first offset:%d err:%v", roomID, offset, err)
+		}*/
 	}
 }
 

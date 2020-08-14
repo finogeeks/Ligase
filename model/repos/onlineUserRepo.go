@@ -31,14 +31,24 @@ const (
 	BACK_GROUND_STATE
 )
 
+//user state not differ foreground, background online
+const (
+	USER_OFFLINE_STATE = iota
+	USER_ONLINE_STATE
+)
+
 type StateChangeHandler interface {
 	OnStateChange(*types.NotifyDeviceState)
+	OnUserStateChange(state *types.NotifyUserState)
 }
 
 type DefaultHander struct {
 }
 
 func (d *DefaultHander) OnStateChange(*types.NotifyDeviceState) {
+}
+
+func (d *DefaultHander) OnUserStateChange(state *types.NotifyUserState) {
 }
 
 type Device struct {
@@ -51,6 +61,9 @@ type Device struct {
 
 type User struct {
 	id     string
+	ts 	   int64
+	lastState int
+	curState  int
 	devMap sync.Map
 }
 
@@ -67,6 +80,13 @@ func (u *User) isEmpty() bool {
 func (u *User) checkDeviceTtl(ol *OnlineUserRepo, now, ttl int64) int {
 	cnt := 0
 	hasDelete := false
+	if u.ts+ttl < now {
+		u.lastState = u.curState
+		u.curState = OFFLINE_STATE
+		if u.lastState != u.curState {
+			ol.UpdateUserState(u.id, u.lastState, u.curState)
+		}
+	}
 	u.devMap.Range(func(key, value interface{}) bool {
 		dev := value.(*Device)
 		if dev.ts+ttl < now {
@@ -114,14 +134,21 @@ func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 	var dev *Device
 	if val, ok := ol.userMap.Load(uid); ok {
 		user = val.(*User)
+		user.ts = time.Now().Unix()
+		user.lastState = user.curState
+		user.curState = USER_ONLINE_STATE
 	} else {
 		user = new(User)
 		user.id = uid
+		user.ts = time.Now().Unix()
+		user.lastState = user.curState
+		user.curState = USER_ONLINE_STATE
 		ol.userMap.Store(uid, user)
-
 		atomic.AddInt32(&ol.onlineUserCnt, 1)
 	}
-
+	if user.lastState != user.curState {
+		ol.UpdateUserState(user.id, user.lastState, user.curState)
+	}
 	if val, ok := user.devMap.Load(devId); ok {
 		dev = val.(*Device)
 		dev.ts = time.Now().Unix()
@@ -141,13 +168,14 @@ func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 			ol.UpdateState(uid, devId, FORE_GROUND_STATE)
 		}
 	}
-	if devId != "virtual-restore" {
-		if val, ok := user.devMap.Load("virtual-restore"); ok {
-			if val.(*Device).curState != OFFLINE_STATE {
-				ol.UpdateState(uid, "virtual-restore", OFFLINE_STATE)
-			}
-		}
-	}
+}
+
+func (ol *OnlineUserRepo) UpdateUserState(uid string, lastState,curState int){
+	ol.handler.OnUserStateChange(&types.NotifyUserState{
+		UserID:    uid,
+		LastState: lastState,
+		CurState:  curState,
+	})
 }
 
 func (ol *OnlineUserRepo) UpdateState(uid, devId string, state int) {
@@ -247,44 +275,4 @@ func (ol *OnlineUserRepo) Notify(userID, devID string, lastState, curState int) 
 		LastState: lastState,
 		CurState:  curState,
 	})
-}
-
-func (ol *OnlineUserRepo) IsUserOnline(userID string) bool {
-	var user *User
-	if val, ok := ol.userMap.Load(userID); ok {
-		user = val.(*User)
-	}
-	if user == nil {
-		return false
-	}
-	count := 0
-	user.devMap.Range(func(k, v interface{}) bool {
-		if v.(*Device).curState != OFFLINE_STATE {
-			count++
-		}
-		return true
-	})
-	return count > 0
-}
-
-func (ol *OnlineUserRepo) GetRemainDevice(userID string) ([]string, []int64, []int64) {
-	deviceIDs := []string{}
-	pos := []int64{}
-	ts := []int64{}
-	var user *User
-	if val, ok := ol.userMap.Load(userID); ok {
-		user = val.(*User)
-	}
-	if user == nil {
-		return deviceIDs, pos, ts
-	}
-	user.devMap.Range(func(k, v interface{}) bool {
-		if v.(*Device).curState != OFFLINE_STATE {
-			deviceIDs = append(deviceIDs, v.(*Device).id)
-			pos = append(pos, v.(*Device).pos)
-			ts = append(ts, v.(*Device).ts)
-		}
-		return true
-	})
-	return deviceIDs, pos, ts
 }
