@@ -20,6 +20,7 @@ import (
 	"context"
 	"github.com/finogeeks/ligase/common"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common/jsonerror"
@@ -35,14 +36,20 @@ import (
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-func GetPushersByName(userID string, cache service.Cache, forRequest bool) pushapitypes.Pushers {
+func GetPushersByName(userID string, cache service.Cache, forRequest bool, static *pushapitypes.StaticObj) pushapitypes.Pushers {
 	pushers := pushapitypes.Pushers{}
 	pushers.Pushers = []pushapitypes.Pusher{}
 
 	pusherIDs, ok := cache.GetUserPusherIds(userID)
+	if static != nil {
+		atomic.AddInt64(&static.PusherCount, 1)
+	}
 	if ok {
 		for _, v := range pusherIDs {
 			data, _ := cache.GetPusherCacheData(v)
+			if static != nil {
+				atomic.AddInt64(&static.PusherCount, 1)
+			}
 			if data != nil && data.UserName != "" {
 				pusher := pushapitypes.Pusher{}
 				pusher.UserName = data.UserName
@@ -81,7 +88,7 @@ func GetPushers(
 	// 	}
 	// }
 
-	pushers := GetPushersByName(userID, cache, true)
+	pushers := GetPushersByName(userID, cache, true, nil)
 
 	return http.StatusOK, &pushers
 }

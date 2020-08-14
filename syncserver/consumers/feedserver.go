@@ -20,6 +20,7 @@ package consumers
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/model/pushapitypes"
 	"time"
 
 	"github.com/finogeeks/ligase/syncserver/extra"
@@ -220,6 +221,8 @@ func (s *RoomEventFeedConsumer) processRedactEv(ev *gomatrixserverlib.ClientEven
 		reaction := s.parseRelatesContent(redactEv)
 		if reaction != nil {
 			s.updateReactionEvent(ev.RoomID, reaction)
+			isRelated := true
+			unsigned.IsRelated = &isRelated
 		}
 		content := map[string]interface{}{}
 		empty, _ := json.Marshal(content)
@@ -701,7 +704,26 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	log.Infof("feedserver onNewRoomEvent add history timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
 	last := time.Now().UnixNano() / 1000000
 	if s.cfg.CalculateReadCount {
-		s.pushConsumer.DispthEvent(&ev)
+		traceId, _ := s.idg.Next()
+		staticObj := &pushapitypes.StaticObj{
+			TraceId: fmt.Sprintf("%d", traceId),
+			RoomID: ev.RoomID,
+			EventID: ev.EventID,
+			Type: ev.Type,
+			Start: time.Now().UnixNano()/1000,
+			MemAllSpend: 0,
+			MemSpend: 0,
+			MemCount: 0,
+			RuleSpend: 0,
+			RuleCount: 0,
+			UnreadSpend: 0,
+			PushCacheSpend: 0,
+			ChanSpend: 0,
+			PushRuleCount: 0,
+			PusherCount: 0,
+			ProfileSpend: 0,
+		}
+		s.pushConsumer.DispthEvent(&ev,staticObj)
 	}
 	now := time.Now().UnixNano() / 1000000
 	log.Infof("feedserver onNewRoomEvent pushConsumer.OnEvent roomID:%s eventID:%s sender:%s type:%s eventoffset:%d push spend:%d onNewRoomEvent spend:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, now-last, now-bs)

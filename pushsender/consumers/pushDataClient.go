@@ -95,22 +95,22 @@ func (s *PushDataConsumer) startWorker(msgChan chan *pushapitypes.PushPubContent
 	for data := range msgChan {
 		if s.pushFilter.Lookup([]byte(data.Input.EventID)) {
 			log.Infof("PushDataConsumer startWorker lookup eventID:%s len(msgChan):%d", data.Input.EventID, len(msgChan))
-			return
-		}
-		log.Infof("start push roomID:%s eventID:%s len(msgChan):%d len(contents):%d", data.Input.RoomID, data.Input.EventID, len(msgChan), len(data.Contents))
-		s.pushFilter.Insert([]byte(data.Input.EventID))
-		for _, content := range data.Contents {
-			s.PushData(
-				data.Input,
-				content.Pushers,
-				data.SenderDisplayName,
-				data.RoomName,
-				content.UserID,
-				data.RoomAlias,
-				content.Action,
-				content.NotifyCount,
-				data.CreateContent,
-			)
+		}else{
+			log.Infof("start push roomID:%s eventID:%s len(msgChan):%d len(contents):%d", data.Input.RoomID, data.Input.EventID, len(msgChan), len(data.Contents))
+			s.pushFilter.Insert([]byte(data.Input.EventID))
+			for _, content := range data.Contents {
+				s.PushData(
+					data.Input,
+					content.Pushers,
+					data.SenderDisplayName,
+					data.RoomName,
+					content.UserID,
+					data.RoomAlias,
+					content.Action,
+					content.NotifyCount,
+					data.CreateContent,
+				)
+			}
 		}
 	}
 }

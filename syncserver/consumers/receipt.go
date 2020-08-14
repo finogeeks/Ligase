@@ -112,11 +112,21 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 	}
 
 	lastEventID := ""
-	stream := s.roomHistory.GetLastEvent(req.RoomID)
+	stream, lastEvStream := s.roomHistory.GetLastMessageEvent(req.RoomID)
 	if stream != nil {
 		lastEventID = stream.GetEv().EventID
 	}
-
+	if stream != nil && lastEvStream != nil {
+		log.Infof("roomID:%s last message event:%s last event:%s", req.RoomID, stream.GetEv().EventID, lastEvStream.GetEv().EventID)
+	}else{
+		if stream == nil && lastEvStream != nil {
+			log.Warnf("roomID:%s last message event is nil, last event is:%s", req.RoomID, lastEvStream.GetEv().EventID)
+		}else if lastEvStream == nil && stream != nil {
+			log.Warnf("roomID:%s last message event is:%s, last event is nil", req.RoomID, stream.GetEv().EventID)
+		}else{
+			log.Warnf("roomID:%s both last message event and last event is nil", req.RoomID)
+		}
+	}
 	if req.EventID == "" {
 		req.EventID = lastEventID
 	}
@@ -131,7 +141,10 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 	if stream != nil {
 		receiptOffSet = stream.Offset
 	}
-
+	if lastEventID != req.EventID && lastEventID != "" {
+		log.Warnf("force change req eventID %s to lastEventID %s OnReceipt roomID %s receiptType %s userID %s deviceID %s source %s", req.EventID, lastEventID, req.RoomID, req.ReceiptType, req.UserID, req.DeviceID, req.Source)
+		req.EventID = lastEventID
+	}
 	if lastEventID == req.EventID || lastEventID == "" {
 		var receipt *pushapi.RoomReceipt
 		item, ok := s.container.Load(req.RoomID)

@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
@@ -190,16 +191,21 @@ func FormatRuleResponse(rules pushapitypes.Rules) pushapitypes.RuleSet {
 	return ruleSet
 }
 
-func GetUserPushRules(userID string, cache service.Cache, forRequest bool) (global pushapitypes.Rules) {
+func GetUserPushRules(userID string, cache service.Cache, forRequest bool, static *pushapitypes.StaticObj) (global pushapitypes.Rules) {
 	global = pushapitypes.Rules{}
 	var bases map[string]pushapitypes.PushRuleCacheData
 	bases = make(map[string]pushapitypes.PushRuleCacheData)
 	var rules pushapitypes.PushRuleCacheDataArray
 
 	ruleIDs, _ := cache.GetUserPushRuleIds(userID)
-
+	if static != nil {
+		atomic.AddInt64(&static.PushRuleCount, 1)
+	}
 	for _, rid := range ruleIDs {
 		rule, _ := cache.GetPushRuleCacheData(rid)
+		if static != nil {
+			atomic.AddInt64(&static.PushRuleCount, 1)
+		}
 		if rule != nil {
 			if rule.PriorityClass == -1 {
 				bases[rid] = *rule
@@ -577,7 +583,7 @@ func GetPushRules(
 	cache service.Cache,
 ) (int, core.Coder) {
 	global := pushapitypes.GlobalRule{}
-	rules := GetUserPushRules(device.UserID, cache, true)
+	rules := GetUserPushRules(device.UserID, cache, true, nil)
 	global.Global = FormatRuleResponse(rules)
 	global.Device = map[string]interface{}{}
 
@@ -589,7 +595,7 @@ func GetPushRulesGlobal(
 	device *authtypes.Device,
 	cache service.Cache,
 ) (int, core.Coder) {
-	rules := GetUserPushRules(device.UserID, cache, true)
+	rules := GetUserPushRules(device.UserID, cache, true, nil)
 	ruleset := FormatRuleResponse(rules)
 	return http.StatusOK, &ruleset
 }

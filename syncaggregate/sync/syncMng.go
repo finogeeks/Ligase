@@ -204,7 +204,7 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 }
 
 func (sm *SyncMng) GetPushkeyByUserDeviceID(userID, deviceID string) []types.PushKeyContent {
-	pushers := routing.GetPushersByName(userID, sm.cache, false)
+	pushers := routing.GetPushersByName(userID, sm.cache, false, nil)
 	pushkeys := []types.PushKeyContent{}
 	for _, pusher := range pushers.Pushers {
 		// ios and not set push_channel not notify
@@ -795,7 +795,7 @@ func (sm *SyncMng) addPushRules(req *request, response *syncapitypes.Response) *
 	}
 
 	global := push.GlobalRule{}
-	rules := routing.GetUserPushRules(req.device.UserID, sm.cache, true)
+	rules := routing.GetUserPushRules(req.device.UserID, sm.cache, true, nil)
 	formatted := routing.FormatRuleResponse(rules)
 	global.Global = formatted
 	global.Device = map[string]interface{}{}
