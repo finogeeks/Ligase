@@ -136,6 +136,24 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	static.ChanStart = time.Now().UnixNano() / 1000
 	static.ChanSpend = static.ChanStart - static.Start
 	defer func() {
+		if static.ProfileCount <= 0 {
+			static.ProfileCount = 1
+		}
+		if static.MemCount < 2 {
+			static.MemCount = 2
+		}
+		if static.RuleCount <= 0 {
+			static.RuleCount = 1
+		}
+		if static.TotalSpend <= 0 {
+			static.TotalSpend = 1
+		}
+		if static.PusherCount <= 0 {
+			static.PusherCount = 1
+		}
+		if static.PushRuleCount <= 0 {
+			static.PushRuleCount = 1
+		}
 		static.TotalSpend = time.Now().UnixNano()/1000 - static.Start
 		static.Avg.AvgMemSpend = static.MemAllSpend / int64(static.MemCount)
 		static.Avg.AvgRuleSpend = static.RuleSpend / static.RuleCount
