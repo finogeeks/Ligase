@@ -133,8 +133,22 @@ func (s *PushConsumer) IsRelatesContent(redactEv gomatrixserverlib.ClientEvent) 
 }
 
 func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj) {
+	static.ChanStart = time.Now().UnixNano() / 1000
+	static.ChanSpend = static.ChanStart - static.Start
 	defer func() {
-		static.EventSpend = time.Now().UnixNano()/1000 - static.Start
+		static.TotalSpend = time.Now().UnixNano()/1000 - static.Start
+		static.Avg.AvgMemSpend = static.MemAllSpend / int64(static.MemCount)
+		static.Avg.AvgRuleSpend = static.RuleSpend / static.RuleCount
+		static.Avg.AvgUnreadSpend = static.UnreadSpend / int64(static.MemCount)
+		static.Avg.AvgProfileSpend = static.ProfileSpend / static.ProfileCount
+		static.Avg.AvgPushCacheSpend = static.PushCacheSpend / (static.PusherCount + static.PushRuleCount)
+		static.Percent.Other = fmt.Sprintf("%.2f", float64(static.NoneMemSpend)/float64(static.TotalSpend)*100) + "%"
+		static.Percent.Chan = fmt.Sprintf("%.2f", float64(static.ChanSpend)/float64(static.TotalSpend)*100) + "%"
+		cacheAvg := static.MemCache / int64(static.MemCount-1)
+		ruleAvg := static.MemRule / int64(static.MemCount-1)
+		static.Percent.RuleCache = fmt.Sprintf("%.2f", float64(cacheAvg)/float64(static.TotalSpend)*100) + "%"
+		static.Percent.RuleHandle = fmt.Sprintf("%.2f", float64(ruleAvg)/float64(static.TotalSpend)*100) + "%"
+		static.Percent.SenderCache = fmt.Sprintf("%.2f", float64(static.SenderCache)/float64(static.TotalSpend)*100) + "%"
 		log.Infof("traceid:%s PushConsumer static:%+v", static.TraceId, static)
 	}()
 	eventJson, err := json.Marshal(&input)
@@ -179,13 +193,17 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	}
 
 	memCount := len(members)
-	senderDisplayName, _ := s.cache.GetDisplayNameByUser(input.Sender)
 
+	ss := time.Now().UnixNano()/1000
+	senderDisplayName, _ := s.cache.GetDisplayNameByUser(input.Sender)
+	sp := time.Now().UnixNano()/1000 - ss
+	atomic.AddInt64(&static.SenderCache, sp)
 	//log.Errorf("notify count evaluate sender %s room %s members %d", input.Sender(), input.RoomID(), members)
 	pushContents := push.PushPubContents{
 		Contents: []*push.PushPubContent{},
 	}
 	bs := time.Now().UnixNano() / 1000
+	static.NoneMemSpend = bs - static.ChanStart - sp
 	var wg sync.WaitGroup
 	for _, member := range members {
 		wg.Add(1)
@@ -230,12 +248,7 @@ func (s *PushConsumer) preProcessPush(
 	static *push.StaticObj,
 ) {
 	bs := time.Now().UnixNano()/1000
-	defer func(bs int64){
-		spend := time.Now().UnixNano()/1000 - bs
-		atomic.AddInt64(&static.MemAllSpend,spend)
-	}(bs)
 	if *member != input.Sender {
-		ss := time.Now().UnixNano() / 1000
 		if input.Type == "m.room.redaction" {
 			if s.eventRepo.GetUserLastOffset(*member, input.RoomID) < redactOffset || redactOffset == -1 {
 				//如果一个用户读完消息以后，有新的未读，此时hs重启，其他人撤销之前已读消息，计数会不准确
@@ -245,11 +258,12 @@ func (s *PushConsumer) preProcessPush(
 				}
 			}
 		}
-
-		pushers := routing.GetPushersByName(*member, s.cache, false)
-
-		global := routing.GetUserPushRules(*member, s.cache, false)
-
+		ms := time.Now().UnixNano() / 1000
+		ss := ms
+		pushers := routing.GetPushersByName(*member, s.cache, false, static)
+		global := routing.GetUserPushRules(*member, s.cache, false, static)
+		sp := time.Now().UnixNano()/1000 - ss
+		atomic.AddInt64(&static.PushCacheSpend, sp)
 		var rules []push.PushRule
 		for _, v := range global.Override {
 			rules = append(rules, v)
@@ -266,17 +280,27 @@ func (s *PushConsumer) preProcessPush(
 		for _, v := range global.UnderRide {
 			rules = append(rules, v)
 		}
-
+		ss = time.Now().UnixNano() / 1000
 		displayName, _, _ := s.complexCache.GetProfileByUserID(*member)
-		sp := time.Now().UnixNano()/1000 - ss
-		atomic.AddInt64(&static.CacheSpend, sp)
-		atomic.AddInt64(&static.RuleCount, int64(len(rules)))
+		sp = time.Now().UnixNano()/1000 - ss
+		msp := time.Now().UnixNano()/1000 - ms
+		atomic.AddInt64(&static.ProfileSpend, sp)
+		atomic.AddInt64(&static.ProfileCount, 1)
+		atomic.AddInt64(&static.MemCache, msp)
+		rs := time.Now().UnixNano()/1000
 		s.processPush(&pushers, &rules, input, &displayName, member, memCount, eventJson, pushContents, static)
+		rsp := time.Now().UnixNano()/1000 - rs
+		atomic.AddInt64(&static.MemRule,rsp)
 	} else {
 		//当前用户在发消息，应该把该用户的未读数置为0
 		s.eventRepo.AddUserReceiptOffset(*member, input.RoomID, eventOffset)
+		ss := time.Now().UnixNano() / 1000
 		s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "reset")
+		sp := time.Now().UnixNano() / 1000 - ss
+		atomic.AddInt64(&static.UnreadSpend, sp)
 	}
+	spend := time.Now().UnixNano()/1000 - bs
+	atomic.AddInt64(&static.MemAllSpend,spend)
 }
 
 func (s *PushConsumer) getRoomMembers(
@@ -420,6 +444,7 @@ func (s *PushConsumer) processPush(
 		if !v.Enabled {
 			continue
 		}
+		atomic.AddInt64(&static.RuleCount, 1)
 		if s.checkCondition(&v.Conditions, userID, userDisplayName, memCount, eventJson) {
 			action := s.getActions(v.Actions)
 
