@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS syncapi_output_room_events (
     CONSTRAINT syncapi_output_room_events_unique UNIQUE (event_id, room_id)
 );
 CREATE INDEX IF NOT EXISTS syncapi_output_room_visibility ON syncapi_output_room_events (type,room_id,device_id);
-CREATE INDEX IF NOT EXISTS syncapi_roomid_id_desc on syncapi_output_room_events(room_id, id desc);
+CREATE INDEX IF NOT EXISTS syncapi_roomid_id_desc_ts_depth_domain ON syncapi_output_room_events(room_id, id desc, origin_server_ts, depth, domain);
 CREATE INDEX IF NOT EXISTS syncapi_load_room_history ON syncapi_output_room_events (id,room_id);
 
 -- mirror table for debug, plaintext storage
@@ -232,7 +232,7 @@ type outputRoomEventsStatements struct {
 	updateSyncMsgEventStmt        *sql.Stmt
 	selectEventRawStmt            *sql.Stmt
 	selectEventsByRoomIDStmt      *sql.Stmt
-	selectEventsByEventsStmt 	  *sql.Stmt
+	selectEventsByEventsStmt      *sql.Stmt
 }
 
 func (s *outputRoomEventsStatements) getSchema() string {
@@ -1037,7 +1037,7 @@ func (s *outputRoomEventsStatements) selectEventsByEvents(
 	var rows *sql.Rows
 	var err error
 
-	rows, err = s.selectEventsByEventsStmt.QueryContext(ctx,pq.Array(events))
+	rows, err = s.selectEventsByEventsStmt.QueryContext(ctx, pq.Array(events))
 	if err != nil {
 		return nil, nil, nil, err
 	}
