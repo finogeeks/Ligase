@@ -56,7 +56,7 @@ git remote -v
 
 The overview of develop process is as follows:
 
-![develop_process](./docs/dev/git/contribution_dev_process.png)
+<img src="docs/dev/git/contribution_dev_process.png" alt="clean git graph" width="500px">
 
 ### step 1: Branch
 
@@ -156,5 +156,5 @@ the PR on your fork
 
 # Notes for maintainers on merging PRs etc
 
-There are some notes for those with commit access to the project on how we manage git [here](./docs/dev/git/git.md).
+There are some notes for those with commit access to the project on how we manage git [here](docs/dev/git/git.md).
 
