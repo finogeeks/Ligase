@@ -56,7 +56,7 @@ git remote -v
 
 The overview of develop process is as follows:
 
-<img src="docs/dev/git/contribution_dev_process.png" alt="clean git graph" width="500px">
+<img src="docs/dev/git/contribution_dev_process.jpg" alt="develop process" width="650px">
 
 ### step 1: Branch
 
