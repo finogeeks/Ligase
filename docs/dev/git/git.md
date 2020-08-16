@@ -13,7 +13,7 @@
 * 在push代码之前，一定要`git rebase upstream/develop`
 * 在合并PR的时候，**一定要使用`squash and merge`**
 
-<img src="ligase_dev_circle.jpg" alt="ligase dev circle" width="600px">
+<img src="ligase_dev_circle.jpg" alt="ligase dev circle" width="800px">
 
 由于我们使用`git rebase`来合并commit，因此在连续提交的时候（合并PR之后继续在同一分支开发，或者若干个PR前后依赖）会很容易碰到冲突，或者造成commit message混乱。解决办法如下：
 
