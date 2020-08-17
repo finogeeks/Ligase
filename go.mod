@@ -8,6 +8,7 @@ require (
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/gchaincl/sqlhooks v1.3.0
+	github.com/go-resty/resty/v2 v2.3.0
 	github.com/gomodule/redigo/redis v0.0.0-20200429221454-e14091dffc1b
 	github.com/gorilla/mux v1.7.4
 	github.com/irfansharif/cfilter v0.1.1

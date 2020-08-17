@@ -315,6 +315,8 @@ type PushPubContents struct {
 	RoomAlias         string                         `json:"roomAlias,omitempty"`
 	Contents          []*PushPubContent              `json:"contents,omitempty"`
 	CreateContent     *interface{}                   `json:"create_content"`
+	Slot 			  uint32						 `json:"slot"`
+	TraceId 		  string						 `json:"trace_id"`
 }
 
 type PushPubContent struct {
