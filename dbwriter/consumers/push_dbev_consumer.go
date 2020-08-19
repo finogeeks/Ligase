@@ -205,7 +205,7 @@ func (s *PushDBEVConsumer) onPusherDeleteByKeyOnly(
 func (s *PushDBEVConsumer) onPusherInsert(
 	ctx context.Context, msg *dbtypes.PusherInsert,
 ) error {
-	return s.db.OnAddPusher(ctx, msg.UserID, msg.ProfileTag, msg.Kind, msg.AppID, msg.AppDisplayName, msg.DeviceDisplayName, msg.PushKey, msg.Lang, msg.Data, msg.DeviceID)
+	return s.db.OnAddPusher(ctx, msg.UserID, msg.ProfileTag, msg.Kind, msg.AppID, msg.AppDisplayName, msg.DeviceDisplayName, msg.PushKey, msg.PushKeyTs, msg.Lang, msg.Data, msg.DeviceID)
 }
 
 func (s *PushDBEVConsumer) onPushRuleInsert(

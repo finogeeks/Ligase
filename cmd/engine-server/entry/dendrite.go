@@ -15,12 +15,14 @@
 package entry
 
 import (
+	"context"
 	"github.com/finogeeks/ligase/bgmng"
 	"github.com/finogeeks/ligase/clientapi"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/filter"
+	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/skunkworks/log"
 
 	// "github.com/finogeeks/ligase/common/keydb"
@@ -127,8 +129,10 @@ func StartPushAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
 	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
 	rpcClient.Start(true)
-
-	pushapi.SetupPushAPIComponent(base, cache, rpcClient)
+	pushDB := base.CreatePushApiDB()
+	pushDataRepo := repos.NewPushDataRepo(pushDB,base.Cfg)
+	pushDataRepo.LoadHistory(context.TODO())
+	pushapi.SetupPushAPIComponent(base, cache, rpcClient, pushDataRepo)
 }
 
 func StartRoomServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {

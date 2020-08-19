@@ -17,6 +17,7 @@ package pushapi
 import (
 	"context"
 	"database/sql"
+	"github.com/finogeeks/ligase/model/pushapitypes"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -70,6 +71,36 @@ func (s *pushRulesEnableStatements) prepare(d *DataBase) (err error) {
 		return
 	}
 	return
+}
+
+func (s *pushRulesEnableStatements) loadPushRuleEnable(ctx context.Context) ([]pushapitypes.PushRuleEnable, error){
+	offset := 0
+	limit := 1000
+	result :=[]pushapitypes.PushRuleEnable{}
+	for {
+		ruleEnables := []pushapitypes.PushRuleEnable{}
+		rows, err := s.recoverPushRuleEnableStmt.QueryContext(ctx, limit, offset)
+		if err != nil {
+			log.Errorf("load push rule enable exec recoverPushRuleEnableStmt err:%v", err)
+			return nil, err
+		}
+		for rows.Next() {
+			var pushRuleEnable pushapitypes.PushRuleEnable
+			if err := rows.Scan(&pushRuleEnable.UserID, &pushRuleEnable.RuleID, &pushRuleEnable.Enabled); err != nil {
+				log.Errorf("load push rule enable scan rows error:%v", err)
+				return nil, err
+			}else{
+				ruleEnables = append(result,pushRuleEnable)
+			}
+		}
+		result = append(result, ruleEnables...)
+		if len(ruleEnables) < limit {
+			break
+		} else {
+			offset = offset + limit
+		}
+	}
+	return result, nil
 }
 
 func (s *pushRulesEnableStatements) recoverPushRuleEnable() error {

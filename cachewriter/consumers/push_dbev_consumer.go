@@ -20,10 +20,9 @@ package consumers
 import (
 	"fmt"
 	"github.com/finogeeks/ligase/common/config"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/gomodule/redigo/redis"
-	"time"
 )
 
 func init() {
@@ -37,12 +36,15 @@ type PushDBEvCacheConsumer struct {
 }
 
 func (s *PushDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
-	var res error
+
 	for output := range msgChan {
-		start := time.Now().UnixNano() / 1000000
+		//start := time.Now().UnixNano() / 1000000
 
 		key := output.Key
-		data := output.PushDBEvents
+		//data := output.PushDBEvents
+		log.Infof("update cache type:%d cancel", key)
+		//cache data ignore, has migrate push data to mem
+		/*
 		switch key {
 		case dbtypes.PusherDeleteKey:
 			res = s.onPusherDelete(data.PusherDelete)
@@ -68,7 +70,7 @@ func (s *PushDBEvCacheConsumer) startWorker(msgChan chan *dbtypes.DBEvent) {
 		}
 
 		now := time.Now().UnixNano() / 1000000
-		log.Infof("PushDBEvCacheConsumer process %s takes %d", dbtypes.PushDBEventKeyToStr(key), now-start)
+		log.Infof("PushDBEvCacheConsumer process %s takes %d", dbtypes.PushDBEventKeyToStr(key), now-start)*/
 	}
 }
 

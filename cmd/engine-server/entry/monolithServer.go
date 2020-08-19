@@ -33,7 +33,6 @@ import (
 	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/proxy"
 	"github.com/finogeeks/ligase/publicroomsapi"
-	"github.com/finogeeks/ligase/pushapi"
 	"github.com/finogeeks/ligase/pushsender"
 	"github.com/finogeeks/ligase/roomserver"
 	"github.com/finogeeks/ligase/storage/implements/keydb"
@@ -115,7 +114,6 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	pushsender.SetupPushSenderComponent(base, rpcClient)
 
 	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, federation, idg)
-	pushapi.SetupPushAPIComponent(base, cache, rpcClient)
 
 	settings := common.NewSettings(cache)
 	settingConsumer := common.NewSettingConsumer(

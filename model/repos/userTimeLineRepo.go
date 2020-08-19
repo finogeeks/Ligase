@@ -312,7 +312,7 @@ func (tl *UserTimeLineRepo) GetJoinRooms(user string) (*sync.Map, error) {
 		loadrooms := []string{}
 		loadEvents := []string{}
 		for idx, id := range rooms {
-			res.Store(id, -1)
+			res.Store(id, int64(-1))
 			if tl.GetRoomOffset(id,user,"join") == -1 {
 				loadrooms = append(loadrooms, id)
 			}

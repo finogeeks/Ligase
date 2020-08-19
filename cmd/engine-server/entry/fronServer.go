@@ -29,7 +29,6 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/encryptoapi"
 	"github.com/finogeeks/ligase/publicroomsapi"
-	"github.com/finogeeks/ligase/pushapi"
 	"github.com/finogeeks/ligase/roomserver"
 	"github.com/finogeeks/ligase/storage/implements/keydb"
 
@@ -104,8 +103,6 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	if err := consumer.Start(); err != nil {
 		log.Panicf("failed to start settings consumer err:%v", err)
 	}
-
-	pushapi.SetupPushAPIComponent(base, cache, rpcClient)
 	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, federation, idg)
 	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, tokenFilter, idg, settings, feddomains, complexCache)
 	publicRoomsDB := base.CreatePublicRoomApiDB()

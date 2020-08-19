@@ -122,7 +122,6 @@ var BaseRuleIds = func() map[string]string {
 		"global/override/.m.rule.invite_for_me":         "override",
 		"global/override/.m.rule.member_event":          "override",
 		"global/override/.m.rule.signals":               "override",
-		"global/override/.m.rule.contains_display_name": "override",
 		"global/content/.m.rule.contains_user_name":     "content",
 		"global/underride/.m.rule.call":                 "underride",
 		"global/underride/.m.rule.room_one_to_one":      "underride",
@@ -208,17 +207,6 @@ var BaseOverrideRules = func() []pushapitypes.PushRule {
 				},
 				{
 					Kind: "signal",
-				},
-			},
-			Actions: GetAction2(),
-		},
-		{
-			RuleId:  "global/override/.m.rule.contains_display_name",
-			Default: true,
-			Enabled: false,
-			Conditions: []pushapitypes.PushCondition{
-				{
-					Kind: "contains_display_name",
 				},
 			},
 			Actions: GetAction2(),
