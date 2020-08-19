@@ -17,10 +17,11 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -36,11 +37,9 @@ CREATE TABLE IF NOT EXISTS syncapi_receipt_data_stream (
     room_id TEXT NOT NULL,
 	content TEXT NOT NULL,
  
-    CONSTRAINT syncapi_receipt_data_stream_unique UNIQUE (id, room_id)
+    CONSTRAINT syncapi_receipt_data_stream_unique UNIQUE (room_id, id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS syncapi_receipt_data_stream_id_idx ON syncapi_receipt_data_stream(id);
-CREATE INDEX  IF NOT EXISTS syncapi_load_room_receipt_data_stream ON syncapi_receipt_data_stream (room_id);
 `
 
 const insertReceiptDataStreamSQL = "" +

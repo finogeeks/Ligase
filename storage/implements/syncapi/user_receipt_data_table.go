@@ -17,9 +17,10 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const userReceiptDataSchema = `
@@ -33,8 +34,6 @@ CREATE TABLE IF NOT EXISTS syncapi_user_receipt_data (
  
     CONSTRAINT syncapi_user_receipt_data_unique UNIQUE (user_id, room_id)
 );
-
-CREATE INDEX IF NOT EXISTS syncapi_user_receipt_data_idx ON syncapi_user_receipt_data(user_id, room_id);
 `
 
 const insertUserReceiptDataSQL = "" +

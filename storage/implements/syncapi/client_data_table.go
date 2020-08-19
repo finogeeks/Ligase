@@ -17,10 +17,11 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const clientDataStreamSchema = `
@@ -43,8 +44,6 @@ CREATE TABLE IF NOT EXISTS syncapi_client_data_stream (
     CONSTRAINT syncapi_client_data_stream_unique UNIQUE (user_id, room_id, data_type, stream_type)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS syncapi_client_data_stream_id_idx ON syncapi_client_data_stream(id);
-CREATE INDEX IF NOT EXISTS syncapi_client_data_user_id_idx ON syncapi_client_data_stream(user_id);
 `
 
 const insertClientDataStreamSQL = "" +
