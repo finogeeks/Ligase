@@ -404,7 +404,7 @@ func PutPushRuleActions(
 			PriorityClass: pushRule.PriorityClass,
 			Priority: pushRule.Priority,
 			Conditions: pushRule.Conditions,
-			Actions: pushRule.Actions,
+			Actions: actionsJSON,
 		}
 		if err := pushDataRepo.AddPushRule(ctx, pushRuleData, true); err != nil {
 			return httputil.LogThenErrorCtx(ctx, err)

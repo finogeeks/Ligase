@@ -65,6 +65,12 @@ func (pd *PushDataRepo) AddPusher(ctx context.Context, pusher pushapitypes.Pushe
 		log.Warnf("add pusher user is empty, pusher:%+v", pusher)
 		return nil
 	}
+	dataStr, err := json.Marshal(pusher.Data)
+	if err != nil {
+		log.Errorf("AddPusher push data:%+v json.Marshal:%v", pusher, err)
+		return err
+	}
+	pusher.Data = string(dataStr)
 	if v, ok := pd.pusherMap.Load(pusher.UserName); ok {
 		userPusher := v.(*sync.Map)
 		userPusher.Store(fmt.Sprintf("%s%s%s", pusher.AppId, pd.deLimiter, pusher.PushKey), pusher)
@@ -74,11 +80,6 @@ func (pd *PushDataRepo) AddPusher(ctx context.Context, pusher pushapitypes.Pushe
 		pd.pusherMap.Store(pusher.UserName, userPusher)
 	}
 	if writeDB {
-		dataStr, err := json.Marshal(pusher.Data)
-		if err != nil {
-			log.Errorf("AddPusher push data:%+v json.Marshal:%v", pusher, err)
-			return err
-		}
 		return pd.persist.AddPusher(ctx, pusher.UserName, pusher.ProfileTag, pusher.Kind, pusher.AppId, pusher.AppDisplayName, pusher.DeviceDisplayName, pusher.PushKey, pusher.PushKeyTs, pusher.Lang, dataStr, pusher.DeviceID)
 	}else{
 		return nil
