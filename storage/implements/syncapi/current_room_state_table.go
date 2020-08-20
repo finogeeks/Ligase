@@ -23,8 +23,8 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/encryption"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/lib/pq"
 )
 
@@ -52,9 +52,8 @@ CREATE TABLE IF NOT EXISTS syncapi_current_room_state (
 );
 -- for event deletion
 CREATE UNIQUE INDEX IF NOT EXISTS syncapi_rs_event_id_idx ON syncapi_current_room_state(event_id);
-CREATE INDEX IF NOT EXISTS syncapi_current_rooom_id_idx ON syncapi_current_room_state(room_id);
 -- for querying membership states of users
-CREATE INDEX IF NOT EXISTS syncapi_membership_idx ON syncapi_current_room_state(type, state_key, membership) WHERE membership IS NOT NULL AND membership != 'leave';
+CREATE INDEX IF NOT EXISTS syncapi_membership_idx ON syncapi_current_room_state(state_key, type, membership);
 `
 
 const upsertRoomStateSQL = "" +

@@ -17,11 +17,12 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 // we treat send to device as abbrev as STD in the context below.
@@ -39,8 +40,7 @@ CREATE TABLE IF NOT EXISTS syncapi_send_to_device (
 CONSTRAINT syncapi_send_to_device_unique UNIQUE (id, target_device_id, target_user_id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS syncapi_send_to_device_stream_id_idx ON syncapi_send_to_device(id);
-CREATE INDEX IF NOT EXISTS syncapi_send_to_device_device_id_idx ON syncapi_send_to_device(target_device_id, target_user_id);
+CREATE INDEX IF NOT EXISTS syncapi_send_to_device_user_id_device_id_id_desc_idx ON syncapi_send_to_device(target_user_id,target_device_id, id desc nulls last);
 `
 
 const insertSTDSQL = "" +
