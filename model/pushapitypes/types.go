@@ -113,6 +113,31 @@ type PushRuleData struct {
 	Actions       []byte
 }
 
+type PushRuleDataArray []PushRuleData
+
+func (list PushRuleDataArray) Len() int {
+	return len(list)
+}
+
+func (list PushRuleDataArray) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+
+func (list PushRuleDataArray) Less(i, j int) bool {
+	ci := list[i].PriorityClass
+	cj := list[j].PriorityClass
+	pi := list[i].Priority
+	pj := list[j].Priority
+
+	if ci > cj {
+		return true
+	} else if ci < cj {
+		return false
+	} else {
+		return pi > pj
+	}
+}
+
 type PushRule struct {
 	Actions    []interface{}   `json:"actions,omitempty"`
 	Default    bool            `json:"default"`
@@ -186,6 +211,12 @@ type PushCondition struct {
 	Key     string `json:"key,omitempty"`
 	Pattern string `json:"pattern,omitempty"`
 	Is      string `json:"is,omitempty"`
+}
+
+type PushRuleEnable struct {
+	UserID  string `json:"user_id"`
+	RuleID  string `json:"rule_id"`
+	Enabled int    `json:"enabled"`
 }
 
 type EnabledType struct {
@@ -374,7 +405,7 @@ func (p *PushersRes) Decode(input []byte) error {
 
 type StaticPercent struct {
 	Chan 			string 		`json:"chan"`
-	Other    		string 		`json:"other"`
+	Rpc	    		string 		`json:"rpc"`
 	RuleHandle 		string 		`json:"rule_handle"`
 	RuleCache 		string   	`json:"rule_cache"`
 	SenderCache     string      `json:"send_cache"`
@@ -414,4 +445,36 @@ type StaticObj struct {
 	MemRule   		int64   `json:"mem_rule"`
 	Avg 			StaticAvg `json:"avg"`
 	Percent			StaticPercent `json:"percent"`
+}
+
+//load push relate data
+type PushDataRequest struct {
+	Payload 	jsoniter.RawMessage		`json:"payload"`
+	ReqType 	string 					`json:"reqType"`
+	Slot 		uint32 					`json:"slot"`
+	Reply       string
+}
+
+type ReqPushUser struct {
+	UserID 		string 		`json:"user_id"`
+	DeviceID 	string 		`json:"device_id"`
+}
+
+type ReqPushUsers struct {
+	Users 		[]string 	`json:"users"`
+	Slot 		uint32 		`json:"slot"`
+}
+
+type RespPushData struct {
+	Pushers 	Pushers  	`json:"pushers"`
+	Rules		Rules 		`json:"rules"`
+}
+
+type RespPushUsersData struct {
+	Data 		map[string]RespPushData `json:"data"`
+}
+
+type RpcResponse struct {
+	Error   string
+	Payload jsoniter.RawMessage
 }

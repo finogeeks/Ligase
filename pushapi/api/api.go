@@ -16,6 +16,8 @@ package api
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/common/jsonerror"
+	"github.com/finogeeks/ligase/model/repos"
 	"net/http"
 
 	"github.com/finogeeks/ligase/cache"
@@ -37,10 +39,10 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type InternalMsgConsumer struct {
 	apiconsumer.APIConsumer
-
 	pushDB     model.PushAPIDatabase
 	redisCache service.Cache
 	localcache *cache.LocalCacheRepo
+	pushDataRepo *repos.PushDataRepo
 }
 
 func NewInternalMsgConsumer(
@@ -48,6 +50,7 @@ func NewInternalMsgConsumer(
 	pushDB model.PushAPIDatabase,
 	redisCache service.Cache,
 	rpcCli *common.RpcClient,
+	pushDataRepo *repos.PushDataRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
@@ -57,6 +60,7 @@ func NewInternalMsgConsumer(
 
 	c.localcache = new(cache.LocalCacheRepo)
 	c.localcache.Start(1, cfg.Cache.DurationDefault)
+	c.pushDataRepo = pushDataRepo
 	return c
 }
 
@@ -106,8 +110,11 @@ func (ReqGetPushers) NewResponse(code int) core.Coder {
 }
 func (ReqGetPushers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	return routing.GetPushers(
-		device.UserID, c.redisCache,
+		device.UserID, c.pushDataRepo,
 	)
 }
 
@@ -138,9 +145,12 @@ func (ReqPostSetPushers) NewResponse(code int) core.Coder {
 }
 func (ReqPostSetPushers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.PostSetPushersRequest)
 	return routing.PutPusher(
-		context.Background(), req, c.pushDB, device,
+		context.Background(), req, c.pushDB, c.pushDataRepo, device,
 	)
 }
 
@@ -166,8 +176,11 @@ func (ReqGetPushRules) NewResponse(code int) core.Coder {
 }
 func (ReqGetPushRules) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	return routing.GetPushRules(
-		device, c.redisCache,
+		device, c.pushDataRepo,
 	)
 }
 
@@ -193,8 +206,11 @@ func (ReqGetPushRulesGlobal) NewResponse(code int) core.Coder {
 }
 func (ReqGetPushRulesGlobal) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	return routing.GetPushRulesGlobal(
-		device, c.redisCache,
+		device, c.pushDataRepo,
 	)
 }
 
@@ -226,9 +242,12 @@ func (ReqGetPushRuleByID) NewResponse(code int) core.Coder {
 }
 func (ReqGetPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.GetPushrulesByIDRequest)
 	return routing.GetPushRule(
-		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.pushDataRepo,
 	)
 }
 
@@ -266,9 +285,12 @@ func (ReqPutPushRuleByID) NewResponse(code int) core.Coder {
 }
 func (ReqPutPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.PutPushrulesByIDRequest)
 	return routing.PutPushRule(
-		context.Background(), req, c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), req, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.pushDataRepo,
 	)
 }
 
@@ -304,9 +326,12 @@ func (ReqDelPushRuleByID) NewResponse(code int) core.Coder {
 }
 func (ReqDelPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.DelPushrulesByIDRequest)
 	return routing.DeletePushRule(
-		context.Background(), c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.pushDataRepo,
 	)
 }
 
@@ -340,9 +365,12 @@ func (ReqGetPushRulesEnabledByID) NewResponse(code int) core.Coder {
 }
 func (ReqGetPushRulesEnabledByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.GetPushrulesEnabledByIDRequest)
 	return routing.GetPushRuleEnabled(
-		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.pushDataRepo,
 	)
 }
 
@@ -380,10 +408,13 @@ func (ReqPutPushRulesEnabledByID) NewResponse(code int) core.Coder {
 }
 func (ReqPutPushRulesEnabledByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.PutPushrulesEnabledByIDRequest)
 	return routing.PutPushRuleEnabled(
-		context.Background(), req, c.pushDB, device, c.Cfg,
-		req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), req, device, c.Cfg,
+		req.Scope, req.Kind, req.RuleID, c.pushDataRepo,
 	)
 }
 
@@ -417,9 +448,12 @@ func (ReqGetPushRuleActionsByID) NewResponse(code int) core.Coder {
 }
 func (ReqGetPushRuleActionsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.GetPushrulesActionsByIDRequest)
 	return routing.GetPushRuleActions(
-		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), device, req.Scope, req.Kind, req.RuleID, c.pushDataRepo,
 	)
 }
 
@@ -457,9 +491,12 @@ func (ReqPutPushRulesActionsByID) NewResponse(code int) core.Coder {
 }
 func (ReqPutPushRulesActionsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.PutPushrulesActionsByIDRequest)
 	return routing.PutPushRuleActions(
-		context.Background(), req, c.pushDB, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.redisCache,
+		context.Background(), req, device, c.Cfg, req.Scope, req.Kind, req.RuleID, c.pushDataRepo,
 	)
 }
 
@@ -490,6 +527,9 @@ func (ReqPostUsersPushKey) NewResponse(code int) core.Coder {
 }
 func (ReqPostUsersPushKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 	req := msg.(*external.PostUsersPushKeyRequest)
 	return routing.GetUsersPushers(
 		req, c.redisCache,

@@ -17,6 +17,7 @@ package pushapi
 import (
 	"context"
 	"database/sql"
+	"github.com/finogeeks/ligase/model/pushapitypes"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
@@ -145,15 +146,15 @@ func (d *DataBase) OnAddPushRule(
 }
 
 func (d *DataBase) AddPusher(
-	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang string, data []byte, deviceID string,
+	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64, lang string, data []byte, deviceID string,
 ) error {
-	return d.pushers.insertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang, data, deviceID)
+	return d.pushers.insertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, pushKeyTs, lang, data, deviceID)
 }
 
 func (d *DataBase) OnAddPusher(
-	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang string, data []byte, deviceID string,
+	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64,  lang string, data []byte, deviceID string,
 ) error {
-	return d.pushers.onInsertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang, data, deviceID)
+	return d.pushers.onInsertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, pushKeyTs, lang, data, deviceID)
 }
 
 func (d *DataBase) DeleteUserPushers(
@@ -202,4 +203,22 @@ func (d *DataBase) GetPushRulesEnableTotal(
 	ctx context.Context,
 ) (int, error) {
 	return d.pushRulesEnable.selectPushRulesEnableTotal(ctx)
+}
+
+func (d *DataBase) LoadPusher(
+	ctx context.Context,
+)([]pushapitypes.Pusher, error){
+	return d.pushers.loadPusher(ctx)
+}
+
+func (d *DataBase) LoadPushRule(
+	ctx context.Context,
+)([]pushapitypes.PushRuleData, error){
+	return d.pushRules.loadPushRule(ctx)
+}
+
+func (d *DataBase) LoadPushRuleEnable(
+	ctx context.Context,
+)([]pushapitypes.PushRuleEnable, error){
+	return d.pushRulesEnable.loadPushRuleEnable(ctx)
 }

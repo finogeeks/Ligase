@@ -17,6 +17,7 @@ package consumers
 import (
 	"fmt"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
@@ -47,17 +48,22 @@ type PushConsumer struct {
 	msgChan      []chan *PushEvent
 	chanSize     uint32
 	slotSize     uint32
+	pushDataRepo *repos.PushDataRepo
+	cfg 		 *config.Dendrite
 }
 
 type PushEvent struct {
 	Ev *gomatrixserverlib.ClientEvent
 	Static *push.StaticObj
+	result chan types.TimeLineItem
 }
 
 func NewPushConsumer(
 	cache service.Cache,
 	client *common.RpcClient,
 	complexCache *common.ComplexCache,
+	pushDataRepo *repos.PushDataRepo,
+	cfg *config.Dendrite,
 ) *PushConsumer {
 	s := &PushConsumer{
 		cache:        cache,
@@ -65,6 +71,8 @@ func NewPushConsumer(
 		complexCache: complexCache,
 		chanSize:     20480,
 		slotSize:     64,
+		pushDataRepo: pushDataRepo,
+		cfg: 		 cfg,
 	}
 	s.pubTopic = push.PushTopicDef
 
@@ -81,15 +89,16 @@ func (s *PushConsumer) Start() {
 
 func (s *PushConsumer) startWorker(msgChan chan *PushEvent) {
 	for data := range msgChan {
-		s.OnEvent(data.Ev, data.Ev.EventOffset,data.Static)
+		s.OnEvent(data.Ev, data.Ev.EventOffset,data.Static, data.result)
 	}
 }
 
-func (s *PushConsumer) DispthEvent(ev *gomatrixserverlib.ClientEvent, static *push.StaticObj) {
+func (s *PushConsumer) DispthEvent(ev *gomatrixserverlib.ClientEvent, static *push.StaticObj, result chan types.TimeLineItem) {
 	idx := common.CalcStringHashCode(ev.RoomID) % s.slotSize
 	s.msgChan[idx] <- &PushEvent{
 		Ev: ev,
 		Static: static,
+		result: result,
 	}
 }
 
@@ -132,49 +141,57 @@ func (s *PushConsumer) IsRelatesContent(redactEv gomatrixserverlib.ClientEvent) 
 	}
 }
 
-func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj) {
+func (s *PushConsumer) PrintStaticData(static *push.StaticObj){
+	if static.ProfileCount <= 0 {
+		static.ProfileCount = 1
+	}
+	if static.MemCount < 2 {
+		static.MemCount = 2
+	}
+	if static.RuleCount <= 0 {
+		static.RuleCount = 1
+	}
+	if static.TotalSpend <= 0 {
+		static.TotalSpend = 1
+	}
+	if static.PusherCount <= 0 {
+		static.PusherCount = 1
+	}
+	if static.PushRuleCount <= 0 {
+		static.PushRuleCount = 1
+	}
+	static.TotalSpend = time.Now().UnixNano()/1000 - static.Start
+	static.Avg.AvgMemSpend = static.MemAllSpend / int64(static.MemCount)
+	static.Avg.AvgRuleSpend = static.RuleSpend / static.RuleCount
+	static.Avg.AvgUnreadSpend = static.UnreadSpend / int64(static.MemCount)
+	static.Avg.AvgProfileSpend = static.ProfileSpend / static.ProfileCount
+	static.Avg.AvgPushCacheSpend = static.PushCacheSpend / (static.PusherCount + static.PushRuleCount)
+	static.Percent.Rpc = fmt.Sprintf("%.2f", float64(static.NoneMemSpend)/float64(static.TotalSpend)*100) + "%"
+	static.Percent.Chan = fmt.Sprintf("%.2f", float64(static.ChanSpend)/float64(static.TotalSpend)*100) + "%"
+	cacheAvg := static.MemCache / int64(static.MemCount-1)
+	ruleAvg := static.MemRule / int64(static.MemCount-1)
+	static.Percent.RuleCache = fmt.Sprintf("%.2f", float64(cacheAvg)/float64(static.TotalSpend)*100) + "%"
+	static.Percent.RuleHandle = fmt.Sprintf("%.2f", float64(ruleAvg)/float64(static.TotalSpend)*100) + "%"
+	static.Percent.SenderCache = fmt.Sprintf("%.2f", float64(static.SenderCache)/float64(static.TotalSpend)*100) + "%"
+	log.Infof("traceid:%s PushConsumer static:%+v", static.TraceId, static)
+}
+
+func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj, result chan types.TimeLineItem) {
 	static.ChanStart = time.Now().UnixNano() / 1000
 	static.ChanSpend = static.ChanStart - static.Start
 	defer func() {
-		if static.ProfileCount <= 0 {
-			static.ProfileCount = 1
+		result <- types.TimeLineItem{
+			TraceId: static.TraceId,
+			Start: static.Start,
+			Ev: input,
 		}
-		if static.MemCount < 2 {
-			static.MemCount = 2
-		}
-		if static.RuleCount <= 0 {
-			static.RuleCount = 1
-		}
-		if static.TotalSpend <= 0 {
-			static.TotalSpend = 1
-		}
-		if static.PusherCount <= 0 {
-			static.PusherCount = 1
-		}
-		if static.PushRuleCount <= 0 {
-			static.PushRuleCount = 1
-		}
-		static.TotalSpend = time.Now().UnixNano()/1000 - static.Start
-		static.Avg.AvgMemSpend = static.MemAllSpend / int64(static.MemCount)
-		static.Avg.AvgRuleSpend = static.RuleSpend / static.RuleCount
-		static.Avg.AvgUnreadSpend = static.UnreadSpend / int64(static.MemCount)
-		static.Avg.AvgProfileSpend = static.ProfileSpend / static.ProfileCount
-		static.Avg.AvgPushCacheSpend = static.PushCacheSpend / (static.PusherCount + static.PushRuleCount)
-		static.Percent.Other = fmt.Sprintf("%.2f", float64(static.NoneMemSpend)/float64(static.TotalSpend)*100) + "%"
-		static.Percent.Chan = fmt.Sprintf("%.2f", float64(static.ChanSpend)/float64(static.TotalSpend)*100) + "%"
-		cacheAvg := static.MemCache / int64(static.MemCount-1)
-		ruleAvg := static.MemRule / int64(static.MemCount-1)
-		static.Percent.RuleCache = fmt.Sprintf("%.2f", float64(cacheAvg)/float64(static.TotalSpend)*100) + "%"
-		static.Percent.RuleHandle = fmt.Sprintf("%.2f", float64(ruleAvg)/float64(static.TotalSpend)*100) + "%"
-		static.Percent.SenderCache = fmt.Sprintf("%.2f", float64(static.SenderCache)/float64(static.TotalSpend)*100) + "%"
-		log.Infof("traceid:%s PushConsumer static:%+v", static.TraceId, static)
+		s.PrintStaticData(static)
 	}()
 	eventJson, err := json.Marshal(&input)
 	if err != nil {
 		log.Errorf("PushConsumer processEvent marshal error %d, message %s", err, input.EventID)
 		return
 	}
-
 	redactOffset := int64(-1)
 	isRelatesContent := false
 	var members []string
@@ -212,23 +229,20 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 
 	memCount := len(members)
 
-	ss := time.Now().UnixNano()/1000
-	senderDisplayName, _ := s.cache.GetDisplayNameByUser(input.Sender)
-	sp := time.Now().UnixNano()/1000 - ss
-	atomic.AddInt64(&static.SenderCache, sp)
-	//log.Errorf("notify count evaluate sender %s room %s members %d", input.Sender(), input.RoomID(), members)
 	pushContents := push.PushPubContents{
 		Contents: []*push.PushPubContent{},
 	}
+	//get all user push data
+	rs := time.Now().UnixNano()/1000
+	pushData := s.getUserPushData(input.Sender, members)
 	bs := time.Now().UnixNano() / 1000
-	static.NoneMemSpend = bs - static.ChanStart - sp
+	static.NoneMemSpend = bs - rs
 	var wg sync.WaitGroup
 	for _, member := range members {
 		wg.Add(1)
 		go func(
 			member string,
 			input *gomatrixserverlib.ClientEvent,
-			senderDisplayName string,
 			memCount int,
 			eventOffset,
 			redactOffset int64,
@@ -236,10 +250,11 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 			pushContents *push.PushPubContents,
 			isRelatesContent bool,
 			static *push.StaticObj,
+			pushData map[string]push.RespPushData,
 		) {
-			s.preProcessPush(&member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent, static)
+			s.preProcessPush(&member, input, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent, static, pushData)
 			wg.Done()
-		}(member, input, senderDisplayName, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent, static)
+		}(member, input, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent, static, pushData)
 	}
 	wg.Wait()
 	static.MemCount = len(members)
@@ -248,15 +263,126 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	if s.rpcClient != nil && len(pushContents.Contents) > 0 {
 		pushContents.Input = input
 		pushContents.RoomAlias = ""
-		pushContents.SenderDisplayName = senderDisplayName
 		go s.pubPushContents(&pushContents, &eventJson)
+	}
+}
+
+func (s *PushConsumer) getUserPushData(sender string, members []string) map[string]push.RespPushData {
+	slotMembers := make(map[uint32]*push.ReqPushUsers)
+	for _, member := range members{
+		if member == sender {
+			continue
+		}
+		slot := common.CalcStringHashCode(member) % s.cfg.MultiInstance.Total
+		if _, ok := slotMembers[slot]; ok {
+			slotMembers[slot].Users = append(slotMembers[slot].Users, member)
+		}else{
+			slotMembers[slot] = &push.ReqPushUsers{
+				Users: []string{member},
+				Slot: slot,
+			}
+		}
+	}
+	collectionResults := make(chan *push.RespPushUsersData, s.cfg.MultiInstance.Total)
+	var wg sync.WaitGroup
+	for _, req := range slotMembers {
+		if len(req.Users) <= 0 {
+			continue
+		}
+		wg.Add(1)
+		go s.rpcGetUserPushData(&wg,req,collectionResults)
+	}
+	go func(wg *sync.WaitGroup) {
+		wg.Wait()
+		close(collectionResults)
+	}(&wg)
+	result := make(map[string]push.RespPushData)
+	for r := range collectionResults {
+		for k, v := range r.Data{
+			result[k] = v
+		}
+	}
+	return result
+}
+
+func (s *PushConsumer) rpcGetUserPushData(wg *sync.WaitGroup, req *push.ReqPushUsers, result chan *push.RespPushUsersData){
+	defer wg.Done()
+	if req.Slot == s.cfg.MultiInstance.Instance {
+		result <- s.getUserPushDataFromLocal(req)
+	}else{
+		result <- s.getUserPushDataFromRemote(req)
+	}
+}
+
+func (s *PushConsumer) getUserPushDataFromLocal(req *push.ReqPushUsers) *push.RespPushUsersData{
+	data := &push.RespPushUsersData{
+		Data: make(map[string]push.RespPushData),
+	}
+	for _, user := range req.Users {
+		resp := push.RespPushData{
+			Pushers: routing.GetPushersByName(user, s.pushDataRepo, false, nil),
+			Rules: routing.GetUserPushRules(user, s.pushDataRepo, false, nil),
+		}
+		data.Data[user] = resp
+	}
+	return data
+}
+
+func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.RespPushUsersData{
+	payload, err := json.Marshal(req)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Marshal payload:%+v err:%v", req, err)
+		return nil
+	}
+	request := push.PushDataRequest{
+		Payload: payload,
+		ReqType: types.Get_PUSHDATA_BATCH,
+		Slot: 	 req.Slot,
+	}
+	bt, err := json.Marshal(request)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Marshal request:%+v err:%v", req, err)
+		return nil
+	}
+	data, err := s.rpcClient.Request(types.PushDataTopicDef, bt, 15000)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote rpc req:%+v err:%v", req, err)
+		return nil
+	}
+	resp := push.RpcResponse{}
+	err = json.Unmarshal(data, &resp)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
+		return nil
+	}
+	result := push.RespPushUsersData{}
+	err = json.Unmarshal(resp.Payload,&result)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
+		return nil
+	}
+	return &result
+}
+
+func (s *PushConsumer) getUserPusher(user string, pushData map[string]push.RespPushData) push.Pushers {
+	if v, ok := pushData[user]; ok {
+		return v.Pushers
+	}else{
+		return push.Pushers{Pushers:[]push.Pusher{}}
+	}
+}
+
+func (s *PushConsumer) getUserPushRule(user string, pushData map[string]push.RespPushData) push.Rules {
+	if v, ok := pushData[user]; ok {
+		return v.Rules
+	}else{
+		return push.Rules{}
 	}
 }
 
 func (s *PushConsumer) preProcessPush(
 	member *string,
 	input *gomatrixserverlib.ClientEvent,
-	senderDisplayName *string,
 	memCount int,
 	eventOffset,
 	redactOffset int64,
@@ -264,6 +390,7 @@ func (s *PushConsumer) preProcessPush(
 	pushContents *push.PushPubContents,
 	isRelatesContent bool,
 	static *push.StaticObj,
+	pushData map[string]push.RespPushData,
 ) {
 	bs := time.Now().UnixNano()/1000
 	if *member != input.Sender {
@@ -277,10 +404,9 @@ func (s *PushConsumer) preProcessPush(
 			}
 		}
 		ms := time.Now().UnixNano() / 1000
-		ss := ms
-		pushers := routing.GetPushersByName(*member, s.cache, false, static)
-		global := routing.GetUserPushRules(*member, s.cache, false, static)
-		sp := time.Now().UnixNano()/1000 - ss
+		pushers := s.getUserPusher(*member, pushData)
+		global := s.getUserPushRule(*member, pushData)
+		sp := time.Now().UnixNano()/1000 - ms
 		atomic.AddInt64(&static.PushCacheSpend, sp)
 		var rules []push.PushRule
 		for _, v := range global.Override {
@@ -298,15 +424,8 @@ func (s *PushConsumer) preProcessPush(
 		for _, v := range global.UnderRide {
 			rules = append(rules, v)
 		}
-		ss = time.Now().UnixNano() / 1000
-		displayName, _, _ := s.complexCache.GetProfileByUserID(*member)
-		sp = time.Now().UnixNano()/1000 - ss
-		msp := time.Now().UnixNano()/1000 - ms
-		atomic.AddInt64(&static.ProfileSpend, sp)
-		atomic.AddInt64(&static.ProfileCount, 1)
-		atomic.AddInt64(&static.MemCache, msp)
 		rs := time.Now().UnixNano()/1000
-		s.processPush(&pushers, &rules, input, &displayName, member, memCount, eventJson, pushContents, static)
+		s.processPush(&pushers, &rules, input, member, memCount, eventJson, pushContents, static)
 		rsp := time.Now().UnixNano()/1000 - rs
 		atomic.AddInt64(&static.MemRule,rsp)
 	} else {
@@ -414,6 +533,8 @@ func (s *PushConsumer) getCreateContent(roomID string) interface{} {
 }
 
 func (s *PushConsumer) pubPushContents(pushContents *push.PushPubContents, eventJson *[]byte) {
+	senderDisplayName, _ := s.cache.GetDisplayNameByUser(pushContents.Input.Sender)
+	pushContents.SenderDisplayName = senderDisplayName
 	//临时处理，rcs去除邀请重试以后可以去掉
 	if pushContents.Input.Type == "m.room.member" {
 		result := gjson.Get(string(*eventJson), "unsigned.prev_content.membership")
@@ -441,7 +562,6 @@ func (s *PushConsumer) processPush(
 	pushers *push.Pushers,
 	rules *[]push.PushRule,
 	input *gomatrixserverlib.ClientEvent,
-	userDisplayName,
 	userID *string,
 	memCount int,
 	eventJson *[]byte,
@@ -463,7 +583,7 @@ func (s *PushConsumer) processPush(
 			continue
 		}
 		atomic.AddInt64(&static.RuleCount, 1)
-		if s.checkCondition(&v.Conditions, userID, userDisplayName, memCount, eventJson) {
+		if s.checkCondition(&v.Conditions, userID, memCount, eventJson) {
 			action := s.getActions(v.Actions)
 
 			if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
@@ -499,14 +619,13 @@ func (s *PushConsumer) processPush(
 
 func (s *PushConsumer) checkCondition(
 	conditions *[]push.PushCondition,
-	userID,
-	displayName *string,
+	userID *string,
 	memCount int,
 	eventJSON *[]byte,
 ) bool {
 	if len(*conditions) > 0 {
 		for _, v := range *conditions {
-			match := s.isMatch(&v, userID, displayName, memCount, eventJSON)
+			match := s.isMatch(&v, userID, memCount, eventJSON)
 			if !match {
 				return false
 			}
@@ -518,16 +637,13 @@ func (s *PushConsumer) checkCondition(
 
 func (s *PushConsumer) isMatch(
 	condition *push.PushCondition,
-	userID,
-	displayName *string,
+	userID *string,
 	memCount int,
 	eventJSON *[]byte,
 ) bool {
 	switch condition.Kind {
 	case "event_match":
 		return s.eventMatch(condition, userID, eventJSON)
-	case "contains_display_name":
-		return s.containsDisplayName(displayName, eventJSON)
 	case "room_member_count":
 		return s.roomMemberCount(condition, memCount)
 	case "signal":

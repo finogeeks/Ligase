@@ -17,23 +17,22 @@ package routing
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/model/repos"
 	"net/http"
 	"sort"
 	"strings"
-	"sync/atomic"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
-	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -108,15 +107,12 @@ func GetKindFromRuleId(ruleID string) string {
 	return s[len(s)-2]
 }
 
-func GetRuleEnabled(userName, ruleID string, cache service.Cache) bool {
-	enabledCache, ok := cache.GetPushRuleEnabled(userName, ruleID)
-	if ok {
-		if enabledCache == "1" {
-			return true
-		}
-		return false
+func GetRuleEnabled(userName, ruleID string, pushDataRepo *repos.PushDataRepo) bool {
+	ctx := context.TODO()
+	enabled, exsit := pushDataRepo.GetPushRuleEnableByID(ctx, userName, ruleID)
+	if exsit {
+		return enabled
 	}
-
 	var defaultRule bool
 	defaultRule = strings.HasPrefix(GetOriginalRuleId(ruleID), ".")
 	if !defaultRule {
@@ -130,18 +126,18 @@ func GetRuleEnabled(userName, ruleID string, cache service.Cache) bool {
 	return false
 }
 
-func ConvertPushRule(data pushapitypes.PushRuleCacheData, defaultRule bool) (pushapitypes.PushRule, error) {
+func ConvertPushRule(data pushapitypes.PushRuleData, defaultRule bool) (pushapitypes.PushRule, error) {
 	var pushRule = pushapitypes.PushRule{}
 	pushRule.RuleId = data.RuleId
 	pushRule.Default = defaultRule
-	err := json.Unmarshal([]byte(data.Actions), &pushRule.Actions)
+	err := json.Unmarshal(data.Actions, &pushRule.Actions)
 	if err != nil {
 		return pushRule, err
 	}
 	if !defaultRule {
-		err1 := json.Unmarshal([]byte(data.Conditions), &pushRule.Conditions)
-		if err1 != nil {
-			return pushRule, err1
+		err := json.Unmarshal(data.Conditions, &pushRule.Conditions)
+		if err != nil {
+			return pushRule, err
 		}
 	}
 
@@ -191,33 +187,22 @@ func FormatRuleResponse(rules pushapitypes.Rules) pushapitypes.RuleSet {
 	return ruleSet
 }
 
-func GetUserPushRules(userID string, cache service.Cache, forRequest bool, static *pushapitypes.StaticObj) (global pushapitypes.Rules) {
+func GetUserPushRules(userID string, pushDataRepo *repos.PushDataRepo, forRequest bool, static *pushapitypes.StaticObj) (global pushapitypes.Rules) {
+	ctx := context.TODO()
 	global = pushapitypes.Rules{}
-	var bases map[string]pushapitypes.PushRuleCacheData
-	bases = make(map[string]pushapitypes.PushRuleCacheData)
-	var rules pushapitypes.PushRuleCacheDataArray
-
-	ruleIDs, _ := cache.GetUserPushRuleIds(userID)
-	if static != nil {
-		atomic.AddInt64(&static.PushRuleCount, 1)
-	}
-	for _, rid := range ruleIDs {
-		rule, _ := cache.GetPushRuleCacheData(rid)
-		if static != nil {
-			atomic.AddInt64(&static.PushRuleCount, 1)
-		}
-		if rule != nil {
-			if rule.PriorityClass == -1 {
-				bases[rid] = *rule
-			} else {
-				rules = append(rules, *rule)
-			}
+	bases := make(map[string]pushapitypes.PushRuleData)
+	var rules pushapitypes.PushRuleDataArray
+	rulesData, _ := pushDataRepo.GetPushRule(ctx, userID)
+	for _, rule := range rulesData {
+		if rule.PriorityClass == -1 {
+			bases[rule.RuleId] = rule
+		} else {
+			rules = append(rules, rule)
 		}
 	}
 	if len(rules) > 0 {
 		sort.Sort(rules)
 	}
-
 	currentClass := len(pushapitypes.PriorityMap())
 	kind, _ := pushapitypes.RevPriorityMap()[currentClass]
 	preRules := MakeBasePreAppendRule(kind, bases)
@@ -248,40 +233,40 @@ func GetUserPushRules(userID string, cache service.Cache, forRequest bool, stati
 		currentClass -= 1
 	}
 
-	return FormatRules(userID, cache, global, forRequest)
+	return FormatRules(userID, pushDataRepo, global, forRequest)
 }
 
-func FormatRules(userID string, cache service.Cache, global pushapitypes.Rules, forRequest bool) pushapitypes.Rules {
+func FormatRules(userID string, pushDataRepo *repos.PushDataRepo, global pushapitypes.Rules, forRequest bool) pushapitypes.Rules {
 	for i := 0; i < len(global.UnderRide); i++ {
-		global.UnderRide[i].Enabled = GetRuleEnabled(userID, global.UnderRide[i].RuleId, cache)
+		global.UnderRide[i].Enabled = GetRuleEnabled(userID, global.UnderRide[i].RuleId, pushDataRepo)
 		kind := GetKindFromRuleId(global.UnderRide[i].RuleId)
 		global.UnderRide[i] = ConvertConditions(userID, kind, global.UnderRide[i], forRequest)
 		global.UnderRide[i].RuleId = GetOriginalRuleId(global.UnderRide[i].RuleId)
 	}
 
 	for i := 0; i < len(global.Content); i++ {
-		global.Content[i].Enabled = GetRuleEnabled(userID, global.Content[i].RuleId, cache)
+		global.Content[i].Enabled = GetRuleEnabled(userID, global.Content[i].RuleId, pushDataRepo)
 		kind := GetKindFromRuleId(global.Content[i].RuleId)
 		global.Content[i] = ConvertConditions(userID, kind, global.Content[i], forRequest)
 		global.Content[i].RuleId = GetOriginalRuleId(global.Content[i].RuleId)
 	}
 
 	for i := 0; i < len(global.Override); i++ {
-		global.Override[i].Enabled = GetRuleEnabled(userID, global.Override[i].RuleId, cache)
+		global.Override[i].Enabled = GetRuleEnabled(userID, global.Override[i].RuleId, pushDataRepo)
 		kind := GetKindFromRuleId(global.Override[i].RuleId)
 		global.Override[i] = ConvertConditions(userID, kind, global.Override[i], forRequest)
 		global.Override[i].RuleId = GetOriginalRuleId(global.Override[i].RuleId)
 	}
 
 	for i := 0; i < len(global.Room); i++ {
-		global.Room[i].Enabled = GetRuleEnabled(userID, global.Room[i].RuleId, cache)
+		global.Room[i].Enabled = GetRuleEnabled(userID, global.Room[i].RuleId, pushDataRepo)
 		kind := GetKindFromRuleId(global.Room[i].RuleId)
 		global.Room[i] = ConvertConditions(userID, kind, global.Room[i], forRequest)
 		global.Room[i].RuleId = GetOriginalRuleId(global.Room[i].RuleId)
 	}
 
 	for i := 0; i < len(global.Sender); i++ {
-		global.Sender[i].Enabled = GetRuleEnabled(userID, global.Sender[i].RuleId, cache)
+		global.Sender[i].Enabled = GetRuleEnabled(userID, global.Sender[i].RuleId, pushDataRepo)
 		kind := GetKindFromRuleId(global.Sender[i].RuleId)
 		global.Sender[i] = ConvertConditions(userID, kind, global.Sender[i], forRequest)
 		global.Sender[i].RuleId = GetOriginalRuleId(global.Sender[i].RuleId)
@@ -290,7 +275,7 @@ func FormatRules(userID string, cache service.Cache, global pushapitypes.Rules, 
 	return global
 }
 
-func MakeBaseAppendRule(kind string, modified map[string]pushapitypes.PushRuleCacheData) []pushapitypes.PushRule {
+func MakeBaseAppendRule(kind string, modified map[string]pushapitypes.PushRuleData) []pushapitypes.PushRule {
 	var rules []pushapitypes.PushRule
 	switch kind {
 	case "underride":
@@ -303,7 +288,7 @@ func MakeBaseAppendRule(kind string, modified map[string]pushapitypes.PushRuleCa
 
 	for i := 0; i < len(rules); i++ {
 		if data, ok := modified[rules[i].RuleId]; ok {
-			err := json.Unmarshal([]byte(data.Actions), &rules[i].Actions)
+			err := json.Unmarshal(data.Actions, &rules[i].Actions)
 			if err != nil {
 				log.Errorw("actions convert error", log.KeysAndValues{"rule_id", rules[i].RuleId})
 			}
@@ -328,7 +313,7 @@ func AddRules(kind string, rule pushapitypes.PushRule, rules pushapitypes.Rules)
 	return rules
 }
 
-func MakeBasePreAppendRule(kind string, modified map[string]pushapitypes.PushRuleCacheData) []pushapitypes.PushRule {
+func MakeBasePreAppendRule(kind string, modified map[string]pushapitypes.PushRuleData) []pushapitypes.PushRule {
 	var rules []pushapitypes.PushRule
 	if kind == "override" {
 		rules = BasePreOverrideRules()
@@ -348,13 +333,12 @@ func MakeBasePreAppendRule(kind string, modified map[string]pushapitypes.PushRul
 func PutPushRuleActions(
 	ctx context.Context,
 	actions *external.PutPushrulesActionsByIDRequest,
-	pushDB model.PushAPIDatabase,
 	device *authtypes.Device,
 	cfg config.Dendrite,
 	scope string,
 	kind string,
 	ruleID string,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	if scope != "global" || kind == "" {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized request")
@@ -367,24 +351,6 @@ func PutPushRuleActions(
 	if _, ok := pushapitypes.PriorityMap()[kind]; !ok {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized kind")
 	}
-
-	// var actions pushapitypes.PushActions
-	// if reqErr := httputil.UnmarshalJSONRequest(req, &actions); reqErr != nil {
-	// 	return *reqErr
-	// }
-
-	data := new(types.ActDataStreamUpdate)
-	data.UserID = device.UserID
-	data.RoomID = ""
-	data.DataType = ""
-	data.StreamType = "pushRule"
-	common.GetTransportMultiplexer().SendWithRetry(
-		cfg.Kafka.Producer.OutputClientData.Underlying,
-		cfg.Kafka.Producer.OutputClientData.Name,
-		&core.TransportPubMsg{
-			Keys: []byte(device.UserID),
-			Obj:  data,
-		})
 
 	var defaultRule bool
 	defaultRule = strings.HasPrefix(ruleID, ".")
@@ -405,13 +371,12 @@ func PutPushRuleActions(
 		return http.StatusBadRequest, jsonerror.BadJSON("Actions is malformed JSON")
 	}
 
-	cacheData, _ := cache.GetPushRuleCacheDataByID(device.UserID, insertRuleID)
+	pushRule, _ := pushDataRepo.GetPushRuleByID(ctx, device.UserID, insertRuleID)
 
-	if cacheData.UserName == "" {
+	if pushRule == nil {
 		if !defaultRule {
 			return http.StatusBadRequest, jsonerror.Unknown("No rule found with rule id")
 		}
-
 		conditions := pushapitypes.PushCondition{}
 		conditionsArray, err := json.Marshal(conditions)
 		if err != nil {
@@ -421,16 +386,31 @@ func PutPushRuleActions(
 		if err != nil {
 			return http.StatusBadRequest, jsonerror.BadJSON("Actions is malformed JSON")
 		}
-
-		if err := pushDB.AddPushRule(ctx, device.UserID, insertRuleID, -1, 1, conditionsJSON, actionsJSON); err != nil {
+		pushRuleData := pushapitypes.PushRuleData{
+			UserName: device.UserID,
+			RuleId: insertRuleID,
+			PriorityClass: -1,
+			Priority: 1,
+			Conditions: conditionsJSON,
+			Actions: actionsJSON,
+		}
+		if err := pushDataRepo.AddPushRule(ctx, pushRuleData, true); err != nil {
 			return httputil.LogThenErrorCtx(ctx, err)
 		}
 	} else {
-		if err := pushDB.AddPushRule(ctx, cacheData.UserName, cacheData.RuleId, cacheData.PriorityClass, cacheData.Priority, cacheData.Conditions, actionsJSON); err != nil {
+		pushRuleData := pushapitypes.PushRuleData{
+			UserName: pushRule.UserName,
+			RuleId: pushRule.RuleId,
+			PriorityClass: pushRule.PriorityClass,
+			Priority: pushRule.Priority,
+			Conditions: pushRule.Conditions,
+			Actions: pushRule.Actions,
+		}
+		if err := pushDataRepo.AddPushRule(ctx, pushRuleData, true); err != nil {
 			return httputil.LogThenErrorCtx(ctx, err)
 		}
 	}
-
+	sendPushRuleUpdate(cfg, device.UserID)
 	return http.StatusOK, nil
 }
 
@@ -441,7 +421,7 @@ func GetPushRuleActions(
 	scope string,
 	kind string,
 	ruleID string,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	if scope != "global" {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized request")
@@ -457,11 +437,11 @@ func GetPushRuleActions(
 
 	actions := pushapitypes.PushActions{}
 	insertedRuleID := FormatRuleId(kind, ruleID)
-	data, _ := cache.GetPushRuleCacheDataByID(device.UserID, insertedRuleID)
+	pushRule, _ := pushDataRepo.GetPushRuleByID(ctx, device.UserID, insertedRuleID)
 	defaultRule := strings.HasPrefix(ruleID, ".")
 
-	if data.UserName != "" {
-		err := json.Unmarshal([]byte(data.Actions), &actions.Actions)
+	if pushRule != nil {
+		err := json.Unmarshal(pushRule.Actions, &actions.Actions)
 		if err != nil {
 			httputil.LogThenErrorCtx(ctx, err)
 		}
@@ -480,13 +460,12 @@ func GetPushRuleActions(
 func PutPushRuleEnabled(
 	ctx context.Context,
 	enabled *external.PutPushrulesEnabledByIDRequest,
-	pushDB model.PushAPIDatabase,
 	device *authtypes.Device,
 	cfg config.Dendrite,
 	scope string,
 	kind string,
 	ruleID string,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	if scope != "global" {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized request")
@@ -500,11 +479,6 @@ func PutPushRuleEnabled(
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized rule id")
 	}
 
-	// var enabled pushapitypes.EnabledType
-	// if reqErr := httputil.UnmarshalJSONRequest(req, &enabled); reqErr != nil {
-	// 	return *reqErr
-	// }
-
 	enableValue := 0
 	if enabled.Enabled == true {
 		enableValue = 1
@@ -512,31 +486,22 @@ func PutPushRuleEnabled(
 
 	insertedRuleID := FormatRuleId(kind, ruleID)
 
-	cacheData, _ := cache.GetPushRuleCacheDataByID(device.UserID, insertedRuleID)
+	pushRule, _ := pushDataRepo.GetPushRuleByID(ctx, device.UserID, insertedRuleID)
 	defaultRule := strings.HasPrefix(ruleID, ".")
-	if cacheData.UserName == "" {
+	if pushRule == nil {
 		if !defaultRule {
 			return http.StatusNotFound, jsonerror.Unknown("No rule found with rule id")
 		}
 	}
 
-	if err := pushDB.AddPushRuleEnable(ctx, device.UserID, insertedRuleID, enableValue); err != nil {
+	if err := pushDataRepo.AddPushRuleEnable(ctx, pushapitypes.PushRuleEnable{
+		UserID: device.UserID,
+		RuleID: insertedRuleID,
+		Enabled: enableValue,
+	},true); err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
-
-	data := new(types.ActDataStreamUpdate)
-	data.UserID = device.UserID
-	data.RoomID = ""
-	data.DataType = ""
-	data.StreamType = "pushRule"
-	common.GetTransportMultiplexer().SendWithRetry(
-		cfg.Kafka.Producer.OutputClientData.Underlying,
-		cfg.Kafka.Producer.OutputClientData.Name,
-		&core.TransportPubMsg{
-			Keys: []byte(device.UserID),
-			Obj:  data,
-		})
-
+	sendPushRuleUpdate(cfg, device.UserID)
 	return http.StatusOK, nil
 }
 
@@ -547,7 +512,7 @@ func GetPushRuleEnabled(
 	scope string,
 	kind string,
 	ruleID string,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	if scope != "global" {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized request")
@@ -564,15 +529,15 @@ func GetPushRuleEnabled(
 	var enable pushapitypes.EnabledType
 	insertedRuleID := FormatRuleId(kind, ruleID)
 
-	data, _ := cache.GetPushRuleCacheDataByID(device.UserID, insertedRuleID)
+	pushRule, _ := pushDataRepo.GetPushRuleByID(ctx, device.UserID, insertedRuleID)
 	defaultRule := strings.HasPrefix(ruleID, ".")
-	if data.UserName == "" {
+	if pushRule == nil {
 		if !defaultRule {
 			return http.StatusNotFound, jsonerror.Unknown("No rule found with rule id")
 		}
 	}
 
-	enable.Enabled = GetRuleEnabled(device.UserID, insertedRuleID, cache)
+	enable.Enabled = GetRuleEnabled(device.UserID, insertedRuleID, pushDataRepo)
 
 	return http.StatusOK, &enable
 }
@@ -580,10 +545,10 @@ func GetPushRuleEnabled(
 //GetPushrule implements GET /_matrix/client/r0/pushrules
 func GetPushRules(
 	device *authtypes.Device,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	global := pushapitypes.GlobalRule{}
-	rules := GetUserPushRules(device.UserID, cache, true, nil)
+	rules := GetUserPushRules(device.UserID, pushDataRepo, true, nil)
 	global.Global = FormatRuleResponse(rules)
 	global.Device = map[string]interface{}{}
 
@@ -593,9 +558,9 @@ func GetPushRules(
 //GetPushrule implements GET /_matrix/client/r0/pushrules/global/
 func GetPushRulesGlobal(
 	device *authtypes.Device,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
-	rules := GetUserPushRules(device.UserID, cache, true, nil)
+	rules := GetUserPushRules(device.UserID, pushDataRepo, true, nil)
 	ruleset := FormatRuleResponse(rules)
 	return http.StatusOK, &ruleset
 }
@@ -607,7 +572,7 @@ func GetPushRule(
 	scope string,
 	kind string,
 	ruleID string,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	if scope != "global" {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized request")
@@ -622,11 +587,10 @@ func GetPushRule(
 	}
 
 	insertedRuleID := FormatRuleId(kind, ruleID)
-	data, _ := cache.GetPushRuleCacheDataByID(device.UserID, insertedRuleID)
+	data, _ := pushDataRepo.GetPushRuleByID(ctx, device.UserID, insertedRuleID)
 	defaultRule := strings.HasPrefix(ruleID, ".")
 	pushRule := pushapitypes.PushRule{}
-
-	if data.UserName == "" {
+	if data == nil {
 		if !defaultRule {
 			return http.StatusNotFound, jsonerror.Unknown("No rule found with rule id")
 		} else {
@@ -645,7 +609,7 @@ func GetPushRule(
 			} else {
 				pushRule = rule
 			}
-			pushRule.Enabled = GetRuleEnabled(device.UserID, insertedRuleID, cache)
+			pushRule.Enabled = GetRuleEnabled(device.UserID, insertedRuleID, pushDataRepo)
 		}
 	}
 
@@ -685,7 +649,7 @@ func DeletePushRule(
 	scope string,
 	kind string,
 	ruleID string,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	if scope != "global" {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized request")
@@ -701,28 +665,15 @@ func DeletePushRule(
 
 	deleteRuleID := FormatRuleId(kind, ruleID)
 
-	cacheData, _ := cache.GetPushRuleCacheDataByID(device.UserID, deleteRuleID)
-	if cacheData.UserName == "" {
+	pushRule, _ := pushDataRepo.GetPushRuleByID(ctx, device.UserID, deleteRuleID)
+	if pushRule == nil {
 		return http.StatusNotFound, jsonerror.Unknown("No rule found with rule id")
 	}
 
-	if err := pushDB.DeletePushRule(ctx, device.UserID, deleteRuleID); err != nil {
+	if err := pushDataRepo.DeletePushRule(ctx, device.UserID, deleteRuleID); err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
-
-	data := new(types.ActDataStreamUpdate)
-	data.UserID = device.UserID
-	data.RoomID = ""
-	data.DataType = ""
-	data.StreamType = "pushRule"
-	common.GetTransportMultiplexer().SendWithRetry(
-		cfg.Kafka.Producer.OutputClientData.Underlying,
-		cfg.Kafka.Producer.OutputClientData.Name,
-		&core.TransportPubMsg{
-			Keys: []byte(device.UserID),
-			Obj:  data,
-		})
-
+	sendPushRuleUpdate(cfg, device.UserID)
 	return http.StatusOK, nil
 }
 
@@ -730,13 +681,12 @@ func DeletePushRule(
 func PutPushRule(
 	ctx context.Context,
 	pushRule *external.PutPushrulesByIDRequest,
-	pushDB model.PushAPIDatabase,
 	device *authtypes.Device,
 	cfg config.Dendrite,
 	scope string,
 	kind string,
 	ruleID string,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	if scope != "global" || kind == "" {
 		return http.StatusBadRequest, jsonerror.Unknown("Unrecognized request")
@@ -756,11 +706,6 @@ func PutPushRule(
 	if strings.HasPrefix(ruleID, ".") {
 		return http.StatusBadRequest, jsonerror.Unknown("cannot add new rule_ids that start with '.'")
 	}
-
-	// var pushRule pushapitypes.PushRule
-	// if reqErr := httputil.UnmarshalJSONRequest(req, &pushRule); reqErr != nil {
-	// 	return *reqErr
-	// }
 
 	switch kind {
 	case "override":
@@ -841,27 +786,25 @@ func PutPushRule(
 	}
 
 	if before != "" || after != "" {
-		return addPushRuleWithRelated(ctx, pushDB, cfg, insertRuleID, beforeID, afterID, priorityClass, conditionsJSON, actionsJSON, cache, device.UserID)
+		return addPushRuleWithRelated(ctx, cfg, insertRuleID, beforeID, afterID, priorityClass, conditionsJSON, actionsJSON,device.UserID, pushDataRepo)
 	} else {
-		return addPushRuleWithoutRelated(ctx, pushDB, cfg, insertRuleID, priorityClass, conditionsJSON, actionsJSON, cache, device.UserID)
+		return addPushRuleWithoutRelated(ctx, cfg, insertRuleID, priorityClass, conditionsJSON, actionsJSON, device.UserID, pushDataRepo)
 	}
 }
 
 func addPushRuleWithoutRelated(
 	ctx context.Context,
-	pushDB model.PushAPIDatabase,
 	cfg config.Dendrite,
 	ruleID string,
 	priorityClass int,
 	conditions,
 	actions []byte,
-	cache service.Cache,
 	userID string,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	priority := 0
-	ruleIDs, _ := cache.GetUserPushRuleIds(userID)
-	for _, rid := range ruleIDs {
-		rule, _ := cache.GetPushRuleCacheData(rid)
+	rules, _ := pushDataRepo.GetPushRule(ctx, userID)
+	for _, rule := range rules {
 		if rule.PriorityClass == priorityClass {
 			if rule.Priority > priority {
 				priority = rule.Priority
@@ -871,30 +814,22 @@ func addPushRuleWithoutRelated(
 	if priority > 0 {
 		priority = priority + 1
 	}
-
-	if err := pushDB.AddPushRule(ctx, userID, ruleID, priorityClass, priority, conditions, actions); err != nil {
+	if err := pushDataRepo.AddPushRule(ctx, pushapitypes.PushRuleData{
+		UserName: userID,
+		RuleId: ruleID,
+		PriorityClass: priorityClass,
+		Priority: priority,
+		Conditions: conditions,
+		Actions: actions,
+	},true); err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
-
-	data := new(types.ActDataStreamUpdate)
-	data.UserID = userID
-	data.RoomID = ""
-	data.DataType = ""
-	data.StreamType = "pushRule"
-	common.GetTransportMultiplexer().SendWithRetry(
-		cfg.Kafka.Producer.OutputClientData.Underlying,
-		cfg.Kafka.Producer.OutputClientData.Name,
-		&core.TransportPubMsg{
-			Keys: []byte(userID),
-			Obj:  data,
-		})
-
+	sendPushRuleUpdate(cfg, userID)
 	return http.StatusOK, nil
 }
 
 func addPushRuleWithRelated(
 	ctx context.Context,
-	pushDB model.PushAPIDatabase,
 	cfg config.Dendrite,
 	ruleID,
 	beforeID,
@@ -902,8 +837,8 @@ func addPushRuleWithRelated(
 	priorityClass int,
 	conditions,
 	actions []byte,
-	cache service.Cache,
 	userID string,
+	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	var relatedID string
 	if beforeID != "" {
@@ -911,46 +846,62 @@ func addPushRuleWithRelated(
 	} else if afterID != "" {
 		relatedID = afterID
 	}
-
-	cacheData, _ := cache.GetPushRuleCacheDataByID(userID, relatedID)
-	if cacheData.UserName == "" {
+	pushRule, _ := pushDataRepo.GetPushRuleByID(ctx, userID, relatedID)
+	if pushRule == nil {
 		return http.StatusBadRequest, jsonerror.BadJSON("before/after rule not found")
 	}
 
-	if cacheData.PriorityClass != priorityClass {
+	if pushRule.PriorityClass != priorityClass {
 		return http.StatusBadRequest, jsonerror.BadJSON("Given priority class does not match class of relative rule")
 	}
 
 	var priority int
-	relatedPriority := cacheData.Priority
+	relatedPriority := pushRule.Priority
 	if beforeID != "" {
 		priority = relatedPriority + 1
 	} else {
 		priority = relatedPriority
 	}
 
-	ruleIDs, _ := cache.GetUserPushRuleIds(userID)
-	for _, rid := range ruleIDs {
-		rule, _ := cache.GetPushRuleCacheData(rid)
+	rules, _ := pushDataRepo.GetPushRule(ctx, userID)
+	for _, rule := range rules {
 		if rule.PriorityClass == priorityClass {
 			if rule.Priority >= priority {
-				if err := pushDB.AddPushRule(ctx, rule.UserName, rule.RuleId, rule.PriorityClass, rule.Priority+1, rule.Conditions, rule.Actions); err != nil {
+				ruleData := pushapitypes.PushRuleData{
+					UserName: rule.UserName,
+					RuleId: rule.RuleId,
+					PriorityClass: rule.PriorityClass,
+					Priority: rule.Priority + 1,
+					Conditions: rule.Conditions,
+					Actions: rule.Actions,
+				}
+				if err := pushDataRepo.AddPushRule(ctx, ruleData, true); err != nil {
 					return httputil.LogThenErrorCtx(ctx, err)
 				}
 			}
 		}
 	}
 
-	if err := pushDB.AddPushRule(ctx, userID, ruleID, priorityClass, priority, conditions, actions); err != nil {
+	if err := pushDataRepo.AddPushRule(ctx, pushapitypes.PushRuleData{
+		UserName: userID,
+		RuleId: ruleID,
+		PriorityClass: priorityClass,
+		Priority: priority,
+		Conditions: conditions,
+		Actions: actions,
+	},true); err != nil {
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
+	sendPushRuleUpdate(cfg, userID)
+	return http.StatusOK, nil
+}
 
+func sendPushRuleUpdate(cfg config.Dendrite, userID string){
 	data := new(types.ActDataStreamUpdate)
 	data.UserID = userID
 	data.RoomID = ""
 	data.DataType = ""
 	data.StreamType = "pushRule"
-
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputClientData.Underlying,
 		cfg.Kafka.Producer.OutputClientData.Name,
@@ -958,6 +909,4 @@ func addPushRuleWithRelated(
 			Keys: []byte(userID),
 			Obj:  data,
 		})
-
-	return http.StatusOK, nil
 }

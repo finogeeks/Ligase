@@ -62,6 +62,7 @@ type RoomEventFeedConsumer struct {
 	chanSize              uint32
 	msgChan               []chan roomserverapi.OutputEvent
 	idg                   *uid.UidGenerator
+	insertChan 			  chan types.TimeLineItem
 }
 
 func NewRoomEventFeedConsumer(
@@ -136,9 +137,18 @@ func (s *RoomEventFeedConsumer) Start() error {
 		s.msgChan[i] = make(chan roomserverapi.OutputEvent, 1024)
 		go s.startWorker(s.msgChan[i])
 	}
-
-	//s.channel.Start()
+	s.insertChan = make(chan types.TimeLineItem, 20480)
+	go s.insertTimeline(s.insertChan)
 	return nil
+}
+
+func (s *RoomEventFeedConsumer) insertTimeline(msgChan chan types.TimeLineItem){
+	for timelineItem := range msgChan {
+		ev := timelineItem.Ev
+		s.roomHistoryTimeLine.AddEv(ev, ev.EventOffset, true)
+		spend := time.Now().UnixNano()/1000 - timelineItem.Start
+		log.Infof("traceid:%s feedserver insert ev to timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%d", timelineItem.TraceId, ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
+	}
 }
 
 func (s *RoomEventFeedConsumer) OnMessage(topic string, partition int32, data []byte) {
@@ -700,9 +710,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 		}
 	}
 	spend := time.Now().UnixNano()/1000000 - bs
-	s.roomHistoryTimeLine.AddEv(&ev, ev.EventOffset, true) //更新room timeline
-	log.Infof("feedserver onNewRoomEvent add history timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
-	last := time.Now().UnixNano() / 1000000
+	log.Infof("feedserver onNewRoomEvent before insert to timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
 	if s.cfg.CalculateReadCount {
 		traceId, _ := s.idg.Next()
 		staticObj := &pushapitypes.StaticObj{
@@ -723,10 +731,8 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 			PusherCount: 0,
 			ProfileSpend: 0,
 		}
-		s.pushConsumer.DispthEvent(&ev,staticObj)
+		s.pushConsumer.DispthEvent(&ev,staticObj,s.insertChan)
 	}
-	now := time.Now().UnixNano() / 1000000
-	log.Infof("feedserver onNewRoomEvent pushConsumer.OnEvent roomID:%s eventID:%s sender:%s type:%s eventoffset:%d push spend:%d onNewRoomEvent spend:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, now-last, now-bs)
 	return nil
 }
 

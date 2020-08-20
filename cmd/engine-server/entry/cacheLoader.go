@@ -33,14 +33,14 @@ func StartCacheLoader(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	roomDB := base.CreateRoomDB()
 	accountDB := base.CreateAccountsDB()
 	deviceDB := base.CreateDeviceDB()
-	pushDB := base.CreatePushApiDB()
+	//pushDB := base.CreatePushApiDB()
 	e2eDB := base.CreateEncryptApiDB()
 	presenceDB := base.CreatePresenceDB()
 
 	roomDB.RecoverCache()
 	accountDB.RecoverCache()
 	deviceDB.RecoverCache()
-	pushDB.RecoverCache()
+	//pushDB.RecoverCache()
 	e2eDB.RecoverCache()
 	presenceDB.RecoverCache()
 }

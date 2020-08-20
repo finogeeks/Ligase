@@ -17,11 +17,10 @@ package pushapi
 import (
 	"context"
 	"database/sql"
-	"time"
-
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/model/pushapitypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const pushersSchema = `
@@ -95,6 +94,37 @@ func (s *pushersStatements) prepare(d *DataBase) (err error) {
 		return
 	}
 	return
+}
+
+func (s *pushersStatements) loadPusher(ctx context.Context) ([]pushapitypes.Pusher, error){
+	offset := 0
+	limit := 1000
+	result :=[]pushapitypes.Pusher{}
+	for {
+		pushers := []pushapitypes.Pusher{}
+		rows, err := s.recoverPusherStmt.QueryContext(ctx, limit, offset)
+		if err != nil {
+			log.Errorf("load pusher exec recoverPusherStmt err:%v", err)
+			return nil, err
+		}
+		for rows.Next() {
+			var pusher pushapitypes.Pusher
+			if err := rows.Scan(&pusher.UserName, &pusher.ProfileTag, &pusher.Kind, &pusher.AppId, &pusher.AppDisplayName, &pusher.DeviceDisplayName,
+				&pusher.PushKey, &pusher.PushKeyTs, &pusher.Lang, &pusher.Data, &pusher.DeviceID); err != nil {
+				log.Errorf("load pusher scan rows error:%v", err)
+				return nil, err
+			}else{
+				pushers = append(result,pusher)
+			}
+		}
+		result = append(result, pushers...)
+		if len(pushers) < limit {
+			break
+		}else{
+			offset = offset + limit
+		}
+	}
+	return result, nil
 }
 
 func (s *pushersStatements) recoverPusher() error {
@@ -227,9 +257,8 @@ func (s *pushersStatements) onDeletePushersByKeyOnly(
 }
 
 func (s *pushersStatements) insertPusher(
-	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang string, data []byte, deviceID string,
+	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64, lang string, data []byte, deviceID string,
 ) error {
-	createdTime := time.Now().Unix()
 	if s.db.AsyncSave == true {
 		var update dbtypes.DBEvent
 		update.Category = dbtypes.CATEGORY_PUSH_DB_EVENT
@@ -242,7 +271,7 @@ func (s *pushersStatements) insertPusher(
 			AppDisplayName:    appDisplayName,
 			DeviceDisplayName: deviceDisplayName,
 			PushKey:           pushKey,
-			PushKeyTs:         createdTime,
+			PushKeyTs:         pushKeyTs,
 			Lang:              lang,
 			Data:              data,
 			DeviceID:          deviceID,
@@ -251,15 +280,14 @@ func (s *pushersStatements) insertPusher(
 		return s.db.WriteDBEvent(&update)
 	}
 
-	return s.onInsertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang, data, deviceID)
+	return s.onInsertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, pushKeyTs, lang, data, deviceID)
 
 }
 
 func (s *pushersStatements) onInsertPusher(
-	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang string, data []byte, deviceID string,
+	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64, lang string, data []byte, deviceID string,
 ) error {
-	createdTime := time.Now().Unix()
 	stmt := s.insertUserPusherStmt
-	_, err := stmt.ExecContext(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang, data, createdTime, deviceID)
+	_, err := stmt.ExecContext(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, lang, data, pushKeyTs, deviceID)
 	return err
 }

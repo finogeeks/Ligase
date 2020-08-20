@@ -204,11 +204,24 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 }
 
 func (sm *SyncMng) GetPushkeyByUserDeviceID(userID, deviceID string) []types.PushKeyContent {
-	pushers := routing.GetPushersByName(userID, sm.cache, false, nil)
 	pushkeys := []types.PushKeyContent{}
+	resp := sm.rpcGetPushData(userID, deviceID, types.GET_PUSHER_BY_DEVICE)
+	if resp.Error != "" {
+		log.Error("GetPushkeyByUserDeviceID user:%s device:%s error:%s", userID, deviceID, resp.Error)
+		return pushkeys
+	}
+	pushers := push.Pushers{}
+	err := json.Unmarshal(resp.Payload,&pushers)
+	if err != nil {
+		log.Error("GetPushkeyByUserDeviceID user:%s device:%s json.Unmarshal error:%v", userID, deviceID, err)
+		return pushkeys
+	}
 	for _, pusher := range pushers.Pushers {
+		if pusher.DeviceID != deviceID {
+			continue
+		}
 		// ios and not set push_channel not notify
-		if v, ok := interface{}(pusher.Data).(map[string]interface{}); ok {
+		if v, ok := (pusher.Data).(map[string]interface{}); ok {
 			var data map[string]interface{}
 			data = v
 			if v, ok := data["push_channel"]; ok {
@@ -221,12 +234,10 @@ func (sm *SyncMng) GetPushkeyByUserDeviceID(userID, deviceID string) []types.Pus
 		} else {
 			continue
 		}
-		if pusher.DeviceID == deviceID {
-			pushkeys = append(pushkeys, types.PushKeyContent{
-				PushKey: pusher.PushKey,
-				AppID:   pusher.AppId,
-			})
-		}
+		pushkeys = append(pushkeys, types.PushKeyContent{
+			PushKey: pusher.PushKey,
+			AppID:   pusher.AppId,
+		})
 	}
 	return pushkeys
 }
@@ -776,6 +787,39 @@ func (sm *SyncMng) addRoomAccountData(req *request, response *syncapitypes.Respo
 	return response
 }
 
+func (sm *SyncMng) rpcGetPushData(userID, deviceID string, reqType string) push.RpcResponse {
+	resp := push.RpcResponse{}
+	payload, err := json.Marshal(push.ReqPushUser{
+		UserID:   userID,
+		DeviceID: deviceID,
+	})
+	if err != nil {
+		resp.Error = fmt.Sprintf("reqType:%s json.Marshal payload err:%v", reqType, err)
+		return resp
+	}
+	byte, err := json.Marshal(push.PushDataRequest{
+		Payload: payload,
+		ReqType: reqType,
+		Slot: common.CalcStringHashCode(userID) % sm.cfg.MultiInstance.SyncServerTotal,
+	})
+	if err != nil {
+		resp.Error = fmt.Sprintf("reqType:%s json.Marshal request err:%v", reqType, err)
+		return resp
+	}
+	data, err := sm.rpcClient.Request(types.PushDataTopicDef, byte, 15000)
+	if err != nil {
+		resp.Error = fmt.Sprintf("reqType:%s rpc request err:%v", reqType, err)
+		return resp
+	}
+	err = json.Unmarshal(data, &resp)
+	if err != nil {
+		resp.Error = fmt.Sprintf("reqType:%s rpc response json.Unmarshal err:%v", reqType, err)
+		return resp
+	}else{
+		return resp
+	}
+}
+
 func (sm *SyncMng) addPushRules(req *request, response *syncapitypes.Response) *syncapitypes.Response {
 	if req.filter != nil {
 		if len(req.filter.AccountData.NotSenders) > 0 {
@@ -793,9 +837,19 @@ func (sm *SyncMng) addPushRules(req *request, response *syncapitypes.Response) *
 			}
 		}
 	}
-
+	resp := sm.rpcGetPushData(req.device.UserID, req.device.ID, types.GET_PUSHRULE_BY_USER)
+	if resp.Error != "" {
+		log.Errorf("traceid:%s user:%s device:%s error:%s", req.traceId, req.device.UserID, req.device.ID, resp.Error)
+		return response
+	}
+	rules := push.Rules{}
+	err := json.Unmarshal(resp.Payload, &rules)
+	if err != nil {
+		log.Errorf("traceid:%s user:%s device:%s json.Unmarshal error:%v", req.traceId, req.device.UserID, req.device.ID, err)
+		return response
+	}
 	global := push.GlobalRule{}
-	rules := routing.GetUserPushRules(req.device.UserID, sm.cache, true, nil)
+	//rules := routing.GetUserPushRules(req.device.UserID, sm.cache, true, nil)
 	formatted := routing.FormatRuleResponse(rules)
 	global.Global = formatted
 	global.Device = map[string]interface{}{}

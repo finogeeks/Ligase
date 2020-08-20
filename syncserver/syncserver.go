@@ -18,12 +18,14 @@
 package syncserver
 
 import (
+	"context"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/pushapi"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
@@ -44,6 +46,7 @@ func SetupSyncServerComponent(
 	idg *uid.UidGenerator,
 ) {
 	syncDB := base.CreateSyncDB()
+	pushDB := base.CreatePushApiDB()
 	maxEntries := base.Cfg.Lru.MaxEntries
 	gcPerNum := base.Cfg.Lru.GcPerNum
 	flushDelay := base.Cfg.FlushDelay
@@ -99,14 +102,16 @@ func SetupSyncServerComponent(
 
 	complexCache := common.NewComplexCache(accountDB, cacheIn)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
-
-	pushConsumer := consumers.NewPushConsumer(cacheIn, rpcClient, complexCache)
+	pushDataRepo := repos.NewPushDataRepo(pushDB,base.Cfg)
+	pushDataRepo.LoadHistory(context.TODO())
+	pushConsumer := consumers.NewPushConsumer(cacheIn, rpcClient, complexCache, pushDataRepo, base.Cfg)
 	pushConsumer.SetRoomHistory(roomHistory)
 	pushConsumer.SetCountRepo(readCountRepo)
 	pushConsumer.SetEventRepo(eventReadStreamRepo)
 	pushConsumer.SetRoomCurState(rsCurState)
 	pushConsumer.SetRsTimeline(rsTimeline)
 	pushConsumer.Start()
+	pushapi.SetupPushAPIComponent(base, cacheIn, rpcClient, pushDataRepo)
 	feedServer := consumers.NewRoomEventFeedConsumer(base.Cfg, syncDB, pushConsumer, rpcClient, idg)
 	feedServer.SetRoomHistory(roomHistory)
 	feedServer.SetRsCurState(rsCurState)
@@ -164,6 +169,11 @@ func SetupSyncServerComponent(
 	syncUnreadRpcConsumer := rpc.NewSyncUnreadRpcConsumer(rpcClient, readCountRepo, base.Cfg)
 	if err := syncUnreadRpcConsumer.Start(); err != nil {
 		log.Panicf("failed to start sync unread rpc consumer err:%v", err)
+	}
+
+	syncPushRpcConsumer := rpc.NewPushDataConsumer(rpcClient, pushDataRepo, base.Cfg)
+	if err := syncPushRpcConsumer.Start(); err != nil {
+		log.Panicf("failed to start sync push rpc consumer err:%v", err)
 	}
 
 	log.Infof("instance:%d,syncserver total:%d", base.Cfg.MultiInstance.Instance, base.Cfg.MultiInstance.SyncServerTotal)

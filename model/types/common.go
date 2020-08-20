@@ -44,6 +44,7 @@ var DeviceStateUpdateDef = "sync-device-state-update-topic"
 var VerifyTokenTopicDef = "proxy-verify-token-topic"
 var PresenceTopicDef = "sync-presence-topic"
 var RCSEventTopicDef = "rcs-event-topic"
+var PushDataTopicDef = "push-data-topic"
 
 const (
 	SYNC_AGGR_GROUP = "synaggregatecapi"
@@ -63,6 +64,12 @@ const (
 const (
 	DB_EXCEED_TIME         = 1000
 	CHECK_LOAD_EXCEED_TIME = 5000
+)
+
+const (
+	GET_PUSHER_BY_DEVICE  	= "getPusherByDevice"
+	GET_PUSHRULE_BY_USER 	= "getPushRuleByUser"
+	Get_PUSHDATA_BATCH 		= "getPushDataBatch"
 )
 
 type DeviceState struct {
@@ -403,4 +410,10 @@ type OnlinePresence struct {
 	Presence     string `json:"presence,omitempty"`
 	StatusMsg    string `json:"status_msg,omitempty"`
 	ExtStatusMsg string `json:"ext_status_msg,omitempty"`
+}
+
+type TimeLineItem struct {
+	Start 	int64 							`json:"start"`
+	Ev 		*gomatrixserverlib.ClientEvent	`json:"ev"`
+	TraceId string 							`json:"trace_id"`
 }
