@@ -100,7 +100,7 @@ func (s *pushRulesStatements) loadPushRule(ctx context.Context) ([]pushapitypes.
 				log.Errorf("load push rule scan rows error:%v", err)
 				return nil, err
 			}else{
-				rules = append(result,pushRule)
+				rules = append(rules,pushRule)
 			}
 		}
 		result = append(result, rules...)

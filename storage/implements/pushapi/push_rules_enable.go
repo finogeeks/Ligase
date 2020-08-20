@@ -90,7 +90,7 @@ func (s *pushRulesEnableStatements) loadPushRuleEnable(ctx context.Context) ([]p
 				log.Errorf("load push rule enable scan rows error:%v", err)
 				return nil, err
 			}else{
-				ruleEnables = append(result,pushRuleEnable)
+				ruleEnables = append(ruleEnables,pushRuleEnable)
 			}
 		}
 		result = append(result, ruleEnables...)

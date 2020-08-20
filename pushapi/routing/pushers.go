@@ -98,6 +98,10 @@ func PutPusher(
 	} else {
 		log.Infof("PutPusher user %s device %s kind:%s has kind", device.UserID, device.ID, pushers.Kind)
 	}
+	dataStr, err := json.Marshal(pushers.Data)
+	if err != nil {
+		return httputil.LogThenErrorCtx(ctx, err)
+	}
 	addPusher := pushapitypes.Pusher{
 		UserName: device.UserID,
 		DeviceID: common.GetDeviceMac(device.ID),
@@ -110,7 +114,7 @@ func PutPusher(
 		ProfileTag: pushers.ProfileTag,
 		Lang: pushers.Lang,
 		Append: pushers.Append,
-		Data: pushers.Data,
+		Data: string(dataStr),
 	}
 	if pushers.Append {
 		if err := pushDataRepo.DeleteUserPusher(ctx, device.UserID, pushers.AppID, pushers.Pushkey); err != nil {

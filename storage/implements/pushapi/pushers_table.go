@@ -114,7 +114,7 @@ func (s *pushersStatements) loadPusher(ctx context.Context) ([]pushapitypes.Push
 				log.Errorf("load pusher scan rows error:%v", err)
 				return nil, err
 			}else{
-				pushers = append(result,pusher)
+				pushers = append(pushers,pusher)
 			}
 		}
 		result = append(result, pushers...)
