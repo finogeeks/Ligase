@@ -585,12 +585,12 @@ func (s *PushConsumer) processPush(
 	}
 	for _, v := range *rules {
 		if !v.Enabled {
-			//log.Infof("roomID:%s eventID:%s userID:%s rule:%s is not enable", input.RoomID, input.EventID, *userID, v.RuleId)
+			log.Infof("roomID:%s eventID:%s userID:%s rule:%s is not enable", input.RoomID, input.EventID, *userID, v.RuleId)
 			continue
 		}
 		atomic.AddInt64(&static.RuleCount, 1)
 		if s.checkCondition(&v.Conditions, userID, memCount, eventJson) {
-			//log.Infof("roomID:%s eventID:%s userID:%s match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
+			log.Infof("roomID:%s eventID:%s userID:%s match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
 			action := s.getActions(v.Actions)
 
 			if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
@@ -621,7 +621,7 @@ func (s *PushConsumer) processPush(
 			}
 			break
 		}else{
-			//log.Infof("roomID:%s eventID:%s userID:%s not match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
+			log.Infof("roomID:%s eventID:%s userID:%s not match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
 		}
 	}
 }
