@@ -150,6 +150,7 @@ func (pd *PushDataCB) getPushDataBatch(req *pushapitypes.PushDataRequest){
 		}
 		resp.Data[user] = r
 	}
+
 	byte, err := json.Marshal(resp)
 	if err != nil {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{

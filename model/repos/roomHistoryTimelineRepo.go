@@ -90,7 +90,7 @@ func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
 	defer tl.loading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000
-	evs, offsets, err := tl.persist.GetHistoryEvents(context.TODO(), roomID, 30) //注意是倒序的event，需要排列下
+	evs, offsets, err := tl.persist.GetHistoryEvents(context.TODO(), roomID, 50) //注意是倒序的event，需要排列下
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
 		log.Errorf("load db failed RoomHistoryTimeLineRepo load room:%s history spend:%d ms err:%v", roomID, spend, err)

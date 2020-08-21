@@ -312,6 +312,8 @@ func (s *PushConsumer) rpcGetUserPushData(wg *sync.WaitGroup, req *push.ReqPushU
 	}else{
 		result <- s.getUserPushDataFromRemote(req)
 	}
+	//for test rpc
+	//result <- s.getUserPushDataFromRemote(req)
 }
 
 func (s *PushConsumer) getUserPushDataFromLocal(req *push.ReqPushUsers) *push.RespPushUsersData{
@@ -329,10 +331,13 @@ func (s *PushConsumer) getUserPushDataFromLocal(req *push.ReqPushUsers) *push.Re
 }
 
 func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.RespPushUsersData{
+	data := &push.RespPushUsersData{
+		Data: make(map[string]push.RespPushData),
+	}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote json.Marshal payload:%+v err:%v", req, err)
-		return nil
+		return data
 	}
 	request := push.PushDataRequest{
 		Payload: payload,
@@ -342,26 +347,25 @@ func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.R
 	bt, err := json.Marshal(request)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote json.Marshal request:%+v err:%v", req, err)
-		return nil
+		return data
 	}
-	data, err := s.rpcClient.Request(types.PushDataTopicDef, bt, 15000)
+	r, err := s.rpcClient.Request(types.PushDataTopicDef, bt, 15000)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote rpc req:%+v err:%v", req, err)
-		return nil
+		return data
 	}
 	resp := push.RpcResponse{}
-	err = json.Unmarshal(data, &resp)
+	err = json.Unmarshal(r, &resp)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
-		return nil
+		return data
 	}
-	result := push.RespPushUsersData{}
-	err = json.Unmarshal(resp.Payload,&result)
+	err = json.Unmarshal(resp.Payload,&data)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
-		return nil
+		return data
 	}
-	return &result
+	return data
 }
 
 func (s *PushConsumer) getUserPusher(user string, pushData map[string]push.RespPushData) push.Pushers {
@@ -424,6 +428,7 @@ func (s *PushConsumer) preProcessPush(
 		for _, v := range global.UnderRide {
 			rules = append(rules, v)
 		}
+		//log.Infof("roomID:%s eventID:%s userID:%s rules:%+v", input.RoomID, input.EventID, *member, rules)
 		rs := time.Now().UnixNano()/1000
 		s.processPush(&pushers, &rules, input, member, memCount, eventJson, pushContents, static)
 		rsp := time.Now().UnixNano()/1000 - rs
@@ -580,10 +585,12 @@ func (s *PushConsumer) processPush(
 	}
 	for _, v := range *rules {
 		if !v.Enabled {
+			log.Infof("roomID:%s eventID:%s userID:%s rule:%s is not enable", input.RoomID, input.EventID, *userID, v.RuleId)
 			continue
 		}
 		atomic.AddInt64(&static.RuleCount, 1)
 		if s.checkCondition(&v.Conditions, userID, memCount, eventJson) {
+			log.Infof("roomID:%s eventID:%s userID:%s match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
 			action := s.getActions(v.Actions)
 
 			if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
@@ -613,6 +620,8 @@ func (s *PushConsumer) processPush(
 				}
 			}
 			break
+		}else{
+			log.Infof("roomID:%s eventID:%s userID:%s not match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
 		}
 	}
 }
@@ -813,11 +822,10 @@ func (s *PushConsumer) getActions(actions []interface{}) push.TweakAction {
 	action := push.TweakAction{}
 
 	for _, val := range actions {
-		if v, ok := interface{}(val).(string); ok {
+		if v, ok := val.(string); ok {
 			action.Notify = v
 			continue
-		}
-		if v, ok := interface{}(val).(push.Tweak); ok {
+		} else if v, ok := val.(push.Tweak); ok {
 			setTweak := v.SetTweak
 			value := v.Value
 
@@ -829,6 +837,26 @@ func (s *PushConsumer) getActions(actions []interface{}) push.TweakAction {
 					action.HighLight = true
 				} else {
 					action.HighLight = value.(bool)
+				}
+			}
+		} else if v, ok := val.(map[string]interface{}); ok {
+			key := ""
+			if val, ok := v["set_tweak"]; ok {
+				key = val.(string)
+			}else{
+				continue
+			}
+			if val, ok := v["value"]; ok {
+				if key == "sound" {
+					action.Sound = val.(string)
+				}else if key == "highlight" {
+					action.HighLight = val.(bool)
+				}
+			}else{
+				if key == "sound" {
+					action.Sound = "default"
+				}else if key == "highlight" {
+					action.HighLight = true
 				}
 			}
 		}
