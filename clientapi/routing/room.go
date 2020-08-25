@@ -149,7 +149,7 @@ func getRoomType(createContent common.CreateContent) int {
 	if createContent.IsOrganizationRoom !=nil && *createContent.IsOrganizationRoom {
 		return Organ
 	}
-	if isQQRoom(createContent) {
+	if isQQRoom(createContent.Creator) {
 		return QQ
 	}
 	return General
