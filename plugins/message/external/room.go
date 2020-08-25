@@ -256,6 +256,10 @@ type GetRoomInfo struct {
 	Topic       string             `json:"topic"`
 	JoinMembers []string           `json:"join_members"`
 	PowerLevels jsonRaw.RawMessage `json:"power_levels"`
+	RoomType    int 			   `json:"room_type"`
+	IsDisMiss	bool 			   `json:"is_dismiss"`
+	CreateTime  int64 			   `json:"create_time"`
+	DismissTime int64 			   `json:"dismiss_time"`
 }
 
 // POST /_matrix/client/unstable/{roomID}/dismiss

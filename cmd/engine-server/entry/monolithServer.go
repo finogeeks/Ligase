@@ -24,6 +24,7 @@ import (
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/rcsserver"
+	"github.com/finogeeks/ligase/roomserver/consumers"
 	"github.com/finogeeks/ligase/skunkworks/log"
 
 	// "github.com/finogeeks/ligase/common/keydb"
@@ -148,4 +149,17 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	proxy.SetupProxy(base, cache, rpcClient, rsRpcCli, newTokenFilter)
 	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
 	rcsserver.SetupRCSServerComponent(base, rpcClient)
+	consumer := consumers.NewDismissRoomConsumer(
+		kafka.Consumer.DismissRoom.Underlying,
+		kafka.Consumer.DismissRoom.Name,
+		rsRpcCli,
+		cache,
+		accountDB,
+		base.Cfg,
+		newFederation,
+		complexCache,
+		idg)
+	if err := consumer.Start(); err != nil {
+		log.Panicf("failed to start settings consumer err:%v", err)
+	}
 }
