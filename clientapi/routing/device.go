@@ -161,7 +161,7 @@ func DeleteDeviceByID(
 		}
 	}
 
-	LogoutDevice(delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+	LogoutDevice(delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "del_device")
 
 	return http.StatusOK, nil
 }
@@ -189,7 +189,7 @@ func DeleteDevices(
 					cache.SetPwdChangeDevcie(dev.ID, device.UserID)
 					hasPwdDevice = true
 				}
-				LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+				LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "del_devices")
 			}
 		}
 		if hasPwdDevice {
@@ -197,7 +197,7 @@ func DeleteDevices(
 		}
 	} else {
 		for _, deviceId := range req.Devices {
-			LogoutDevice(device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+			LogoutDevice(device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "del_devices")
 		}
 	}
 

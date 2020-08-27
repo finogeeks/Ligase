@@ -45,7 +45,7 @@ func Logout(
 	// 	return http.StatusMethodNotAllowed, jsonerror.NotFound("Bad method")
 	// }
 
-	LogoutDevice(userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+	LogoutDevice(userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "logout")
 
 	return http.StatusOK, nil
 }
@@ -59,9 +59,10 @@ func LogoutDevice(
 	syncDB model.SyncAPIDatabase,
 	tokenFilter *filter.Filter,
 	rpcClient *common.RpcClient,
+	source string,
 ) {
 	createdTimeMS := time.Now().UnixNano() / 1000000
-	log.Infof("logout user %s device %s", userID, deviceID)
+	log.Infof("logout user %s device %s source:%s", userID, deviceID, source)
 
 	cache.DeleteLocalDevice(deviceID, userID)
 	if err := deviceDB.RemoveDevice(context.TODO(), deviceID, userID, createdTimeMS); err != nil {
@@ -127,7 +128,7 @@ func LogoutAll(
 
 	devs := cache.GetDevicesByUserID(userID)
 	for _, dev := range *devs {
-		LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient)
+		LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "logout_all")
 	}
 
 	return http.StatusOK, nil
