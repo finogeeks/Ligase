@@ -19,6 +19,8 @@ import (
 	jsonRaw "encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/clientapi/threepid"
@@ -33,6 +35,13 @@ import (
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+)
+
+const (
+	General    	= iota
+	Organ     	= 1
+	Group     	= 2
+	QQ        	= 3
 )
 
 //handle GET /rooms/{roomId}/joined_members
@@ -117,6 +126,56 @@ func OnRoomInfoRequest(
 	return http.StatusOK, resp
 }
 
+func isQQRoom(roomCreator string) bool {
+	isNumeric := func (s string) bool {
+		_, err := strconv.ParseFloat(s, 64)
+		return err == nil
+	}
+	creator := strings.Split(roomCreator, ":")
+	if len(creator) < 2 {
+		return false
+	}
+	cs := strings.Split(creator[0],"@qq_")
+	if len(cs) < 2 {
+		return false
+	}
+	return isNumeric(cs[1])
+}
+
+func getRoomType(createContent common.CreateContent) int {
+	if createContent.IsGroupRoom != nil && *createContent.IsGroupRoom {
+		return Group
+	}
+	if createContent.IsOrganizationRoom !=nil && *createContent.IsOrganizationRoom {
+		return Organ
+	}
+	if isQQRoom(createContent.Creator) {
+		return QQ
+	}
+	return General
+}
+
+func getDisMissInfo(queryRes roomserverapi.QueryRoomStateResponse) (isDisMiss bool, disMissTime int64){
+	if plEvent, err := queryRes.PowerLevels(); plEvent != nil {
+		plContent := common.PowerLevelContent{}
+		if err = json.Unmarshal(plEvent.Content(), &plContent); err != nil {
+			return false, 0
+		}
+		for k, v := range plContent.Users {
+			if v == 100 {
+				for user, ev := range queryRes.Leave{
+					if user == k {
+						return true, int64(ev.OriginServerTS())
+					}
+				}
+			}
+		}
+		return false,0
+	}else{
+		return false, 0
+	}
+}
+
 func QueryRoomInfo(ctx context.Context, roomID string, rpcCli roomserverapi.RoomserverRPCAPI) (
 	roomInfo *external.GetRoomInfo, err error) {
 	roomInfo = &external.GetRoomInfo{
@@ -156,9 +215,11 @@ func QueryRoomInfo(ctx context.Context, roomID string, rpcCli roomserverapi.Room
 			if createContent.IsChannel != nil {
 				roomInfo.IsChannel = *createContent.IsChannel
 			}
+			roomInfo.CreateTime = int64(createEvent.OriginServerTS())
+			roomInfo.RoomType = getRoomType(createContent)
 		}
 	}
-
+	roomInfo.IsDisMiss, roomInfo.DismissTime = getDisMissInfo(queryRes)
 	nameEvent, _ := queryRes.RoomName()
 	if nameEvent != nil {
 		nameContent := common.NameContent{}

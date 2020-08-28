@@ -98,7 +98,7 @@ func (dm *DeviceMng) scanUnActionDevice() {
 		}
 		for idx := range dids {
 			log.Infof("kick out userId:%s,deviceId:%s", uids[idx], devids[idx])
-			go routing.LogoutDevice(uids[idx], devids[idx], dm.deviceDB, dm.cache, dm.encryptDB, dm.syncDB, dm.tokenFilter, dm.rpcClient)
+			go routing.LogoutDevice(uids[idx], devids[idx], dm.deviceDB, dm.cache, dm.encryptDB, dm.syncDB, dm.tokenFilter, dm.rpcClient, "token_expire")
 		}
 
 		if total < limit {
