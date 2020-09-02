@@ -15,6 +15,7 @@
 package consumers
 
 import (
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"math"
 	"sort"
 	"time"
@@ -663,15 +664,15 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 		return jr, maxPos, []string{}
 	}
 
-	maxMementEvOffset := int64(0)
-	rs.GetJoinMap().Range(func(k, v interface{}) bool {
-		offset := v.(int64)
-		if offset > maxMementEvOffset {
-			maxMementEvOffset = offset
+	addNewUser := false
+
+	if stateEvt.GetOffset() > reqStart {
+		joinContent := external.MemberContent{}
+		json.Unmarshal(stateEvt.GetEv().Content, &joinContent)
+		if joinContent.Reason != "BuildMembershipAndFireEvents" {
+			addNewUser = true
 		}
-		return true
-	})
-	addNewUser := maxMementEvOffset > reqStart
+	}
 
 	feeds, start, end, low, up := history.GetAllFeedsReverse()
 
@@ -683,7 +684,7 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 	needState := false
 	msgEvent := []gomatrixserverlib.ClientEvent{}
 
-	if stateEvt.Offset > reqStart || req.IsFullSync {
+	if addNewUser || req.IsFullSync {
 		jr.Timeline.Limited = true
 		needState = true
 		log.Infof("SyncServer buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s update start:%d stateEvt.Offset:%d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, stateEvt.Offset)
