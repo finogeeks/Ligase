@@ -25,6 +25,7 @@ import (
 )
 
 func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
+	log.Infof("traceid:%s begin buildIncreamSyncRequset", req.traceId)
 	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
@@ -104,6 +105,7 @@ func (sm *SyncMng) buildReqRoom(traceId string, start, end int64, roomID, roomSt
 }
 
 func (sm *SyncMng) buildFullSyncRequest(req *request) error {
+	log.Infof("traceid:%s begin buildFullSyncRequest", req.traceId)
 	req.limit = 10
 	if !req.device.IsHuman {
 		return nil
@@ -117,11 +119,8 @@ func (sm *SyncMng) buildFullSyncRequest(req *request) error {
 	}
 	joinRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
-		joinOffset := sm.userTimeLine.GetJoinMembershipOffset(req.device.UserID, roomID)
 		req.joinRooms = append(req.joinRooms, key.(string))
-		if joinOffset > 0 {
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join", "build"))
-		}
+		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join", "build"))
 		return true
 	})
 	inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)

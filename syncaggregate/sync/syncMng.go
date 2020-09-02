@@ -298,6 +298,7 @@ func (sm *SyncMng) dispatch(uid string, req *request) {
 }
 
 func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request){
+	log.Infof("traceid:%s begin reBuildIncreamSyncReqRoom", req.traceId)
 	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
 		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetJoinRooms err:%v", req.traceId, err)
