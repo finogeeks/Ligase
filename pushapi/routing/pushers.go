@@ -20,17 +20,19 @@ import (
 	"context"
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
-	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/json-iterator/go"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -183,30 +185,118 @@ func CheckPusherBody(pushers *external.PostSetPushersRequest) string {
 
 // GetUsersPushers implements POST /_matrix/client/r0/users/pushkey
 func GetUsersPushers(
+	ctx context.Context,
 	users *external.PostUsersPushKeyRequest,
-	cache service.Cache,
+	pushDataRepo *repos.PushDataRepo,
+	cfg config.Dendrite,
+	rpcClient *common.RpcClient,
 ) (int, core.Coder) {
 	pushersRes := pushapitypes.PushersRes{}
 	pushers := []pushapitypes.PusherRes{}
 	pushersRes.PushersRes = pushers
-
-	for _, user := range users.Users {
-		pusherIDs, ok := cache.GetUserPusherIds(user)
-		if ok {
-			for _, pusherID := range pusherIDs {
-				data, _ := cache.GetPusherCacheData(pusherID)
-				if data != nil && data.UserName != "" {
-					var pusher pushapitypes.PusherRes
-					pusher.UserName = user
-					pusher.AppId = data.AppId
-					pusher.Kind = data.Kind
-					pusher.PushKey = data.PushKey
-					pusher.PushKeyTs = data.PushKeyTs
-					pushersRes.PushersRes = append(pushersRes.PushersRes, pusher)
-				}
+	slotMembers := make(map[uint32]*pushapitypes.ReqPushUsers)
+	for _, member := range users.Users{
+		slot := common.CalcStringHashCode(member) % cfg.MultiInstance.Total
+		if _, ok := slotMembers[slot]; ok {
+			slotMembers[slot].Users = append(slotMembers[slot].Users, member)
+		}else{
+			slotMembers[slot] = &pushapitypes.ReqPushUsers{
+				Users: []string{member},
+				Slot: slot,
 			}
 		}
 	}
-
+	collectionResults := make(chan *pushapitypes.RespUsersPusher, cfg.MultiInstance.Total)
+	var wg sync.WaitGroup
+	for _, req := range slotMembers {
+		if len(req.Users) <= 0 {
+			continue
+		}
+		wg.Add(1)
+		go rpcGetUserPushData(&wg,req,collectionResults,cfg, pushDataRepo, rpcClient)
+	}
+	go func(wg *sync.WaitGroup) {
+		wg.Wait()
+		close(collectionResults)
+	}(&wg)
+	result := make(map[string][]pushapitypes.Pusher)
+	for r := range collectionResults {
+		for k, v := range r.Data{
+			result[k] = v
+		}
+	}
+	for user, pushers := range result {
+		for _, data := range pushers {
+			var pusher pushapitypes.PusherRes
+			pusher.UserName = user
+			pusher.AppId = data.AppId
+			pusher.Kind = data.Kind
+			pusher.PushKey = data.PushKey
+			pusher.PushKeyTs = data.PushKeyTs
+			pushersRes.PushersRes = append(pushersRes.PushersRes, pusher)
+		}
+	}
 	return http.StatusOK, &pushersRes
+}
+
+func rpcGetUserPushData(wg *sync.WaitGroup, req *pushapitypes.ReqPushUsers, result chan *pushapitypes.RespUsersPusher, cfg config.Dendrite,pushDataRepo *repos.PushDataRepo, rpcClient *common.RpcClient){
+	defer wg.Done()
+	if req.Slot == cfg.MultiInstance.Instance {
+		result <- getUserPushDataFromLocal(req, pushDataRepo)
+	}else{
+		result <- getUserPushDataFromRemote(req, rpcClient)
+	}
+}
+
+func getUserPushDataFromLocal(req *pushapitypes.ReqPushUsers, pushDataRepo *repos.PushDataRepo) *pushapitypes.RespUsersPusher{
+	data := &pushapitypes.RespUsersPusher{
+		Data: make(map[string][]pushapitypes.Pusher),
+	}
+	ctx := context.TODO()
+	for _, user := range req.Users {
+		pushersData, err := pushDataRepo.GetPusher(ctx, user)
+		if err != nil {
+			continue
+		}
+		data.Data[user] = pushersData
+	}
+	return data
+}
+
+func getUserPushDataFromRemote(req *pushapitypes.ReqPushUsers, rpcClient *common.RpcClient) *pushapitypes.RespUsersPusher{
+	data := &pushapitypes.RespUsersPusher{
+		Data: make(map[string][]pushapitypes.Pusher),
+	}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Marshal payload:%+v err:%v", req, err)
+		return data
+	}
+	request := pushapitypes.PushDataRequest{
+		Payload: payload,
+		ReqType: types.GET_PUSHER_BATCH,
+		Slot: 	 req.Slot,
+	}
+	bt, err := json.Marshal(request)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Marshal request:%+v err:%v", req, err)
+		return data
+	}
+	r, err := rpcClient.Request(types.PushDataTopicDef, bt, 15000)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote rpc req:%+v err:%v", req, err)
+		return data
+	}
+	resp := pushapitypes.RpcResponse{}
+	err = json.Unmarshal(r, &resp)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
+		return data
+	}
+	err = json.Unmarshal(resp.Payload,&data)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
+		return data
+	}
+	return data
 }

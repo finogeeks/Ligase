@@ -69,7 +69,8 @@ const (
 const (
 	GET_PUSHER_BY_DEVICE  	= "getPusherByDevice"
 	GET_PUSHRULE_BY_USER 	= "getPushRuleByUser"
-	Get_PUSHDATA_BATCH 		= "getPushDataBatch"
+	GET_PUSHDATA_BATCH 		= "getPushDataBatch"
+	GET_PUSHER_BATCH 		= "getPusherBatch"
 )
 
 type DeviceState struct {

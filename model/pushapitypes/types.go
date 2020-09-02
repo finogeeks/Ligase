@@ -474,6 +474,10 @@ type RespPushUsersData struct {
 	Data 		map[string]RespPushData `json:"data"`
 }
 
+type RespUsersPusher struct {
+	Data 		map[string][]Pusher  	`json:"data"`
+}
+
 type RpcResponse struct {
 	Error   string
 	Payload jsoniter.RawMessage

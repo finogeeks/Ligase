@@ -532,6 +532,6 @@ func (ReqPostUsersPushKey) Process(consumer interface{}, msg core.Coder, device 
 	}
 	req := msg.(*external.PostUsersPushKeyRequest)
 	return routing.GetUsersPushers(
-		req, c.redisCache,
+		context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcCli,
 	)
 }
