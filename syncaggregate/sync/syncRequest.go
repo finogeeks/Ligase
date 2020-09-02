@@ -383,12 +383,12 @@ func (sm *SyncMng) OnSyncRequest(
 			break
 		}
 
-		if sm.cfg.SendMemberEvent == false {
+		//if sm.cfg.SendMemberEvent == false {
 			if sm.presenceStreamRepo.ExistsPresence(request.device.UserID, request.marks.preRecv) && now-start > 500 && request.device.IsHuman == true {
 				log.Infof("SyncMng break has presence messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
 				break
 			}
-		}
+		//}
 	}
 
 	var res *syncapitypes.Response
@@ -423,9 +423,9 @@ func (sm *SyncMng) OnSyncRequest(
 		}
 
 		if request.device.IsHuman == true {
-			if sm.cfg.SendMemberEvent == false {
+			//if sm.cfg.SendMemberEvent == false {
 				sm.addPresence(request, res)
-			}
+			//}
 
 			res = sm.addAccountData(request, res)
 

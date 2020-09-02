@@ -1029,6 +1029,10 @@ func (sm *SyncMng) addTyping(req *request, response *syncapitypes.Response, curR
 		if err != nil {
 			return
 		}
+		if response.Rooms.Join == nil {
+			log.Warnf("traceid:%s addTyping rooms join is nil", req.traceId)
+			response.Rooms.Join = make(map[string]syncapitypes.JoinResponse)
+		}
 		if curRoomID == "" {
 			for _, event := range events {
 				var jr *syncapitypes.JoinResponse
