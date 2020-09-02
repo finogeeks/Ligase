@@ -32,7 +32,6 @@ import (
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/json-iterator/go"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -183,69 +182,13 @@ func CheckPusherBody(pushers *external.PostSetPushersRequest) string {
 	return ""
 }
 
-// GetUsersPushers implements POST /_matrix/client/r0/users/pushkey
-func GetUsersPushers(
-	ctx context.Context,
-	users *external.PostUsersPushKeyRequest,
-	pushDataRepo *repos.PushDataRepo,
-	cfg config.Dendrite,
-	rpcClient *common.RpcClient,
-) (int, core.Coder) {
-	pushersRes := pushapitypes.PushersRes{}
-	pushers := []pushapitypes.PusherRes{}
-	pushersRes.PushersRes = pushers
-	slotMembers := make(map[uint32]*pushapitypes.ReqPushUsers)
-	for _, member := range users.Users{
-		slot := common.CalcStringHashCode(member) % cfg.MultiInstance.Total
-		if _, ok := slotMembers[slot]; ok {
-			slotMembers[slot].Users = append(slotMembers[slot].Users, member)
-		}else{
-			slotMembers[slot] = &pushapitypes.ReqPushUsers{
-				Users: []string{member},
-				Slot: slot,
-			}
-		}
-	}
-	collectionResults := make(chan *pushapitypes.RespUsersPusher, cfg.MultiInstance.Total)
-	var wg sync.WaitGroup
-	for _, req := range slotMembers {
-		if len(req.Users) <= 0 {
-			continue
-		}
-		wg.Add(1)
-		go rpcGetUserPushData(&wg,req,collectionResults,cfg, pushDataRepo, rpcClient)
-	}
-	go func(wg *sync.WaitGroup) {
-		wg.Wait()
-		close(collectionResults)
-	}(&wg)
-	result := make(map[string][]pushapitypes.Pusher)
-	for r := range collectionResults {
-		for k, v := range r.Data{
-			result[k] = v
-		}
-	}
-	for user, pushers := range result {
-		for _, data := range pushers {
-			var pusher pushapitypes.PusherRes
-			pusher.UserName = user
-			pusher.AppId = data.AppId
-			pusher.Kind = data.Kind
-			pusher.PushKey = data.PushKey
-			pusher.PushKeyTs = data.PushKeyTs
-			pushersRes.PushersRes = append(pushersRes.PushersRes, pusher)
-		}
-	}
-	return http.StatusOK, &pushersRes
-}
-
-func rpcGetUserPushData(wg *sync.WaitGroup, req *pushapitypes.ReqPushUsers, result chan *pushapitypes.RespUsersPusher, cfg config.Dendrite,pushDataRepo *repos.PushDataRepo, rpcClient *common.RpcClient){
-	defer wg.Done()
+func rpcGetUserPushData(req *pushapitypes.ReqPushUsers, cfg config.Dendrite,pushDataRepo *repos.PushDataRepo, rpcClient *common.RpcClient) *pushapitypes.RespUsersPusher {
 	if req.Slot == cfg.MultiInstance.Instance {
-		result <- getUserPushDataFromLocal(req, pushDataRepo)
+		return getUserPushDataFromLocal(req, pushDataRepo)
 	}else{
-		result <- getUserPushDataFromRemote(req, rpcClient)
+		return getUserPushDataFromRemote(req, rpcClient)
 	}
+	//return getUserPushDataFromRemote(req, rpcClient)
 }
 
 func getUserPushDataFromLocal(req *pushapitypes.ReqPushUsers, pushDataRepo *repos.PushDataRepo) *pushapitypes.RespUsersPusher{
@@ -299,4 +242,53 @@ func getUserPushDataFromRemote(req *pushapitypes.ReqPushUsers, rpcClient *common
 		return data
 	}
 	return data
+}
+
+// GetUsersPushers implements POST /_matrix/client/r0/users/pushkey
+func GetUsersPushers(
+	ctx context.Context,
+	users *external.PostUsersPushKeyRequest,
+	pushDataRepo *repos.PushDataRepo,
+	cfg config.Dendrite,
+	rpcClient *common.RpcClient,
+) (int, core.Coder) {
+	pushersRes := pushapitypes.PushersRes{}
+	pushers := []pushapitypes.PusherRes{}
+	pushersRes.PushersRes = pushers
+	slotMembers := make(map[uint32]*pushapitypes.ReqPushUsers)
+	for _, member := range users.Users{
+		slot := common.CalcStringHashCode(member) % cfg.MultiInstance.Total
+		if _, ok := slotMembers[slot]; ok {
+			slotMembers[slot].Users = append(slotMembers[slot].Users, member)
+		}else{
+			slotMembers[slot] = &pushapitypes.ReqPushUsers{
+				Users: []string{member},
+				Slot: slot,
+			}
+		}
+	}
+	result := make(map[string][]pushapitypes.Pusher)
+	for _, req := range slotMembers {
+		if len(req.Users) <= 0 {
+			continue
+		}
+		r := rpcGetUserPushData(req, cfg, pushDataRepo, rpcClient)
+		if r != nil {
+			for key, pushers := range r.Data {
+				result[key] = pushers
+			}
+		}
+	}
+	for user, pushers := range result {
+		for _, data := range pushers {
+			var pusher pushapitypes.PusherRes
+			pusher.UserName = user
+			pusher.AppId = data.AppId
+			pusher.Kind = data.Kind
+			pusher.PushKey = data.PushKey
+			pusher.PushKeyTs = data.PushKeyTs
+			pushersRes.PushersRes = append(pushersRes.PushersRes, pusher)
+		}
+	}
+	return http.StatusOK, &pushersRes
 }
