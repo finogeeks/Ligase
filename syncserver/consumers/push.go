@@ -341,7 +341,7 @@ func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.R
 	}
 	request := push.PushDataRequest{
 		Payload: payload,
-		ReqType: types.Get_PUSHDATA_BATCH,
+		ReqType: types.GET_PUSHDATA_BATCH,
 		Slot: 	 req.Slot,
 	}
 	bt, err := json.Marshal(request)

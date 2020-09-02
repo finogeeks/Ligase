@@ -527,11 +527,19 @@ func (ReqPostUsersPushKey) NewResponse(code int) core.Coder {
 }
 func (ReqPostUsersPushKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
-		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
-	}
 	req := msg.(*external.PostUsersPushKeyRequest)
-	return routing.GetUsersPushers(
-		req, c.redisCache,
-	)
+	if req.Users != nil && len(req.Users) > 0 {
+		if !common.IsRelatedRequest(req.Users[0], c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+			return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+		}else{
+			return routing.GetUsersPushers(
+				context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcCli,
+			)
+		}
+	}else{
+		pushersRes := pushapitypes.PushersRes{}
+		pushers := []pushapitypes.PusherRes{}
+		pushersRes.PushersRes = pushers
+		return http.StatusOK, &pushersRes
+	}
 }

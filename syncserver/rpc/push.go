@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"fmt"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -83,8 +84,10 @@ func (pd *PushDataCB) process(req *pushapitypes.PushDataRequest) {
 		pd.getPusherByDevice(req)
 	case types.GET_PUSHRULE_BY_USER:
 		pd.getPushRuleByUser(req)
-	case types.Get_PUSHDATA_BATCH:
+	case types.GET_PUSHDATA_BATCH:
 		pd.getPushDataBatch(req)
+	case types.GET_PUSHER_BATCH:
+		pd.getPusherBatch(req)
 	default:
 		log.Infof("unknown pushdata reqtype:%s", req.ReqType)
 	}
@@ -149,6 +152,37 @@ func (pd *PushDataCB) getPushDataBatch(req *pushapitypes.PushDataRequest){
 			Rules: routing.GetUserPushRules(user, pd.repos, false, nil),
 		}
 		resp.Data[user] = r
+	}
+
+	byte, err := json.Marshal(resp)
+	if err != nil {
+		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
+			Error: fmt.Sprintf("json.Marshal result error %v", err),
+		})
+	}else{
+		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
+			Payload: byte,
+		})
+	}
+}
+
+func (pd *PushDataCB) getPusherBatch(req *pushapitypes.PushDataRequest){
+	var data pushapitypes.ReqPushUsers
+	if err := json.Unmarshal(req.Payload, &data); err != nil {
+		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
+			Error: fmt.Sprintf("json.Unmarshal payload error %v", err),
+		})
+		return
+	}
+	resp := pushapitypes.RespUsersPusher{
+		Data: make(map[string][]pushapitypes.Pusher),
+	}
+	ctx := context.TODO()
+	for _, user := range data.Users {
+		pushers, err := pd.repos.GetPusher(ctx, user)
+		if err == nil {
+			resp.Data[user] = pushers
+		}
 	}
 
 	byte, err := json.Marshal(resp)
