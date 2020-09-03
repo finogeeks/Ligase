@@ -215,12 +215,13 @@ func getNonreduAdmin(curUsers, prevUsers map[string]int) (string, string, string
 
 	if curUsers != nil {
 		for user, curPower := range curUsers {
-			if prePower, ok := prevUsers[user]; ok && curPower == prePower {
+			prePower, ok := prevUsers[user]
+			if ok && curPower == prePower {
 				continue
 			}
 			if curPower == 100 {
 				curAdmin = user
-			} else {
+			} else if prePower > 0 && curPower <= 0 {
 				curNonAdmin = user
 			}
 		}
