@@ -218,6 +218,7 @@ type powerLevelContent struct {
 	inviteLevel       int64
 	kickLevel         int64
 	redactLevel       int64
+	shakeLevel        int64
 	userLevels        map[string]int64
 	userDefaultLevel  int64
 	eventLevels       map[string]int64
@@ -303,6 +304,7 @@ func (c *powerLevelContent) defaults() {
 	c.stateDefaultLevel = 50
 	c.onlyOneMember = false
 
+	c.shakeLevel = 0
 }
 
 // newPowerLevelContentFromEvent loads the power level content from an event.
@@ -323,6 +325,7 @@ func newPowerLevelContentFromEvent(event Event) (c powerLevelContent, err error)
 		StateDefaultLevel levelJSONValue            `json:"state_default"`
 		EventDefaultLevel levelJSONValue            `json:"event_default"`
 		OnlyOneMember     *bool                     `json:"only_one_member,omitempty"`
+		ShakeLevel        levelJSONValue            `json:"shake,omitempty"`
 	}
 	if err = json.Unmarshal(event.Content(), &content); err != nil {
 		err = errorf("unparsable power_levels event content: %s", err.Error())
@@ -337,6 +340,7 @@ func newPowerLevelContentFromEvent(event Event) (c powerLevelContent, err error)
 	content.UsersDefaultLevel.assignIfExists(&c.userDefaultLevel)
 	content.StateDefaultLevel.assignIfExists(&c.stateDefaultLevel)
 	content.EventDefaultLevel.assignIfExists(&c.eventDefaultLevel)
+	content.ShakeLevel.assignIfExists(&c.shakeLevel)
 
 	for k, v := range content.UserLevels {
 		if c.userLevels == nil {
