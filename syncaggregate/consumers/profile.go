@@ -134,8 +134,8 @@ func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
 		s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
 		return true
 	}
-	//set presence is same to serverStatus, not update presence
-	if output.Presence.Presence == presence.ServerStatus {
+	//set presence is same to lastPresence, not update presence
+	if output.Presence.Presence == output.Presence.LastPresence {
 		return false
 	}
 	//use is online, set offline, not update presence
