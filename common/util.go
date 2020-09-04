@@ -460,3 +460,23 @@ func GetDomainByUserID(userID string) string {
 	ss := strings.Split(userID, ":")
 	return ss[len(ss)-1]
 }
+
+func SplitArray(arr []interface{}, num int) (segmens []interface{}) {
+	max := len(arr)
+	if max < num {
+		segmens = append(segmens, arr[0:max])
+		return
+	}
+	var step = max / num
+	var beg int
+	var end int
+	for i := 0; i < step || end < max; i++ {
+		beg = 0 + i*num
+		end = beg + num
+		if end > max {
+			end = max
+		}
+		segmens = append(segmens, arr[beg:end])
+	}
+	return
+}

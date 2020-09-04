@@ -387,7 +387,7 @@ func BuildMembershipAndFireEvents(
 
 		content.DisplayName = newProfile.DisplayName
 		content.AvatarURL = newProfile.AvatarURL
-
+		content.Reason = "BuildMembershipAndFireEvents"
 		if err := builder.SetContent(content); err != nil {
 			log.Errorf("BuildMembershipAndFireEvents fail on SetContent for roomid:%s user:%s with err:%v", roomID, userID, err)
 			continue

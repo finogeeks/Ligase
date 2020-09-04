@@ -183,7 +183,7 @@ func (r *EventsProcessor) InputRoomEvents(
 	if len(input.Query) >= 2 {
 		r.evtProcGauge.WithLabelValues(input.Query[0], input.Query[1], input.RoomID).Set(float64(duration))
 	}
-	log.Infof("roomId:%s len:%v", input.RoomID, input.BulkEvents.Events)
+	log.Infof("roomId:%s len:%d", input.RoomID, len(input.BulkEvents.Events))
 	//return n, err
 	return inputResult.Num, inputResult.Error
 }

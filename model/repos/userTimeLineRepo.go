@@ -17,6 +17,9 @@ package repos
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common"
+	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -254,18 +257,45 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 	tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "LoadUserFriendShip").Add(1)
 }
 
-func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) error {
+func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) {
+	batchIdInt64, _ := tl.Idg.Next()
+	batchId :=strconv.FormatInt(batchIdInt64,10)
+	loadRooms := []interface{}{}
+	for _, room := range rooms {
+		loadRooms = append(loadRooms, room)
+	}
+	segmens := common.SplitArray(loadRooms,500)
+	for _,sg := range segmens {
+		switch reflect.TypeOf(sg).Kind() {
+		case reflect.Slice, reflect.Array:
+			s := reflect.ValueOf(sg)
+			vals := []string{}
+			for i := 0; i < s.Len(); i++ {
+				if s.Index(i).Interface() == nil {
+					continue
+				}
+				room := s.Index(i).Interface().(string)
+				vals = append(vals, room)
+			}
+			tl.loadRoomLatestByPage(batchId, user, vals)
+		default:
+			log.Warnf("batchId:%s user:%s loadRoomLatest rooms after split type err", batchId, user)
+		}
+	}
+}
+
+func (tl *UserTimeLineRepo) loadRoomLatestByPage(batchId, user string, rooms []string) error {
 	bs := time.Now().UnixNano() / 1000000
 	roomMap, err := tl.persist.GetRoomLastOffsets(context.TODO(), rooms)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
-		log.Errorf("user:%s load db failed UserTimeLineRepo.loadRoomLatest spend:%d ms err:%v", user, spend, err)
+		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms err:%v",batchId, user,len(rooms), spend, err)
 		return err
 	}
 	if spend > types.DB_EXCEED_TIME {
-		log.Warnf("user:%s load db exceed %d ms UserTimeLineRepo.loadRoomLatest spend:%d ms", user, types.DB_EXCEED_TIME, spend)
+		log.Warnf("batchId:%s user:%s load db exceed %d ms UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms", batchId, user, types.DB_EXCEED_TIME, len(rooms), spend)
 	} else {
-		log.Infof("user:%s load db succ UserTimeLineRepo.loadRoomLatest spend:%d ms", user, spend)
+		log.Infof("batchId:%s user:%s load db succ UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms", batchId, user, len(rooms), spend)
 	}
 	if roomMap != nil {
 		for roomID, offset := range roomMap {
@@ -275,18 +305,45 @@ func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) error {
 	return nil
 }
 
-func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map) error {
+func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map)  {
+	batchIdInt64, _ := tl.Idg.Next()
+	batchId :=strconv.FormatInt(batchIdInt64,10)
+	loadEvents := []interface{}{}
+	for _, event := range events {
+		loadEvents = append(loadEvents, event)
+	}
+	segmens := common.SplitArray(loadEvents,500)
+	for _,sg := range segmens {
+		switch reflect.TypeOf(sg).Kind() {
+		case reflect.Slice, reflect.Array:
+			s := reflect.ValueOf(sg)
+			vals := []string{}
+			for i := 0; i < s.Len(); i++ {
+				if s.Index(i).Interface() == nil {
+					continue
+				}
+				event := s.Index(i).Interface().(string)
+				vals = append(vals, event)
+			}
+			tl.loadJoinRoomOffsetsByPage(batchId, user, vals, res)
+		default:
+			log.Warnf("batchId:%s user:%s loadJoinRoomOffsets events after split type err", batchId, user)
+		}
+	}
+}
+
+func (tl *UserTimeLineRepo) loadJoinRoomOffsetsByPage(batchId, user string, events []string, res *sync.Map) error {
 	bs := time.Now().UnixNano() / 1000000
 	offsets, _, roomIDs, err := tl.persist.GetJoinRoomOffsets(context.TODO(), events)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
-		log.Errorf("user:%s load db failed UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms err:%v", user, spend, err)
+		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomJoinOffsets len(events):%d spend:%d ms err:%v", batchId, user, len(events), spend, err)
 		return err
 	}
 	if spend > types.DB_EXCEED_TIME {
-		log.Warnf("user:%s load db exceed %d ms UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms", user, types.DB_EXCEED_TIME, spend)
+		log.Warnf("batchId:%s user:%s load db exceed %d ms UserTimeLineRepo.loadRoomJoinOffsets len(events):%d spend:%d ms", batchId, user, types.DB_EXCEED_TIME, len(events), spend)
 	} else {
-		log.Infof("user:%s load db succ UserTimeLineRepo.loadRoomJoinOffsets spend:%d ms", user, spend)
+		log.Infof("batchId:%s user:%s load db succ UserTimeLineRepo.loadRoomJoinOffsets len(events):%d spend:%d ms", batchId, user, len(events), spend)
 	}
 	for idx, roomID := range roomIDs {
 		res.Store(roomID, offsets[idx])
