@@ -15,8 +15,9 @@
 package extra
 
 import (
-	list "container/list"
+	"container/list"
 	"fmt"
+	"sort"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/authtypes"
@@ -64,38 +65,42 @@ type topicWaterMark struct {
 }
 
 const (
-	MRoomCreate                = "m.room.create"
-	MRoomName                  = "m.room.name"
-	MRoomNameCreate            = "m.room.name#create"
-	MRoomJoinRules             = "m.room.join_rules"
-	MRoomPowerLevels           = "m.room.power_levels"
-	MRoomPowerLevelsBan        = "m.room.power_levels#ban"
-	MRoomPowerLevelsInvite     = "m.room.power_levels#invite"
-	MRoomPowerLevelsNoticeIO   = "m.room.power_levels#notice$io"
-	MRoomPowerLevelsShareWX    = "m.room.power_levels#share$wx"
-	MRoomPowerLevelsVerify     = "m.room.power_levels#verify"
-	MRoomPowerLevelsAdminTrans = "m.room.power_levels#admin$trans"
-	MRoomPowerLevelsAdminUp    = "m.room.power_levels#admin$up"
-	MRoomPowerLevelsAdminDown  = "m.room.power_levels#admin$down"
-	MRoomMember                = "m.room.member"
-	MRoomMemberJoin            = "m.room.member#join"
-	MRoomMemberJoinDirect      = "m.room.member#join$direct"
-	MRoomMemberInvite          = "m.room.member#invite"
-	MRoomMemberLeaveInvite     = "m.room.member#leave$invite"
-	MRoomMemberLeaveJoin       = "m.room.member#leave$join"
-	MRoomMemberLeaveKickInvite = "m.room.member#leave$invite+kick"
-	MRoomMemberLeaveKickJoin   = "m.room.member#leave$join+kick"
-	MRoomHistoryVisibility     = "m.room.history_visibility"
-	MRoomRedaction             = "m.room.redaction"
-	MRoomEncryption            = "m.room.encryption"
-	MRoomArchive               = "m.room.archive"
-	MRoomDesc                  = "m.room.desc"
-	MRoomDescChange            = "m.room.desc#change"
-	MRoomDescClear             = "m.room.desc#new"
-	MRoomTopic                 = "m.room.topic"
-	MRoomTopicWaterMark        = "m.room.topic#watermark"
-	MRoomMessage               = "m.room.message"
-	MRoomMessageShake          = "m.room.message#shake"
+	MRoomCreate                 = "m.room.create"
+	MRoomName                   = "m.room.name"
+	MRoomNameCreate             = "m.room.name#create"
+	MRoomJoinRules              = "m.room.join_rules"
+	MRoomPowerLevels            = "m.room.power_levels"
+	MRoomPowerLevelsBan         = "m.room.power_levels#ban"
+	MRoomPowerLevelsBanSome     = "m.room.power_levels#ban$some"
+	MRoomPowerLevelsUnBanSome   = "m.room.power_levels#unban$some"
+	MRoomPowerLevelsBanBySome   = "m.room.power_levels#baned$some"
+	MRoomPowerLevelsUnBanBySome = "m.room.power_levels#unbaned$some"
+	MRoomPowerLevelsInvite      = "m.room.power_levels#invite"
+	MRoomPowerLevelsNoticeIO    = "m.room.power_levels#notice$io"
+	MRoomPowerLevelsShareWX     = "m.room.power_levels#share$wx"
+	MRoomPowerLevelsVerify      = "m.room.power_levels#verify"
+	MRoomPowerLevelsAdminTrans  = "m.room.power_levels#admin$trans"
+	MRoomPowerLevelsAdminUp     = "m.room.power_levels#admin$up"
+	MRoomPowerLevelsAdminDown   = "m.room.power_levels#admin$down"
+	MRoomMember                 = "m.room.member"
+	MRoomMemberJoin             = "m.room.member#join"
+	MRoomMemberJoinDirect       = "m.room.member#join$direct"
+	MRoomMemberInvite           = "m.room.member#invite"
+	MRoomMemberLeaveInvite      = "m.room.member#leave$invite"
+	MRoomMemberLeaveJoin        = "m.room.member#leave$join"
+	MRoomMemberLeaveKickInvite  = "m.room.member#leave$invite+kick"
+	MRoomMemberLeaveKickJoin    = "m.room.member#leave$join+kick"
+	MRoomHistoryVisibility      = "m.room.history_visibility"
+	MRoomRedaction              = "m.room.redaction"
+	MRoomEncryption             = "m.room.encryption"
+	MRoomArchive                = "m.room.archive"
+	MRoomDesc                   = "m.room.desc"
+	MRoomDescChange             = "m.room.desc#change"
+	MRoomDescClear              = "m.room.desc#new"
+	MRoomTopic                  = "m.room.topic"
+	MRoomTopicWaterMark         = "m.room.topic#watermark"
+	MRoomMessage                = "m.room.message"
+	MRoomMessageShake           = "m.room.message#shake"
 )
 
 var (
@@ -117,6 +122,10 @@ func init() {
 	hintFormat[MRoomMemberLeaveKickInvite] = "%s撤回了对%s的邀请"
 	hintFormat[MRoomPowerLevels] = "%s修改了%s的权限\""
 	hintFormat[MRoomPowerLevelsBan] = "%s已%s\"全员禁言\""
+	hintFormat[MRoomPowerLevelsBanSome] = "你已将%s禁言"
+	hintFormat[MRoomPowerLevelsUnBanSome] = "你已解除%s的禁言"
+	hintFormat[MRoomPowerLevelsBanBySome] = "%s已被%s禁言"
+	hintFormat[MRoomPowerLevelsUnBanBySome] = "%s的禁言已被%s解除"
 	hintFormat[MRoomPowerLevelsInvite] = "%s已%s\"仅管理员可加人\""
 	hintFormat[MRoomPowerLevelsNoticeIO] = "%s已%s\"不显示成员进出频道提示\""
 	hintFormat[MRoomPowerLevelsShareWX] = "%s已%s\"允许分享频道到微信\""
@@ -680,29 +689,90 @@ func plModifyAdminHandler(userID, operator string, displayNameRepo *repos.Displa
 	curAdmin, curNonAdmin, _, _ := getNonreduAdmin(content.Users, unsigned.PrevContent.Users)
 	if len(curAdmin) == 0 && len(curNonAdmin) == 0 {
 		return
+	}
+	var evType, receiver string
+	if len(curAdmin) > 0 {
+		if len(curNonAdmin) > 0 {
+			evType += e.Type + "#admin$trans"
+		} else {
+			evType += e.Type + "#admin$up"
+		}
+		receiver = GetDisplayName(displayNameRepo, curAdmin)
+		if userID == curAdmin {
+			receiver = "你"
+		}
 	} else {
-		var evType, receiver string
-		if len(curAdmin) > 0 {
-			if len(curNonAdmin) > 0 {
-				evType += e.Type + "#admin$trans"
-			} else {
-				evType += e.Type + "#admin$up"
-			}
-			receiver = GetDisplayName(displayNameRepo, curAdmin)
-			if userID == curAdmin {
-				receiver = "你"
+		evType += e.Type + "#admin$down"
+		receiver = GetDisplayName(displayNameRepo, curNonAdmin)
+		if userID == curNonAdmin {
+			receiver = "你"
+		}
+	}
+	if len(e.Hint) != 0 {
+		e.Hint += "\n"
+	}
+	e.Hint += fmt.Sprintf(getFormat(evType), operator, receiver)
+}
+
+func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent, content *Content, unsigned *Unsigned) {
+	add := []string{}
+	remove := []string{}
+	for k, v := range content.Users {
+		if vv, ok := unsigned.PrevContent.Users[k]; ok {
+			if v == common.BanSendMessagePowLevel && vv > common.BanSendMessagePowLevel {
+				add = append(add, k)
 			}
 		} else {
-			evType += e.Type + "#admin$down"
-			receiver = GetDisplayName(displayNameRepo, curNonAdmin)
-			if userID == curNonAdmin {
-				receiver = "你"
+			if v == common.BanSendMessagePowLevel {
+				add = append(add, k)
 			}
 		}
-		if len(e.Hint) != 0 {
-			e.Hint += "\n"
+	}
+	for k, v := range unsigned.PrevContent.Users {
+		if vv, ok := content.Users[k]; ok {
+			if v == common.BanSendMessagePowLevel && vv > common.BanSendMessagePowLevel {
+				remove = append(remove, k)
+			}
+		} else {
+			if v == common.BanSendMessagePowLevel {
+				remove = append(remove, k)
+			}
 		}
-		e.Hint += fmt.Sprintf(getFormat(evType), operator, receiver)
+	}
+	sort.Strings(add)
+	sort.Strings(remove)
+
+	addUsers := ""
+	for i, v := range add {
+		if i < len(add)-1 {
+			addUsers += GetDisplayName(displayNameRepo, v) + "，"
+		} else {
+			addUsers += GetDisplayName(displayNameRepo, v)
+		}
+	}
+
+	removeUsers := ""
+	for i, v := range remove {
+		if i < len(remove)-1 {
+			removeUsers += GetDisplayName(displayNameRepo, v) + "，"
+		} else {
+			removeUsers += GetDisplayName(displayNameRepo, v)
+		}
+	}
+	if addUsers != "" {
+		if userID != e.Sender {
+			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsBanBySome), addUsers, GetDisplayName(displayNameRepo, e.Sender))
+		} else {
+			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsBanSome), addUsers)
+		}
+	}
+	if removeUsers != "" {
+		e.Hint += "\n"
+		if userID != e.Sender {
+			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsUnBanBySome), addUsers, GetDisplayName(displayNameRepo, e.Sender))
+		} else {
+			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsUnBanSome), addUsers)
+		}
 	}
 }
 
@@ -726,6 +796,7 @@ func mRoomPowerLevelsHandler(userID string, displayNameRepo *repos.DisplayNameRe
 	plModifyJoinGroupVerifyHandler(operator, e, &content, &unsigned)
 	plModifyShareWXHandler(operator, e, &content, &unsigned)
 	plModifyAdminHandler(userID, operator, displayNameRepo, e, &content, &unsigned)
+	plModifyBanSomeHandler(userID, operator, displayNameRepo, e, &content, &unsigned)
 }
 
 func mRoomHistoryVisibilityHandler(repo *repos.RoomCurStateRepo, userID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent) {
@@ -847,7 +918,7 @@ func mRoomMessageHandler(userID string, displayNameRepo *repos.DisplayNameRepo, 
 	var content struct {
 		MsgType string `json:"msgtype"`
 	}
-	json.Unmarshal(e.Content( &content)
+	json.Unmarshal(e.Content, &content)
 	if content.MsgType == "m.shake" {
 		operator := "你"
 		if userID != e.Sender {
