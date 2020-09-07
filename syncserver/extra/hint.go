@@ -753,6 +753,9 @@ func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.Disp
 
 	removeUsers := ""
 	for i, v := range remove {
+		if v == e.Sender {
+			continue
+		}
 		if i < len(remove)-1 {
 			removeUsers += GetDisplayName(displayNameRepo, v) + "，"
 		} else {
@@ -769,9 +772,9 @@ func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.Disp
 	if removeUsers != "" {
 		e.Hint += "\n"
 		if userID != e.Sender {
-			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsUnBanBySome), addUsers, GetDisplayName(displayNameRepo, e.Sender))
+			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsUnBanBySome), removeUsers, GetDisplayName(displayNameRepo, e.Sender))
 		} else {
-			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsUnBanSome), addUsers)
+			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsUnBanSome), removeUsers)
 		}
 	}
 }

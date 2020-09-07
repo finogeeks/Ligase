@@ -292,6 +292,11 @@ func SendMembership(
 		// 	events[eventIdx] = signedEvent
 		// }
 
+	} else if membership == "leave" || membership == "kick" {
+		ev, err := checkAndBuildPowerLevelsEventForBanSendMessage(queryRes, roomID, body.UserID, domainID, &cfg, idg)
+		if err == nil && ev != nil {
+			events = append(events, *ev)
+		}
 	}
 
 	rawEvent := roomserverapi.RawEvent{
@@ -427,6 +432,44 @@ func buildMembershipEvent(
 	}
 
 	return e, err
+}
+
+func checkAndBuildPowerLevelsEventForBanSendMessage(
+	states roomserverapi.QueryRoomStateResponse,
+	roomID, checkUserID, domain string,
+	cfg *config.Dendrite,
+	idg *uid.UidGenerator,
+) (*gomatrixserverlib.Event, error) {
+	pow, _ := states.PowerLevels()
+	content := pow.Content()
+	powContent := common.PowerLevelContent{}
+	json.Unmarshal(content, &powContent)
+
+	val := powContent.Users[checkUserID]
+	if val != common.BanSendMessagePowLevel {
+		return nil, nil
+	}
+
+	builder := gomatrixserverlib.EventBuilder{
+		Sender: checkUserID,
+		RoomID: roomID,
+		Type:   "m.room.power_levels",
+	}
+
+	delete(powContent.Users, checkUserID)
+
+	if err := builder.SetContent(powContent); err != nil {
+		log.Errorf("handle leave/kick set power_levels content err: %v", err)
+		return nil, err
+	}
+
+	e, err := common.BuildEvent(&builder, domain, *cfg, idg)
+	if err != nil {
+		log.Errorf("handle leave/kick build power_levels event err: %v", err)
+		return nil, err
+	}
+
+	return e, nil
 }
 
 // loadProfile lookups the profile of a given user from the database and returns
