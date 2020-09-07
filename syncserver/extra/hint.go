@@ -59,6 +59,10 @@ type memberStates struct {
 	roomID     string
 }
 
+type topicWaterMark struct {
+	IsWaterMark bool `json:"isWaterMark"`
+}
+
 const (
 	MRoomCreate                = "m.room.create"
 	MRoomName                  = "m.room.name"
@@ -88,6 +92,8 @@ const (
 	MRoomDesc                  = "m.room.desc"
 	MRoomDescChange            = "m.room.desc#change"
 	MRoomDescClear             = "m.room.desc#new"
+	MRoomTopic                 = "m.room.topic"
+	MRoomTopicWaterMark        = "m.room.topic#watermark"
 )
 
 var (
@@ -122,6 +128,7 @@ func init() {
 	hintFormat[MRoomArchive] = "%s%s了此频道"
 	hintFormat[MRoomDescChange] = "%s将频道描述为：%s"
 	hintFormat[MRoomDescClear] = "%s清空了频道描述"
+	hintFormat[MRoomTopicWaterMark] = "%s已%s\"水印背景\""
 }
 
 func getFormat(evType string) string {
@@ -800,6 +807,38 @@ func mRoomDescHandler(userID string, displayNameRepo *repos.DisplayNameRepo, e *
 	}
 }
 
+func mRoomTopicHandller(userID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent) {
+	var content struct {
+		Topic string `json:"topic"`
+	}
+	json.Unmarshal(e.Content, &content)
+
+	waterMark := topicWaterMark{}
+	json.Unmarshal([]byte(content.Topic), &waterMark)
+
+	var unsigned struct {
+		PrevContent struct {
+			Topic string `json:"topic"`
+		} `json:"prev_content"`
+	}
+	json.Unmarshal(e.Unsigned, &unsigned)
+	preWaterMark := topicWaterMark{}
+	json.Unmarshal([]byte(unsigned.PrevContent.Topic), &preWaterMark)
+	if waterMark.IsWaterMark == preWaterMark.IsWaterMark {
+		return
+	}
+
+	operator := "你"
+	if userID != e.Sender {
+		operator = GetDisplayName(displayNameRepo, e.Sender)
+	}
+	if waterMark.IsWaterMark {
+		e.Hint = fmt.Sprintf(getFormat(MRoomTopicWaterMark), operator, "开启")
+	} else {
+		e.Hint = fmt.Sprintf(getFormat(MRoomTopicWaterMark), operator, "关闭")
+	}
+}
+
 func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent, prvStates *list.List) {
 	if e.Type == MRoomCreate {
 		mRoomCreateHandler(repo, roomID, e)
@@ -817,6 +856,8 @@ func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID stri
 		mRoomArchiveHandler(device.UserID, displayNameRepo, e)
 	} else if e.Type == MRoomDesc {
 		mRoomDescHandler(device.UserID, displayNameRepo, e)
+	} else if e.Type == MRoomTopic {
+		mRoomTopicHandller(device.UserID, displayNameRepo, e)
 	}
 	/* else if e.Type == MRoomRedaction {
 		mRoomRedactionHandler(device.UserID, displayNameRepo, e)
