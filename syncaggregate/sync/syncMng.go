@@ -98,22 +98,44 @@ func (sm *SyncMng) GetOnlineRepo() *repos.OnlineUserRepo {
 }
 
 func (sm *SyncMng) OnStateChange(state *types.NotifyDeviceState) {
-	if sm.cfg.StateMgr.StateNotify {
-		state.DeviceID = common.GetDeviceMac(state.DeviceID)
-		state.Pushkeys = sm.GetPushkeyByUserDeviceID(state.UserID, state.DeviceID)
-		err := common.GetTransportMultiplexer().SendWithRetry(
-			sm.cfg.Kafka.Producer.DeviceStateUpdate.Underlying,
-			sm.cfg.Kafka.Producer.DeviceStateUpdate.Name,
-			&core.TransportPubMsg{
-				Keys: []byte(state.UserID),
-				Obj:  *state,
-			})
-		if err != nil {
-			log.Errorf("OnStateChange publish kafka topic:%s err:%v userID:%s,deviceID:%s", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, err, state.UserID, state.DeviceID)
-		} else {
-			log.Infof("OnStateChange publish kafka topic:%s succ userID:%s,deviceID:%s,laststate:%d,curstate:%d,pushkeys:%v", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, state.UserID, state.DeviceID, state.LastState, state.CurState, state.Pushkeys)
-		}
+	if !sm.cfg.StateMgr.StateNotify {
+		log.Warnln("not open state notify cfg")
+		return
 	}
+	state.DeviceID = common.GetDeviceMac(state.DeviceID)
+	state.Pushkeys = sm.GetPushkeyByUserDeviceID(state.UserID, state.DeviceID)
+	sm.sendStateChange(state)
+}
+
+func (sm *SyncMng) sendStateChange(state *types.NotifyDeviceState){
+	err := common.GetTransportMultiplexer().SendWithRetry(
+		sm.cfg.Kafka.Producer.DeviceStateUpdate.Underlying,
+		sm.cfg.Kafka.Producer.DeviceStateUpdate.Name,
+		&core.TransportPubMsg{
+			Keys: []byte(state.UserID),
+			Obj:  *state,
+		})
+	if err != nil {
+		log.Errorf("OnStateChange publish kafka topic:%s err:%v userID:%s,deviceID:%s", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, err, state.UserID, state.DeviceID)
+	} else {
+		log.Infof("OnStateChange publish kafka topic:%s succ userID:%s,deviceID:%s,laststate:%d,curstate:%d,pushkeys:%v", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, state.UserID, state.DeviceID, state.LastState, state.CurState, state.Pushkeys)
+	}
+}
+
+// other also use this topic, maintain notify data send to kafka same to single notify
+func (sm *SyncMng) OnBatchStateChange(batch []*types.NotifyDeviceState){
+	if !sm.cfg.StateMgr.StateNotify {
+		log.Warnln("not open state notify cfg")
+		return
+	}
+	log.Infof("cron notify online device len:%d", len(batch))
+	go func(batch []*types.NotifyDeviceState){
+		for _, state := range batch {
+			state.DeviceID = common.GetDeviceMac(state.DeviceID)
+			sm.sendStateChange(state)
+			time.Sleep(time.Duration(20)*time.Millisecond)
+		}
+	}(batch)
 }
 
 func (sm *SyncMng) OnUserStateChange(state *types.NotifyUserState) {
