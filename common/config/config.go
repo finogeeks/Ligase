@@ -478,6 +478,7 @@ type Dendrite struct {
 	LatestToken int   `yaml:"latest_token"`
 	ReceiptDelay int64 `yaml:"receipt_delay"`
 	CheckReceipt int64 `yaml:"check_receipt"`
+	OnlineSpec 	 string	`yaml:"online_spec"`
 }
 
 type LicenseConf struct {

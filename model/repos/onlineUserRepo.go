@@ -19,8 +19,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/robfig/cron"
 )
 
 //ios not call report state, last_state 、cur_state = OFFLINE_STATE
@@ -40,6 +41,7 @@ const (
 type StateChangeHandler interface {
 	OnStateChange(*types.NotifyDeviceState)
 	OnUserStateChange(state *types.NotifyUserState)
+	OnBatchStateChange([]*types.NotifyDeviceState)
 }
 
 type DefaultHander struct {
@@ -48,7 +50,10 @@ type DefaultHander struct {
 func (d *DefaultHander) OnStateChange(*types.NotifyDeviceState) {
 }
 
-func (d *DefaultHander) OnUserStateChange(state *types.NotifyUserState) {
+func (d *DefaultHander) OnUserStateChange(*types.NotifyUserState) {
+}
+
+func (d *DefaultHander) OnBatchStateChange([]*types.NotifyDeviceState) {
 }
 
 type Device struct {
@@ -118,15 +123,45 @@ type OnlineUserRepo struct {
 	userMap         sync.Map
 	timer           time.Timer
 	handler         StateChangeHandler
+	spec 			string
+	cron  			*cron.Cron
 }
 
-func NewOnlineUserRepo(ttl, ttlIOS int64) *OnlineUserRepo {
+func NewOnlineUserRepo(ttl, ttlIOS int64, spec string) *OnlineUserRepo {
 	ol := new(OnlineUserRepo)
 	ol.onlineUserCnt = 0
 	ol.onlineDeviceCnt = 0
+	ol.spec = spec
+	ol.cron = cron.New()
+	ol.cron.AddFunc(ol.spec, func() {
+		go ol.job()
+	})
+	ol.cron.Start()
 	ol.handler = new(DefaultHander)
 	go ol.clean(ttl, ttlIOS)
 	return ol
+}
+
+func (ol *OnlineUserRepo) job(){
+	batch := []*types.NotifyDeviceState{}
+	ol.userMap.Range(func(key, value interface{}) bool {
+		user := value.(*User)
+		user.devMap.Range(func(k, v interface{}) bool {
+			dev := v.(*Device)
+			batch = append(batch, &types.NotifyDeviceState{
+				UserID:    user.id,
+				DeviceID:  dev.id,
+				LastState: dev.lastState,
+				CurState:  dev.curState,
+			})
+			return true
+		})
+		return true
+	})
+	log.Infof("cron job get online device len:%d", len(batch))
+	if len(batch) > 0 {
+		ol.handler.OnBatchStateChange(batch)
+	}
 }
 
 func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {

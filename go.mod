@@ -16,7 +16,7 @@ require (
 	github.com/json-iterator/go v1.1.10
 	github.com/lib/pq v1.7.0
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
-	github.com/nats-io/gnatsd v1.4.1 // indirect
+	github.com/nats-io/nats-server/v2 v2.1.8 // indirect
 	github.com/nats-io/nats.go v1.10.0
 	github.com/nats-io/nkeys v0.2.0 // indirect
 	github.com/onsi/ginkgo v1.13.0 // indirect
@@ -24,6 +24,7 @@ require (
 	github.com/philhofer/fwd v1.0.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
+	github.com/robfig/cron v1.2.0
 	github.com/smallnest/gofsm v0.0.0-20190306032117-f5ba1bddca7b
 	github.com/stretchr/testify v1.4.0
 	github.com/tidwall/gjson v1.6.0
