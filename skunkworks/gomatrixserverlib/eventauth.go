@@ -58,6 +58,7 @@ const (
 	// channel archive
 	MRoomArchive = "m.room.archive"
 	MRoomUpdate  = "m.room.update"
+	MRoomMessage = "m.room.message"
 )
 
 var configOnce sync.Once
@@ -351,7 +352,20 @@ func Allowed(event Event, authEvents AuthEventProvider) error {
 	case MRoomRedaction, MRoomUpdate:
 		return redactEventAllowed(event, authEvents)
 	default:
-		return defaultEventAllowed(event, authEvents)
+		if event.Type() == MRoomMessage {
+			type MsgType struct {
+				MsgType string `json:"msgtype"`
+			}
+			var msgType MsgType
+			json.Unmarshal(event.Content(), &msgType)
+			if msgType.MsgType == "m.shake" {
+				return shakeEveentAllowed(event, authEvents)
+			} else {
+				return defaultEventAllowed(event, authEvents)
+			}
+		} else {
+			return defaultEventAllowed(event, authEvents)
+		}
 	}
 }
 
@@ -716,6 +730,28 @@ func defaultEventAllowed(event Event, authEvents AuthEventProvider) error {
 	}
 
 	return allower.commonChecks(event)
+}
+
+func shakeEveentAllowed(event Event, authEvents AuthEventProvider) error {
+	allower, err := newEventAllower(authEvents, event.Sender())
+	if err != nil {
+		return err
+	}
+	// shake events must pass the default checks,
+	if err = allower.commonChecks(event); err != nil {
+		return err
+	}
+
+	senderLevel := allower.powerLevels.userLevel(event.Sender())
+	shakeLevel := allower.powerLevels.redactLevel
+	if senderLevel >= shakeLevel {
+		return nil
+	}
+
+	return errorf(
+		"%q is not allowed to send shake message %d < %d",
+		event.Sender(), senderLevel, shakeLevel,
+	)
 }
 
 // An eventAllower has the information needed to authorise all events types

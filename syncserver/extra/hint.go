@@ -19,10 +19,10 @@ import (
 	"fmt"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -94,6 +94,8 @@ const (
 	MRoomDescClear             = "m.room.desc#new"
 	MRoomTopic                 = "m.room.topic"
 	MRoomTopicWaterMark        = "m.room.topic#watermark"
+	MRoomMessage               = "m.room.message"
+	MRoomMessageShake          = "m.room.message#shake"
 )
 
 var (
@@ -129,6 +131,7 @@ func init() {
 	hintFormat[MRoomDescChange] = "%s将频道描述为：%s"
 	hintFormat[MRoomDescClear] = "%s清空了频道描述"
 	hintFormat[MRoomTopicWaterMark] = "%s已%s\"水印背景\""
+	hintFormat[MRoomMessageShake] = "%s发送了一个窗口抖动"
 }
 
 func getFormat(evType string) string {
@@ -839,6 +842,20 @@ func mRoomTopicHandller(userID string, displayNameRepo *repos.DisplayNameRepo, e
 	}
 }
 
+func mRoomMessageHandler(userID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent) {
+	var content struct {
+		MsgType string `json:"msgtype"`
+	}
+	json.Unmarshal(e.Content( &content)
+	if content.MsgType == "m.shake" {
+		operator := "你"
+		if userID != e.Sender {
+			operator = GetDisplayName(displayNameRepo, e.Sender)
+		}
+		e.Hint = fmt.Sprintf(getFormat(MRoomMessageShake), operator, "开启")
+	}
+}
+
 func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent, prvStates *list.List) {
 	if e.Type == MRoomCreate {
 		mRoomCreateHandler(repo, roomID, e)
@@ -858,6 +875,8 @@ func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID stri
 		mRoomDescHandler(device.UserID, displayNameRepo, e)
 	} else if e.Type == MRoomTopic {
 		mRoomTopicHandller(device.UserID, displayNameRepo, e)
+	} else if e.Type == MRoomMessage {
+		mRoomMessageHandler(device.UserID, displayNameRepo, e)
 	}
 	/* else if e.Type == MRoomRedaction {
 		mRoomRedactionHandler(device.UserID, displayNameRepo, e)
