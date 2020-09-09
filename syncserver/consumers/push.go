@@ -16,6 +16,13 @@ package consumers
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/feedstypes"
@@ -27,12 +34,6 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/tidwall/gjson"
-	"regexp"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 type PushConsumer struct {
@@ -49,11 +50,11 @@ type PushConsumer struct {
 	chanSize     uint32
 	slotSize     uint32
 	pushDataRepo *repos.PushDataRepo
-	cfg 		 *config.Dendrite
+	cfg          *config.Dendrite
 }
 
 type PushEvent struct {
-	Ev *gomatrixserverlib.ClientEvent
+	Ev     *gomatrixserverlib.ClientEvent
 	Static *push.StaticObj
 	result chan types.TimeLineItem
 }
@@ -72,7 +73,7 @@ func NewPushConsumer(
 		chanSize:     20480,
 		slotSize:     64,
 		pushDataRepo: pushDataRepo,
-		cfg: 		 cfg,
+		cfg:          cfg,
 	}
 	s.pubTopic = push.PushTopicDef
 
@@ -89,14 +90,14 @@ func (s *PushConsumer) Start() {
 
 func (s *PushConsumer) startWorker(msgChan chan *PushEvent) {
 	for data := range msgChan {
-		s.OnEvent(data.Ev, data.Ev.EventOffset,data.Static, data.result)
+		s.OnEvent(data.Ev, data.Ev.EventOffset, data.Static, data.result)
 	}
 }
 
 func (s *PushConsumer) DispthEvent(ev *gomatrixserverlib.ClientEvent, static *push.StaticObj, result chan types.TimeLineItem) {
 	idx := common.CalcStringHashCode(ev.RoomID) % s.slotSize
 	s.msgChan[idx] <- &PushEvent{
-		Ev: ev,
+		Ev:     ev,
 		Static: static,
 		result: result,
 	}
@@ -136,12 +137,12 @@ func (s *PushConsumer) IsRelatesContent(redactEv gomatrixserverlib.ClientEvent) 
 	}
 	if unsigned.IsRelated != nil {
 		return *unsigned.IsRelated
-	}else{
+	} else {
 		return false
 	}
 }
 
-func (s *PushConsumer) PrintStaticData(static *push.StaticObj){
+func (s *PushConsumer) PrintStaticData(static *push.StaticObj) {
 	if static.ProfileCount <= 0 {
 		static.ProfileCount = 1
 	}
@@ -182,8 +183,8 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	defer func() {
 		result <- types.TimeLineItem{
 			TraceId: static.TraceId,
-			Start: static.Start,
-			Ev: input,
+			Start:   static.Start,
+			Ev:      input,
 		}
 		s.PrintStaticData(static)
 	}()
@@ -233,7 +234,7 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 		Contents: []*push.PushPubContent{},
 	}
 	//get all user push data
-	rs := time.Now().UnixNano()/1000
+	rs := time.Now().UnixNano() / 1000
 	pushData := s.getUserPushData(input.Sender, members)
 	bs := time.Now().UnixNano() / 1000
 	static.NoneMemSpend = bs - rs
@@ -258,7 +259,7 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	}
 	wg.Wait()
 	static.MemCount = len(members)
-	static.MemSpend = time.Now().UnixNano() / 1000 - bs
+	static.MemSpend = time.Now().UnixNano()/1000 - bs
 	//将需要推送的消息聚合一次推送
 	if s.rpcClient != nil && len(pushContents.Contents) > 0 {
 		pushContents.Input = input
@@ -269,17 +270,17 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 
 func (s *PushConsumer) getUserPushData(sender string, members []string) map[string]push.RespPushData {
 	slotMembers := make(map[uint32]*push.ReqPushUsers)
-	for _, member := range members{
+	for _, member := range members {
 		if member == sender {
 			continue
 		}
 		slot := common.CalcStringHashCode(member) % s.cfg.MultiInstance.Total
 		if _, ok := slotMembers[slot]; ok {
 			slotMembers[slot].Users = append(slotMembers[slot].Users, member)
-		}else{
+		} else {
 			slotMembers[slot] = &push.ReqPushUsers{
 				Users: []string{member},
-				Slot: slot,
+				Slot:  slot,
 			}
 		}
 	}
@@ -290,7 +291,7 @@ func (s *PushConsumer) getUserPushData(sender string, members []string) map[stri
 			continue
 		}
 		wg.Add(1)
-		go s.rpcGetUserPushData(&wg,req,collectionResults)
+		go s.rpcGetUserPushData(&wg, req, collectionResults)
 	}
 	go func(wg *sync.WaitGroup) {
 		wg.Wait()
@@ -298,39 +299,39 @@ func (s *PushConsumer) getUserPushData(sender string, members []string) map[stri
 	}(&wg)
 	result := make(map[string]push.RespPushData)
 	for r := range collectionResults {
-		for k, v := range r.Data{
+		for k, v := range r.Data {
 			result[k] = v
 		}
 	}
 	return result
 }
 
-func (s *PushConsumer) rpcGetUserPushData(wg *sync.WaitGroup, req *push.ReqPushUsers, result chan *push.RespPushUsersData){
+func (s *PushConsumer) rpcGetUserPushData(wg *sync.WaitGroup, req *push.ReqPushUsers, result chan *push.RespPushUsersData) {
 	defer wg.Done()
 	if req.Slot == s.cfg.MultiInstance.Instance {
 		result <- s.getUserPushDataFromLocal(req)
-	}else{
+	} else {
 		result <- s.getUserPushDataFromRemote(req)
 	}
 	//for test rpc
 	//result <- s.getUserPushDataFromRemote(req)
 }
 
-func (s *PushConsumer) getUserPushDataFromLocal(req *push.ReqPushUsers) *push.RespPushUsersData{
+func (s *PushConsumer) getUserPushDataFromLocal(req *push.ReqPushUsers) *push.RespPushUsersData {
 	data := &push.RespPushUsersData{
 		Data: make(map[string]push.RespPushData),
 	}
 	for _, user := range req.Users {
 		resp := push.RespPushData{
 			Pushers: routing.GetPushersByName(user, s.pushDataRepo, false, nil),
-			Rules: routing.GetUserPushRules(user, s.pushDataRepo, false, nil),
+			Rules:   routing.GetUserPushRules(user, s.pushDataRepo, false, nil),
 		}
 		data.Data[user] = resp
 	}
 	return data
 }
 
-func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.RespPushUsersData{
+func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.RespPushUsersData {
 	data := &push.RespPushUsersData{
 		Data: make(map[string]push.RespPushData),
 	}
@@ -342,7 +343,7 @@ func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.R
 	request := push.PushDataRequest{
 		Payload: payload,
 		ReqType: types.GET_PUSHDATA_BATCH,
-		Slot: 	 req.Slot,
+		Slot:    req.Slot,
 	}
 	bt, err := json.Marshal(request)
 	if err != nil {
@@ -360,7 +361,7 @@ func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.R
 		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
 		return data
 	}
-	err = json.Unmarshal(resp.Payload,&data)
+	err = json.Unmarshal(resp.Payload, &data)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
 		return data
@@ -371,15 +372,15 @@ func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.R
 func (s *PushConsumer) getUserPusher(user string, pushData map[string]push.RespPushData) push.Pushers {
 	if v, ok := pushData[user]; ok {
 		return v.Pushers
-	}else{
-		return push.Pushers{Pushers:[]push.Pusher{}}
+	} else {
+		return push.Pushers{Pushers: []push.Pusher{}}
 	}
 }
 
 func (s *PushConsumer) getUserPushRule(user string, pushData map[string]push.RespPushData) push.Rules {
 	if v, ok := pushData[user]; ok {
 		return v.Rules
-	}else{
+	} else {
 		return push.Rules{}
 	}
 }
@@ -396,7 +397,7 @@ func (s *PushConsumer) preProcessPush(
 	static *push.StaticObj,
 	pushData map[string]push.RespPushData,
 ) {
-	bs := time.Now().UnixNano()/1000
+	bs := time.Now().UnixNano() / 1000
 	if *member != input.Sender {
 		if input.Type == "m.room.redaction" {
 			if s.eventRepo.GetUserLastOffset(*member, input.RoomID) < redactOffset || redactOffset == -1 {
@@ -429,20 +430,20 @@ func (s *PushConsumer) preProcessPush(
 			rules = append(rules, v)
 		}
 		//log.Infof("roomID:%s eventID:%s userID:%s rules:%+v", input.RoomID, input.EventID, *member, rules)
-		rs := time.Now().UnixNano()/1000
+		rs := time.Now().UnixNano() / 1000
 		s.processPush(&pushers, &rules, input, member, memCount, eventJson, pushContents, static)
 		rsp := time.Now().UnixNano()/1000 - rs
-		atomic.AddInt64(&static.MemRule,rsp)
+		atomic.AddInt64(&static.MemRule, rsp)
 	} else {
 		//当前用户在发消息，应该把该用户的未读数置为0
 		s.eventRepo.AddUserReceiptOffset(*member, input.RoomID, eventOffset)
 		ss := time.Now().UnixNano() / 1000
 		s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "reset")
-		sp := time.Now().UnixNano() / 1000 - ss
+		sp := time.Now().UnixNano()/1000 - ss
 		atomic.AddInt64(&static.UnreadSpend, sp)
 	}
 	spend := time.Now().UnixNano()/1000 - bs
-	atomic.AddInt64(&static.MemAllSpend,spend)
+	atomic.AddInt64(&static.MemAllSpend, spend)
 }
 
 func (s *PushConsumer) getRoomMembers(
@@ -574,8 +575,8 @@ func (s *PushConsumer) processPush(
 	static *push.StaticObj,
 ) {
 	bs := time.Now().UnixNano() / 1000
-	defer func(bs int64)(){
-		spend := time.Now().UnixNano() / 1000 - bs
+	defer func(bs int64) {
+		spend := time.Now().UnixNano()/1000 - bs
 		atomic.AddInt64(&static.RuleSpend, spend)
 	}(bs)
 	//这种写法真的很挫，但没找到其他的处理方式
@@ -590,13 +591,26 @@ func (s *PushConsumer) processPush(
 		}
 		atomic.AddInt64(&static.RuleCount, 1)
 		if s.checkCondition(&v.Conditions, userID, memCount, eventJson) {
-			log.Infof("roomID:%s eventID:%s userID:%s match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
+			log.Infof("roomID:%s eventID:%s userID:%s match rule:%s", input.RoomID, input.EventID, *userID, v.RuleId)
 			action := s.getActions(v.Actions)
 
-			if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
+			increase := false
+			if input.Type == "m.room.encrypted" {
+				increase = true
+			}
+			if input.Type == "m.room.message" {
+				var content struct {
+					MsgType string `json:"msgtype"`
+				}
+				json.Unmarshal(input.Content, &content)
+				if content.MsgType != "m.shake" {
+					increase = true
+				}
+			}
+			if increase {
 				ss := time.Now().UnixNano() / 1000
 				s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *userID, "increase")
-				sp := time.Now().UnixNano() / 1000 - ss
+				sp := time.Now().UnixNano()/1000 - ss
 				atomic.AddInt64(&static.UnreadSpend, sp)
 			}
 
@@ -620,8 +634,8 @@ func (s *PushConsumer) processPush(
 				}
 			}
 			break
-		}else{
-			log.Infof("roomID:%s eventID:%s userID:%s not match rule:%s",input.RoomID, input.EventID, *userID, v.RuleId)
+		} else {
+			log.Infof("roomID:%s eventID:%s userID:%s not match rule:%s", input.RoomID, input.EventID, *userID, v.RuleId)
 		}
 	}
 }
@@ -843,19 +857,19 @@ func (s *PushConsumer) getActions(actions []interface{}) push.TweakAction {
 			key := ""
 			if val, ok := v["set_tweak"]; ok {
 				key = val.(string)
-			}else{
+			} else {
 				continue
 			}
 			if val, ok := v["value"]; ok {
 				if key == "sound" {
 					action.Sound = val.(string)
-				}else if key == "highlight" {
+				} else if key == "highlight" {
 					action.HighLight = val.(bool)
 				}
-			}else{
+			} else {
 				if key == "sound" {
 					action.Sound = "default"
-				}else if key == "highlight" {
+				} else if key == "highlight" {
 					action.HighLight = true
 				}
 			}
