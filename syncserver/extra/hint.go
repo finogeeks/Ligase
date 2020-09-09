@@ -950,12 +950,7 @@ func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID stri
 		mRoomDescHandler(device.UserID, displayNameRepo, e)
 	} else if e.Type == MRoomTopic {
 		mRoomTopicHandller(device.UserID, displayNameRepo, e)
-	} else if e.Type == MRoomMessage {
-		mRoomMessageHandler(device.UserID, displayNameRepo, e)
 	}
-	/* else if e.Type == MRoomRedaction {
-		mRoomRedactionHandler(device.UserID, displayNameRepo, e)
-	} */
 }
 
 func ExpandEventHint(event *gomatrixserverlib.ClientEvent, device *authtypes.Device, repo *repos.RoomCurStateRepo, displayNameRepo *repos.DisplayNameRepo) {
