@@ -745,9 +745,17 @@ func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.Disp
 	addUsers := ""
 	for i, v := range add {
 		if i < len(add)-1 {
-			addUsers += GetDisplayName(displayNameRepo, v) + "，"
+			if userID == v {
+				addUsers += operator + "，"
+			} else {
+				addUsers += GetDisplayName(displayNameRepo, v) + "，"
+			}
 		} else {
-			addUsers += GetDisplayName(displayNameRepo, v)
+			if userID == v {
+				addUsers += operator
+			} else {
+				addUsers += GetDisplayName(displayNameRepo, v)
+			}
 		}
 	}
 
@@ -757,9 +765,17 @@ func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.Disp
 			continue
 		}
 		if i < len(remove)-1 {
-			removeUsers += GetDisplayName(displayNameRepo, v) + "，"
+			if userID == v {
+				removeUsers += operator + "，"
+			} else {
+				removeUsers += GetDisplayName(displayNameRepo, v) + "，"
+			}
 		} else {
-			removeUsers += GetDisplayName(displayNameRepo, v)
+			if userID == v {
+				removeUsers += operator
+			} else {
+				removeUsers += GetDisplayName(displayNameRepo, v)
+			}
 		}
 	}
 	if addUsers != "" {
