@@ -293,7 +293,13 @@ func SendMembership(
 		// }
 
 	} else if membership == "leave" || membership == "kick" {
-		ev, err := checkAndBuildPowerLevelsEventForBanSendMessage(queryRes, roomID, body.UserID, domainID, &cfg, idg)
+		checkUserID := ""
+		if membership == "leave" {
+			checkUserID = userID
+		} else {
+			checkUserID = body.UserID
+		}
+		ev, err := checkAndBuildPowerLevelsEventForBanSendMessage(queryRes, roomID, checkUserID, domainID, &cfg, idg)
 		if err == nil && ev != nil {
 			events = append(events, *ev)
 		}
