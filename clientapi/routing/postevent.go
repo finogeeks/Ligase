@@ -25,11 +25,11 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -130,6 +130,14 @@ func PostEvent(
 	log.Debugf("------------------------PostEvent check-event-allowed %v", (time.Now().UnixNano()-last)/1000)
 	last = time.Now().UnixNano()
 
+	events := []gomatrixserverlib.Event{*e}
+	if eventType == "m.room.member" && r["membership"] == "leave" || r["membership"] == "kick" && stateKey != nil {
+		ev, err := checkAndBuildPowerLevelsEventForBanSendMessage(queryRes, roomID, *stateKey, domainID, &cfg, idg)
+		if err == nil && ev != nil {
+			events = append(events, *ev)
+		}
+	}
+
 	// pass the new event to the roomserver
 	rawEvent := roomserverapi.RawEvent{
 		RoomID: roomID,
@@ -137,7 +145,7 @@ func PostEvent(
 		TxnID:  txnAndDeviceID,
 		Trust:  true,
 		BulkEvents: roomserverapi.BulkEvent{
-			Events:  []gomatrixserverlib.Event{*e},
+			Events:  events,
 			SvrName: domainID,
 		},
 		Query: []string{"post_event", eventType},

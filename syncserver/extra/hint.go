@@ -41,6 +41,7 @@ type Content struct {
 	ShareToWX         *bool          `json:"share_to_WX,omitempty"`
 	Archive           bool           `json:"archive,omitempty"`
 	Desc              string         `json:"desc,omitempty"`
+	Shake             *int           `json:"shake,omitempty"`
 }
 
 type Unsigned struct {
@@ -82,6 +83,7 @@ const (
 	MRoomPowerLevelsAdminTrans  = "m.room.power_levels#admin$trans"
 	MRoomPowerLevelsAdminUp     = "m.room.power_levels#admin$up"
 	MRoomPowerLevelsAdminDown   = "m.room.power_levels#admin$down"
+	MRoomMessageShakeChange     = "m.room.power_levels#shakek"
 	MRoomMember                 = "m.room.member"
 	MRoomMemberJoin             = "m.room.member#join"
 	MRoomMemberJoinDirect       = "m.room.member#join$direct"
@@ -141,6 +143,7 @@ func init() {
 	hintFormat[MRoomDescClear] = "%s清空了频道描述"
 	hintFormat[MRoomTopicWaterMark] = "%s已%s\"水印背景\""
 	hintFormat[MRoomMessageShake] = "%s发送了一个窗口抖动"
+	hintFormat[MRoomMessageShakeChange] = "%s已%s“仅允许管理员发送窗口抖动”"
 }
 
 func getFormat(evType string) string {
@@ -745,9 +748,17 @@ func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.Disp
 	addUsers := ""
 	for i, v := range add {
 		if i < len(add)-1 {
-			addUsers += GetDisplayName(displayNameRepo, v) + "，"
+			if userID == v {
+				addUsers += operator + "，"
+			} else {
+				addUsers += GetDisplayName(displayNameRepo, v) + "，"
+			}
 		} else {
-			addUsers += GetDisplayName(displayNameRepo, v)
+			if userID == v {
+				addUsers += operator
+			} else {
+				addUsers += GetDisplayName(displayNameRepo, v)
+			}
 		}
 	}
 
@@ -757,9 +768,17 @@ func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.Disp
 			continue
 		}
 		if i < len(remove)-1 {
-			removeUsers += GetDisplayName(displayNameRepo, v) + "，"
+			if userID == v {
+				removeUsers += operator + "，"
+			} else {
+				removeUsers += GetDisplayName(displayNameRepo, v) + "，"
+			}
 		} else {
-			removeUsers += GetDisplayName(displayNameRepo, v)
+			if userID == v {
+				removeUsers += operator
+			} else {
+				removeUsers += GetDisplayName(displayNameRepo, v)
+			}
 		}
 	}
 	if addUsers != "" {
@@ -776,6 +795,21 @@ func plModifyBanSomeHandler(userID, operator string, displayNameRepo *repos.Disp
 		} else {
 			e.Hint += fmt.Sprintf(getFormat(MRoomPowerLevelsUnBanSome), removeUsers)
 		}
+	}
+}
+
+func plModifySHakeHandler(userID, operator string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent, content *Content, unsigned *Unsigned) {
+	nowOpen := content.Shake == nil || *content.Shake == 100
+	lastOpen := unsigned.PrevContent.Shake == nil || *unsigned.PrevContent.Shake == 100
+
+	if nowOpen != lastOpen {
+		openStr := ""
+		if nowOpen {
+			openStr = "开启"
+		} else {
+			openStr = "关闭"
+		}
+		e.Hint = fmt.Sprintf(getFormat(MRoomMessageShakeChange), operator, openStr)
 	}
 }
 
@@ -800,6 +834,7 @@ func mRoomPowerLevelsHandler(userID string, displayNameRepo *repos.DisplayNameRe
 	plModifyShareWXHandler(operator, e, &content, &unsigned)
 	plModifyAdminHandler(userID, operator, displayNameRepo, e, &content, &unsigned)
 	plModifyBanSomeHandler(userID, operator, displayNameRepo, e, &content, &unsigned)
+	plModifySHakeHandler(userID, operator, displayNameRepo, e, &content, &unsigned)
 }
 
 func mRoomHistoryVisibilityHandler(repo *repos.RoomCurStateRepo, userID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent) {
@@ -950,12 +985,7 @@ func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID stri
 		mRoomDescHandler(device.UserID, displayNameRepo, e)
 	} else if e.Type == MRoomTopic {
 		mRoomTopicHandller(device.UserID, displayNameRepo, e)
-	} else if e.Type == MRoomMessage {
-		mRoomMessageHandler(device.UserID, displayNameRepo, e)
 	}
-	/* else if e.Type == MRoomRedaction {
-		mRoomRedactionHandler(device.UserID, displayNameRepo, e)
-	} */
 }
 
 func ExpandEventHint(event *gomatrixserverlib.ClientEvent, device *authtypes.Device, repo *repos.RoomCurStateRepo, displayNameRepo *repos.DisplayNameRepo) {
