@@ -743,7 +743,7 @@ func shakeEveentAllowed(event Event, authEvents AuthEventProvider) error {
 	}
 
 	senderLevel := allower.powerLevels.userLevel(event.Sender())
-	shakeLevel := allower.powerLevels.redactLevel
+	shakeLevel := allower.powerLevels.shakeLevel
 	if senderLevel >= shakeLevel {
 		return nil
 	}
