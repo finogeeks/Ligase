@@ -179,6 +179,16 @@ func (sm *SyncMng) callSyncLoad(req *request) {
 
 func (sm *SyncMng) processSyncLoad(req *request) {
 	user := req.device.UserID
+	log.Infof("traceid:%s SyncMng processRequest begin", req.traceId)
+	bs := time.Now().UnixNano() /1000000
+	defer func(bs int64){
+		spend := time.Now().UnixNano() / 1000000 - bs
+		if spend > 1000 {
+			log.Warnf("trace:%s SyncMng processRequest spend:%d", req.traceId, spend)
+		}else{
+			log.Infof("trace:%s SyncMng processRequest spend:%d", req.traceId, spend)
+		}
+	}(bs)
 	sm.userTimeLine.LoadHistory(user, req.device.IsHuman)
 	if sm.userTimeLine.CheckUserLoadingReady(req.device.UserID) {
 		if req.marks.utlRecv == 0 && req.device.IsHuman == false {
@@ -215,7 +225,7 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 				if loaded {
 					req.ready = true
 					spend := (time.Now().UnixNano() - start) / 1000000
-					if spend > types.CHECK_LOAD_EXCEED_TIME {
+					if spend > types.DB_EXCEED_TIME {
 						log.Warnf("SyncMng processRequest load exceed %d ms traceid:%s slot:%d user:%s device:%s spend:%d ms", types.DB_EXCEED_TIME, req.traceId, req.slot, user, req.device.ID, spend)
 					} else {
 						log.Infof("SyncMng processRequest load succ traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, user, req.device.ID, spend)
