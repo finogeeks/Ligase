@@ -317,7 +317,6 @@ func (sm *SyncMng) OnSyncRequest(
 	sm.onlineRepo.Pet(device.UserID, device.ID, request.marks.utlRecv, request.timeout)
 	sm.userDeviceActiveRepo.UpdateDevActiveTs(device.UserID, device.ID)
 	sm.dispatch(device.UserID, request)
-
 	for request.ready == false || request.remoteReady == false {
 		time.Sleep(time.Millisecond * 100)
 

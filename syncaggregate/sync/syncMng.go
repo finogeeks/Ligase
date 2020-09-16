@@ -316,6 +316,7 @@ func (sm *SyncMng) startWorker(channel chan *request) {
 func (sm *SyncMng) dispatch(uid string, req *request) {
 	hash := common.CalcStringHashCode(uid)
 	req.slot = hash % sm.slot
+	log.Infof("traceid:%s dispatch slot:%d len:%d", req.traceId, req.slot, len(sm.msgChan[req.slot]))
 	sm.msgChan[req.slot] <- req
 }
 
