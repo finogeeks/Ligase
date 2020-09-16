@@ -316,9 +316,7 @@ func (sm *SyncMng) OnSyncRequest(
 	request := sm.buildRequest(req, device, start, lastPos)
 	sm.onlineRepo.Pet(device.UserID, device.ID, request.marks.utlRecv, request.timeout)
 	sm.userDeviceActiveRepo.UpdateDevActiveTs(device.UserID, device.ID)
-	log.Infof("SyncMng request traceid:%s before dispatch req", req.TraceId)
 	sm.dispatch(device.UserID, request)
-	log.Infof("SyncMng request traceid:%s after dispatch req", req.TraceId)
 	for request.ready == false || request.remoteReady == false {
 		time.Sleep(time.Millisecond * 100)
 

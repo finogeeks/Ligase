@@ -634,6 +634,7 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 
 	jr := syncapitypes.NewJoinResponse()
 	jr.Timeline.Limited = false
+	//histroytimeline max offset
 	maxPos := int64(-1)
 
 	rs := s.rsCurState.GetRoomState(roomID)
@@ -677,7 +678,7 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 	feeds, start, end, low, up := history.GetAllFeedsReverse()
 
 	log.Infof("SyncServer buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s load room-timeline start:%d end:%d low:%d up:%d len(feeds):%d", req.TraceID, roomID, req.UserID, req.DeviceID, start, end, low, up, len(feeds))
-
+	//histroy timeline min offset
 	firstTimeLine := int64(-1)
 	firstTs := int64(-1)
 	limit := req.Limit
@@ -814,6 +815,7 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 		statesMap := make(map[string]StateEvWithPrio)
 		feeds, start, end, low, up := states.GetAllFeeds()
 		log.Infof("SyncServer buildRoomJoinResp traceid:%s user:%s device:%s load state-timeline roomID:%s start:%d end:%d low:%d up:%d, realEnd: %d", req.TraceID, req.UserID, req.DeviceID, roomID, start, end, low, up, realEnd)
+		//state get from since to historytimeline min offset
 		for i, feed := range feeds { //填充state
 			if feed == nil {
 				continue
@@ -826,12 +828,10 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 
 			if stream.GetOffset() <= realEnd || realEnd == -1 {
 				ev := stream.GetEv()
-				if stream.GetOffset() >= firstTimeLine && firstTimeLine > 0 {
+				// offset >= history min offset, has get new event from historytimeline, not need get event from rstimeline again
+				if stream.GetOffset() >= firstTimeLine {
+					log.Infof("SyncServer.buildRoomJoinResp rsTimeline.GetStates traceid:%s break because of offfset:%d >= historytimeline min offset:%d", )
 					break
-				}
-
-				if stream.Offset > maxPos {
-					maxPos = stream.Offset
 				}
 
 				if needState {
@@ -869,25 +869,24 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 	if firstTimeLine == -1 {
 		firstTimeLine = math.MaxInt64
 		firstTs = math.MaxInt64
-		if len(jr.State.Events) >0 {
-			jr.Timeline.Limited = false
-		}else{
-			jr.Timeline.Limited = true
-			log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s firstTimeLine:-1 state event len <=0", req.TraceID, roomID, req.UserID)
-		}
+		jr.Timeline.Limited = true
+		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s firstTimeLine:-1 ", req.TraceID, roomID, req.UserID)
 		msgEvent = []gomatrixserverlib.ClientEvent{}
 	} else {
 		if firstTimeLine > reqStart && reqStart > 0 && len(msgEvent) >= req.Limit {
 			jr.Timeline.Limited = true
 			log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s firstTimeLine:%d reqStart:%d len(msgEvent):%d limit:%d", req.TraceID, roomID, req.UserID, firstTimeLine, reqStart, len(msgEvent), req.Limit)
 		}
-
 		// when we call get_messages with param "from"=prev_batch, it will start from prev_batch,
 		// but not from (prev_batch-1), so we set (firstTimeLine-1) to avoid getting repeat message
 		firstTimeLine = firstTimeLine - 1
 		if firstTimeLine < 0 {
 			firstTimeLine = 0
 		}
+	}
+	if len(jr.State.Events) > 0 {
+		jr.Timeline.Limited = true
+		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s set limit true because len(state event)> 0", req.TraceID, roomID, req.UserID, len(jr.State.Events))
 	}
 	jr.Timeline.PrevBatch = common.BuildPreBatch(firstTimeLine, firstTs)
 	jr.Timeline.Events = msgEvent

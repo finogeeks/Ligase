@@ -71,7 +71,16 @@ func (sm *SyncMng) freshToken(req *request,  res *syncapitypes.Response) {
 	//log.Infof("traceid:%s freshToken maxroomoffset:%+v", req.traceId, req.MaxRoomOffset)
 	offsets := make(map[string]int64)
 	for roomId, offset := range req.MaxRoomOffset {
-		offsets[roomId] = offset
+		if v, ok := req.offsets[roomId]; ok {
+			if v > offset {
+				log.Warnf("traceid:%s roomId:%s reqOffset:%d > respOffset:%d", req.traceId, roomId, v, offset)
+				offsets[roomId] = v
+			}else{
+				offsets[roomId] = offset
+			}
+		}else{
+			offsets[roomId] = offset
+		}
 	}
 	for k ,v := range req.offsets {
 		if _, ok := offsets[k]; !ok {
