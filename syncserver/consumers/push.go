@@ -193,6 +193,7 @@ func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.Cli
 			redactOffset int64,
 			eventJson *[]byte,
 			pushContents *push.PushPubContents,
+			isRelatesContent bool,
 		) {
 			s.preProcessPush(ctx, &member, input, &senderDisplayName, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent)
 			wg.Done()
