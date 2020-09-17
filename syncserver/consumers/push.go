@@ -17,7 +17,6 @@ package consumers
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/model/types"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,6 +28,7 @@ import (
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/pushapi/routing"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -59,8 +59,8 @@ func NewPushConsumer(
 		cache:        cache,
 		rpcClient:    client,
 		complexCache: complexCache,
-		chanSize:    20480,
-		slotSize: 	 64,
+		chanSize:     20480,
+		slotSize:     64,
 	}
 	s.pubTopic = push.PushTopicDef
 
@@ -78,11 +78,11 @@ func (s *PushConsumer) Start() {
 func (s *PushConsumer) startWorker(msgChan chan common.ContextMsg) {
 	for msg := range msgChan {
 		data := msg.Msg.(*gomatrixserverlib.ClientEvent)
-		s.OnEvent(msg.Ctx,data,data.EventOffset)
+		s.OnEvent(msg.Ctx, data, data.EventOffset)
 	}
 }
 
-func (s *PushConsumer) DispthEvent(ctx context.Context, ev *gomatrixserverlib.ClientEvent){
+func (s *PushConsumer) DispthEvent(ctx context.Context, ev *gomatrixserverlib.ClientEvent) {
 	idx := common.CalcStringHashCode(ev.RoomID) % s.slotSize
 	s.msgChan[idx] <- common.ContextMsg{Ctx: ctx, Msg: ev}
 }
@@ -121,17 +121,17 @@ func (s *PushConsumer) IsRelatesContent(redactEv gomatrixserverlib.ClientEvent) 
 	}
 	if unsigned.IsRelated != nil {
 		return *unsigned.IsRelated
-	}else{
+	} else {
 		return false
 	}
 }
 
 func (s *PushConsumer) OnEvent(ctx context.Context, input *gomatrixserverlib.ClientEvent, eventOffset int64) {
 	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64,input *gomatrixserverlib.ClientEvent){
-		spend := time.Now().UnixNano() /1000000 - bs
+	defer func(bs int64, input *gomatrixserverlib.ClientEvent) {
+		spend := time.Now().UnixNano()/1000000 - bs
 		log.Infof("PushConsumer onevent roomID:%s eventID:%s eventOffset:%d spend:%d", input.RoomID, input.EventID, input.EventOffset, spend)
-	}(bs,input)
+	}(bs, input)
 	eventJson, err := json.Marshal(&input)
 	if err != nil {
 		log.Errorf("PushConsumer processEvent marshal error %d, message %s", err, input.EventID)
