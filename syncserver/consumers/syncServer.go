@@ -830,7 +830,7 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 				ev := stream.GetEv()
 				// offset >= history min offset, has get new event from historytimeline, not need get event from rstimeline again
 				if stream.GetOffset() >= firstTimeLine {
-					log.Infof("SyncServer.buildRoomJoinResp rsTimeline.GetStates traceid:%s break because of offfset:%d >= historytimeline min offset:%d", )
+					log.Infof("SyncServer.buildRoomJoinResp rsTimeline.GetStates traceid:%s break because of offfset:%d >= historytimeline min offset:%d", req.TraceID, stream.GetOffset(), firstTimeLine)
 					break
 				}
 
@@ -865,11 +865,11 @@ func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, room
 			}
 		}
 	}
-
+	//firsttimeline == -1, syncserver historytime not has event, bat syncaggserver judge has event
 	if firstTimeLine == -1 {
 		firstTimeLine = math.MaxInt64
 		firstTs = math.MaxInt64
-		jr.Timeline.Limited = true
+		jr.Timeline.Limited = false
 		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s firstTimeLine:-1 ", req.TraceID, roomID, req.UserID)
 		msgEvent = []gomatrixserverlib.ClientEvent{}
 	} else {
