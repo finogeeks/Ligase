@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,9 +40,17 @@ import (
 const kDefaultWorkerCount = 10
 
 type DownloadInfo struct {
-	roomID  string
-	userID  string
-	eventID string
+	retryTimes int
+	roomID     string
+	userID     string
+	eventID    string
+}
+
+type RetryInfo struct {
+	domain       string
+	netdiskID    string
+	thumbnail    bool
+	downloadInfo DownloadInfo
 }
 
 type DownloadConsumer struct {
@@ -61,6 +68,11 @@ type DownloadConsumer struct {
 
 	maxWorkerCount int32
 	curWorkerCount int32
+
+	httpCli *http.Client
+
+	retryQue      []RetryInfo
+	retryQueMutex sync.Mutex
 }
 
 func NewConsumer(
@@ -122,14 +134,48 @@ func (p *DownloadConsumer) Start() error {
 		userID := ev.Sender()
 		if url != "" {
 			_, netdiskID := p.splitMxc(url)
-			p.pushDownload(roomID, userID, eventIDs[i], domain, netdiskID)
+			p.pushDownload(roomID, userID, eventIDs[i], domain, netdiskID, 0)
 		}
 		if thumbnailUrl != "" {
 			_, netdiskID := p.splitMxc(thumbnailUrl)
-			p.pushThumbnail(roomID, userID, eventIDs[i], domain, netdiskID)
+			p.pushThumbnail(roomID, userID, eventIDs[i], domain, netdiskID, 0)
 		}
 	}
+
+	p.startRetry()
+
 	return nil
+}
+
+func (p *DownloadConsumer) startRetry() {
+	go func() {
+		for {
+			time.Sleep(time.Second * 5)
+
+			que := func() []RetryInfo {
+				p.retryQueMutex.Lock()
+				defer p.retryQueMutex.Unlock()
+				if len(p.retryQue) > 0 {
+					que := p.retryQue
+					p.retryQue = nil
+					return que
+				}
+				return nil
+			}()
+
+			for _, v := range que {
+				thumbnail := v.thumbnail
+				info := v.downloadInfo
+				if info.roomID != "" && info.eventID != "" {
+					if thumbnail {
+						p.pushThumbnail(info.roomID, info.userID, info.eventID, v.domain, v.netdiskID, info.retryTimes)
+					} else {
+						p.pushDownload(info.roomID, info.userID, info.eventID, v.domain, v.netdiskID, info.retryTimes)
+					}
+				}
+			}
+		}
+	}()
 }
 
 func (p *DownloadConsumer) startWorkerIfNeed() {
@@ -165,13 +211,7 @@ func (p *DownloadConsumer) workerProcessor() {
 		err := p.download(info.userID, domain, netdiskID, thumbnail)
 		if err != nil {
 			p.repo.RemoveDownloading(key)
-			if info.roomID != "" && info.eventID != "" {
-				if thumbnail {
-					p.pushThumbnail(info.roomID, info.userID, info.eventID, domain, netdiskID)
-				} else {
-					p.pushDownload(info.roomID, info.userID, info.eventID, domain, netdiskID)
-				}
-			}
+			p.pushRetry(domain, netdiskID, thumbnail, info)
 		} else {
 			p.repo.RemoveDownloading(key)
 			if info.roomID != "" && info.eventID != "" {
@@ -253,17 +293,33 @@ func (p *DownloadConsumer) getInQue(key string, isDelete bool) (info DownloadInf
 	return DownloadInfo{}, false, false
 }
 
-func (p *DownloadConsumer) pushThumbnail(roomID, userID, eventID, domain, netdiskID string) {
+func (p *DownloadConsumer) pushRetry(domain, netdiskID string, thumbnail bool, info DownloadInfo) {
+	if info.retryTimes >= 5 {
+		log.Infof("netdisk download %s:%s retry times %d, stop retry", domain, netdiskID, info.retryTimes)
+		return
+	}
+	info.retryTimes++
+	p.retryQueMutex.Lock()
+	defer p.retryQueMutex.Unlock()
+	p.retryQue = append(p.retryQue, RetryInfo{
+		domain:       domain,
+		netdiskID:    netdiskID,
+		thumbnail:    thumbnail,
+		downloadInfo: info,
+	})
+}
+
+func (p *DownloadConsumer) pushThumbnail(roomID, userID, eventID, domain, netdiskID string, retryTimes int) {
 	key := p.repo.BuildKey(domain, netdiskID)
 	p.repo.AddDownload(key)
-	p.thumbnailMap[key] = DownloadInfo{roomID, userID, eventID}
+	p.thumbnailMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
 	p.startWorkerIfNeed()
 }
 
-func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdiskID string) {
+func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdiskID string, retryTimes int) {
 	key := p.repo.BuildKey(domain, netdiskID)
 	p.repo.AddDownload(key)
-	p.downloadMap[key] = DownloadInfo{roomID, userID, eventID}
+	p.downloadMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
 	p.startWorkerIfNeed()
 }
 
@@ -291,17 +347,17 @@ func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte)
 	eventID := ev.EventID()
 	if url != "" {
 		_, netdiskID := p.splitMxc(url)
-		p.pushDownload(roomID, userID, eventID, domain, netdiskID)
+		p.pushDownload(roomID, userID, eventID, domain, netdiskID, 0)
 	}
 	if thumbnailUrl != "" {
 		_, netdiskID := p.splitMxc(thumbnailUrl)
-		p.pushThumbnail(roomID, userID, eventID, domain, netdiskID)
+		p.pushThumbnail(roomID, userID, eventID, domain, netdiskID, 0)
 	}
 }
 
 // AddReq 不会保存到数据库
 func (p *DownloadConsumer) AddReq(domain, netdiskID string) {
-	p.pushDownload("", "@fakeUser:fakeDomain.com", "", domain, netdiskID)
+	p.pushDownload("", "@fakeUser:fakeDomain.com", "", domain, netdiskID, 0)
 }
 
 func (p *DownloadConsumer) parseEv(ev *gomatrixserverlib.Event) (domain, url, thumbnailUrl string) {
@@ -395,15 +451,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		headStr, _ = json.Marshal(newReq.Header)
 		log.Infof("fed download, header for net disk request: %s", string(headStr))
 
-		transport := &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout: time.Second * 15,
-			}).DialContext,
-			DisableKeepAlives: true, // fd will leak if set it false(default value)
-		}
-		client := &http.Client{Transport: transport}
-
-		res, err := client.Do(newReq)
+		res, err := p.httpCli.Do(newReq)
 		if err != nil {
 			log.Errorf("fed download, upload file request error: %v", err)
 			return errors.New("fed download, upload file request error:" + err.Error())
