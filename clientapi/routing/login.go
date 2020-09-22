@@ -21,6 +21,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
@@ -109,7 +110,7 @@ func providerLogin(
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to create device: " + err.Error())
 	}
 
-	log.Infof("login success user %s device %s token %s", dev.UserID, dev.ID, token)
+	log.Infof("login success user %s device %s ip:%s token %s", dev.UserID, dev.ID, r.IP, token)
 
 	if cfg.PubLoginInfo {
 		content := types.LoginInfoContent{
@@ -129,6 +130,7 @@ func providerLogin(
 		}
 	}
 	pubLoginToken(userID, deviceID, rpcClient)
+	pubLoginInfo(userID, r.IP, *r.InitialDisplayName, "login", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      dev.UserID,
 		AccessToken: token,
@@ -150,6 +152,26 @@ func pubLoginToken(userID string, deviceID string, rpcClient *common.RpcClient) 
 	} else {
 		log.Errorf("pub login filter token info Marshal err %v", err)
 	}
+}
+
+func pubLoginInfo(userId, ip, info, source string, cfg config.Dendrite){
+	data := new(types.StaticItem)
+	data.Type = types.STATIC_LOGIN
+	loginInfo := &types.StaticLoginItem{
+		UserId: userId,
+		TimeStamp: time.Now().UnixNano()/1000000,
+		IP: ip,
+		Version: info,
+		Source: source,
+	}
+	data.Login = loginInfo
+	common.GetTransportMultiplexer().SendWithRetry(
+		cfg.Kafka.Producer.OutputStatic.Underlying,
+		cfg.Kafka.Producer.OutputStatic.Name,
+		&core.TransportPubMsg{
+			Keys: []byte(userId),
+			Obj:  data,
+		})
 }
 
 // Login implements GET and POST /login

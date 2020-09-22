@@ -162,6 +162,7 @@ type Dendrite struct {
 			SettingUpdate      ProducerConf `yaml:"setting_update"`
 			UserInfoUpdate     ProducerConf `yaml:"user_info_update"`
 			DismissRoom        ProducerConf `yaml:"dismiss_room"`
+			OutputStatic 	   ProducerConf `yaml:"output_static_data"`
 		} `yaml:"producers"`
 		Consumer struct {
 			OutputRoomEventPublicRooms   ConsumerConf `yaml:"output_room_event_publicroom"`    // OutputRoomEventPublicRooms "public-rooms",
@@ -446,9 +447,9 @@ type Dendrite struct {
 	} `yaml:"device_mng"`
 
 	StateMgr struct {
-		StateNotify     bool  `yaml:"state_notify"`
-		StateOffline    int64 `yaml:"state_offline"`
-		StateOfflineIOS int64 `yaml:"state_offline_ios"`
+		StateNotify    	 	bool  `yaml:"state_notify"`
+		StateOffline    	int64 `yaml:"state_offline"`
+		StateReport   		int64 `yaml:"state_report"`
 	} `yaml:"state_mgr"`
 
 	Encryption struct {
@@ -479,6 +480,7 @@ type Dendrite struct {
 	ReceiptDelay int64 `yaml:"receipt_delay"`
 	CheckReceipt int64 `yaml:"check_receipt"`
 	OnlineSpec 	 string	`yaml:"online_spec"`
+	OnlineDetail string `yaml:"online_detail_spec"`
 }
 
 type LicenseConf struct {

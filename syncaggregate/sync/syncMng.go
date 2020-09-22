@@ -138,6 +138,23 @@ func (sm *SyncMng) OnBatchStateChange(batch []*types.NotifyDeviceState){
 	}(batch)
 }
 
+func (sm *SyncMng) OnUserOnlineDetail(batch []*types.NotifyOnlineDetail) {
+	log.Infof("cron notify online detail len:%d", len(batch))
+	data := new(types.StaticItem)
+	data.Type = types.STATIC_ONLINE
+	onlineInfo := &types.StaticOnlineItem{
+		Detail: batch,
+	}
+	data.Online = onlineInfo
+	common.GetTransportMultiplexer().SendWithRetry(
+		sm.cfg.Kafka.Producer.OutputStatic.Underlying,
+		sm.cfg.Kafka.Producer.OutputStatic.Name,
+		&core.TransportPubMsg{
+			Keys: []byte{},
+			Obj:  data,
+		})
+}
+
 func (sm *SyncMng) OnUserStateChange(state *types.NotifyUserState) {
 	sm.stateChangePresent(state)
 }

@@ -1137,3 +1137,11 @@ func (r *PostClaimClientKeysResponse) Encode() ([]byte, error) {
 func (res *DismissRoomResponse) Encode() ([]byte, error) {
 	return json.Marshal(res)
 }
+
+func (r *GetOnlineCountResponse) Encode() ([]byte, error) {
+	return json.Marshal(r)
+}
+
+func (r *GetOnlineUsersResponse) Encode() ([]byte, error) {
+	return json.Marshal(r)
+}

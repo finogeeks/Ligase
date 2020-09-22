@@ -1867,3 +1867,11 @@ func (externalReq *PostClaimClientKeysRequest) Encode() ([]byte, error) {
 func (externalReq *DismissRoomRequest) Encode() ([]byte, error) {
 	return json.Marshal(externalReq)
 }
+
+func (externalReq *GetOnlineCountRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}
+
+func (externalReq *GetOnlineUsersRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}

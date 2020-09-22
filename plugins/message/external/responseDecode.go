@@ -1150,3 +1150,11 @@ func (res *PostClaimClientKeysResponse) Decode(input []byte) error {
 func (res *DismissRoomResponse) Decode(input []byte) error {
 	return json.Unmarshal(input, res)
 }
+
+func (res *GetOnlineCountResponse) Decode(input []byte) error {
+	return json.Unmarshal(input, res)
+}
+
+func (res *GetOnlineUsersResponse) Decode(input []byte) error {
+	return json.Unmarshal(input, res)
+}

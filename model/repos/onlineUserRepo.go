@@ -40,8 +40,9 @@ const (
 
 type StateChangeHandler interface {
 	OnStateChange(*types.NotifyDeviceState)
-	OnUserStateChange(state *types.NotifyUserState)
+	OnUserStateChange(*types.NotifyUserState)
 	OnBatchStateChange([]*types.NotifyDeviceState)
+	OnUserOnlineDetail([]*types.NotifyOnlineDetail)
 }
 
 type DefaultHander struct {
@@ -54,6 +55,9 @@ func (d *DefaultHander) OnUserStateChange(*types.NotifyUserState) {
 }
 
 func (d *DefaultHander) OnBatchStateChange([]*types.NotifyDeviceState) {
+}
+
+func (d *DefaultHander) OnUserOnlineDetail([]*types.NotifyOnlineDetail){
 }
 
 type Device struct {
@@ -70,6 +74,8 @@ type User struct {
 	lastState int
 	curState  int
 	devMap sync.Map
+	lastActive int64
+	lastCalc   int64
 }
 
 func (u *User) isEmpty() bool {
@@ -85,13 +91,6 @@ func (u *User) isEmpty() bool {
 func (u *User) checkDeviceTtl(ol *OnlineUserRepo, now, ttl int64) int {
 	cnt := 0
 	hasDelete := false
-	if u.ts+ttl < now {
-		u.lastState = u.curState
-		u.curState = OFFLINE_STATE
-		if u.lastState != u.curState {
-			ol.UpdateUserState(u.id, u.lastState, u.curState)
-		}
-	}
 	u.devMap.Range(func(key, value interface{}) bool {
 		dev := value.(*Device)
 		if dev.ts+ttl < now {
@@ -124,21 +123,32 @@ type OnlineUserRepo struct {
 	timer           time.Timer
 	handler         StateChangeHandler
 	spec 			string
+	detailSpec      string
 	cron  			*cron.Cron
+	ttl				int64
+	ttlReport  		int64
+	onlineDetail    sync.Map
 }
 
-func NewOnlineUserRepo(ttl, ttlIOS int64, spec string) *OnlineUserRepo {
+func NewOnlineUserRepo(ttl, ttlReport int64, spec, detailSpec string) *OnlineUserRepo {
 	ol := new(OnlineUserRepo)
 	ol.onlineUserCnt = 0
 	ol.onlineDeviceCnt = 0
+	ol.ttl = ttl
+	ol.ttlReport = ttlReport
 	ol.spec = spec
+	ol.detailSpec = detailSpec
 	ol.cron = cron.New()
 	ol.cron.AddFunc(ol.spec, func() {
 		go ol.job()
 	})
+	ol.cron.AddFunc(ol.detailSpec, func(){
+		go ol.detailJob()
+	})
 	ol.cron.Start()
 	ol.handler = new(DefaultHander)
-	go ol.clean(ttl, ttlIOS)
+	go ol.clean()
+	go ol.onReport()
 	return ol
 }
 
@@ -164,6 +174,26 @@ func (ol *OnlineUserRepo) job(){
 	}
 }
 
+func (ol *OnlineUserRepo) detailJob(){
+	now := time.Now().UnixNano()/1000000
+	ol.userMap.Range(func(key, value interface{}) bool {
+		user := value.(*User)
+		user.lastActive = now
+		ol.calcOnlineDuration(user)
+		return true
+	})
+	batch := []*types.NotifyOnlineDetail{}
+	ol.onlineDetail.Range(func(k, v interface{}) bool {
+		batch = append(batch, v.(*types.NotifyOnlineDetail))
+		ol.onlineDetail.Delete(k)
+		return true
+	})
+	log.Infof("cron detail job get online detail len:%d", len(batch))
+	if len(batch) > 0 {
+		ol.handler.OnUserOnlineDetail(batch)
+	}
+}
+
 func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 	var user *User
 	var dev *Device
@@ -172,15 +202,18 @@ func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 		user.ts = time.Now().Unix()
 		user.lastState = user.curState
 		user.curState = USER_ONLINE_STATE
+		user.lastActive = time.Now().UnixNano() / 1000000
 	} else {
 		user = new(User)
 		user.id = uid
 		user.ts = time.Now().Unix()
 		user.lastState = user.curState
 		user.curState = USER_ONLINE_STATE
+		user.lastActive = time.Now().UnixNano() / 1000000
 		ol.userMap.Store(uid, user)
 		atomic.AddInt32(&ol.onlineUserCnt, 1)
 	}
+	ol.calcOnlineDuration(user)
 	if user.lastState != user.curState {
 		ol.UpdateUserState(user.id, user.lastState, user.curState)
 	}
@@ -202,6 +235,68 @@ func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 		if dev.curState == OFFLINE_STATE {
 			ol.UpdateState(uid, devId, FORE_GROUND_STATE)
 		}
+	}
+}
+
+func (ol *OnlineUserRepo) calcOnlineDuration(user *User){
+	duration := int64(0)
+	//cur online
+	if user.curState == USER_ONLINE_STATE {
+		//offline to online
+		if user.lastState == USER_OFFLINE_STATE {
+			duration = 0
+		}else{
+			//online remain online
+			if user.lastCalc != 0 {
+				duration = time.Now().UnixNano()/1000000 - user.lastCalc
+			}else{
+				duration = 0
+			}
+		}
+	//cur offline
+	}else{
+		//online to offline
+		if user.lastState == USER_ONLINE_STATE {
+			if user.lastCalc != 0 {
+				duration = time.Now().UnixNano()/1000000 - user.lastCalc
+			}else{
+				duration = 0
+			}
+		}else{
+			//offline remain offline
+			duration = 0
+		}
+	}
+	user.lastCalc = time.Now().UnixNano()/1000000
+	if v, ok := ol.onlineDetail.Load(user.id); ok {
+		detail := v.(*types.NotifyOnlineDetail)
+		detail.Duration += duration
+		detail.LastActive = user.lastActive
+	}else{
+		ol.onlineDetail.Store(user.id, &types.NotifyOnlineDetail{
+			UserID: user.id,
+			Duration: duration,
+			LastActive: user.lastActive,
+		})
+	}
+}
+
+func (ol *OnlineUserRepo) onReport(){
+	t := time.NewTimer(time.Second * time.Duration(ol.ttlReport))
+	for {
+		select {
+		case <-t.C:
+			batch := []*types.NotifyOnlineDetail{}
+			ol.onlineDetail.Range(func(k, v interface{}) bool {
+				batch = append(batch, v.(*types.NotifyOnlineDetail))
+				ol.onlineDetail.Delete(k)
+				return true
+			})
+			if len(batch) > 0 {
+				ol.handler.OnUserOnlineDetail(batch)
+			}
+		}
+		t.Reset(time.Second * time.Duration(ol.ttlReport))
 	}
 }
 
@@ -275,7 +370,7 @@ func (ol *OnlineUserRepo) Release(uid, devId string) {
 	}
 }
 
-func (ol *OnlineUserRepo) clean(ttl, ttlIOS int64) {
+func (ol *OnlineUserRepo) clean() {
 	t := time.NewTimer(time.Second * 5) //5s timer
 	for {
 		select {
@@ -283,8 +378,14 @@ func (ol *OnlineUserRepo) clean(ttl, ttlIOS int64) {
 			now := time.Now().Unix()
 			ol.userMap.Range(func(key, value interface{}) bool {
 				user := value.(*User)
-				remain := user.checkDeviceTtl(ol, now, ttl)
+				remain := user.checkDeviceTtl(ol, now, ol.ttl)
 				if remain == 0 {
+					user.lastState = user.curState
+					user.curState = USER_OFFLINE_STATE
+					if user.lastState != user.curState {
+						ol.UpdateUserState(user.id, user.lastState, user.curState)
+					}
+					ol.calcOnlineDuration(user)
 					ol.userMap.Delete(key)
 					atomic.AddInt32(&ol.onlineUserCnt, -1)
 				}
@@ -296,7 +397,6 @@ func (ol *OnlineUserRepo) clean(ttl, ttlIOS int64) {
 			}
 		}
 	}
-
 }
 
 func (ol *OnlineUserRepo) SetHandler(handler StateChangeHandler) {
@@ -310,4 +410,31 @@ func (ol *OnlineUserRepo) Notify(userID, devID string, lastState, curState int) 
 		LastState: lastState,
 		CurState:  curState,
 	})
+}
+
+func (ol *OnlineUserRepo) GetOnlineUserCount() int64 {
+	return int64(ol.onlineUserCnt)
+}
+
+func (ol *OnlineUserRepo) GetOnlineUsers() []string {
+	users := []string{}
+	now := time.Now().Unix()
+	ol.userMap.Range(func(key, value interface{}) bool {
+		user := value.(*User)
+		remain := user.checkDeviceTtl(ol, now, ol.ttl)
+		if remain == 0 {
+			user.lastState = user.curState
+			user.curState = USER_OFFLINE_STATE
+			if user.lastState != user.curState {
+				ol.UpdateUserState(user.id, user.lastState, user.curState)
+			}
+			ol.calcOnlineDuration(user)
+			ol.userMap.Delete(key)
+			atomic.AddInt32(&ol.onlineUserCnt, -1)
+		}else{
+			users = append(users, user.id)
+		}
+		return true
+	})
+	return users
 }

@@ -930,6 +930,7 @@ func (ReqPostLogin) FillRequest(coder core.Coder, req *http.Request, vars map[st
 	if err != nil {
 		return err
 	}
+	msg.IP = common.GetRemoteIP(req)
 	return nil
 }
 func (ReqPostLogin) NewResponse(code int) core.Coder { return new(external.PostLoginResponse) }
@@ -985,6 +986,7 @@ func (ReqPostLoginAdmin) FillRequest(coder core.Coder, req *http.Request, vars m
 	if err != nil {
 		return err
 	}
+	msg.IP = common.GetRemoteIP(req)
 	return nil
 }
 func (ReqPostLoginAdmin) NewResponse(code int) core.Coder { return new(external.PostLoginResponse) }
@@ -2029,9 +2031,11 @@ func (ReqGetUserNewToken) GetAPIType() int8                     { return apicons
 func (ReqGetUserNewToken) GetMethod() []string                  { return []string{http.MethodGet, http.MethodOptions} }
 func (ReqGetUserNewToken) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
 func (ReqGetUserNewToken) NewRequest() core.Coder {
-	return nil
+	return new(external.PostLoginRequest)
 }
 func (ReqGetUserNewToken) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.PostLoginRequest)
+	msg.IP = common.GetRemoteIP(req)
 	return nil
 }
 func (ReqGetUserNewToken) NewResponse(code int) core.Coder {
@@ -2040,7 +2044,8 @@ func (ReqGetUserNewToken) NewResponse(code int) core.Coder {
 func (ReqGetUserNewToken) GetPrefix() []string { return []string{"r0"} }
 func (ReqGetUserNewToken) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	return routing.GenNewToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli)
+	req := msg.(*external.PostLoginRequest)
+	return routing.GenNewToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli, req.IP)
 }
 
 type ReqGetSuperAdminToken struct{}
@@ -2054,9 +2059,11 @@ func (ReqGetSuperAdminToken) GetMethod() []string {
 }
 func (ReqGetSuperAdminToken) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
 func (ReqGetSuperAdminToken) NewRequest() core.Coder {
-	return nil
+	return new(external.PostLoginRequest)
 }
 func (ReqGetSuperAdminToken) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.PostLoginRequest)
+	msg.IP = common.GetRemoteIP(req)
 	return nil
 }
 func (ReqGetSuperAdminToken) NewResponse(code int) core.Coder {
@@ -2065,7 +2072,8 @@ func (ReqGetSuperAdminToken) NewResponse(code int) core.Coder {
 func (ReqGetSuperAdminToken) GetPrefix() []string { return []string{"r0"} }
 func (ReqGetSuperAdminToken) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	return routing.GetSuperAdminToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli)
+	req := msg.(*external.PostLoginRequest)
+	return routing.GetSuperAdminToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli, req.IP)
 }
 
 type ReqGetSetting struct{}
