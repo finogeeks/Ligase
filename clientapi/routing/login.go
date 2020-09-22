@@ -130,7 +130,11 @@ func providerLogin(
 		}
 	}
 	pubLoginToken(userID, deviceID, rpcClient)
-	pubLoginInfo(userID, r.IP, *r.InitialDisplayName, "login", cfg)
+	info := ""
+	if r.InitialDisplayName != nil {
+		info = *r.InitialDisplayName
+	}
+	pubLoginInfo(userID, r.IP, info, "login", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      dev.UserID,
 		AccessToken: token,
