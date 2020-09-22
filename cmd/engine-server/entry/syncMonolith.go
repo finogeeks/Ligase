@@ -32,6 +32,7 @@ func StartSyncMonolith(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.FedEduUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.DeviceStateUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.OutputProfileData)
+	addProducer(transportMultiplexer, kafka.Producer.OutputStatic)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventSyncServer, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventSyncWriter, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventSyncAggregate, base.Cfg.MultiInstance.Instance)

@@ -30,6 +30,7 @@ func StartSyncAggregate(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.FedEduUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.DeviceStateUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.OutputProfileData)
+	addProducer(transportMultiplexer, kafka.Producer.OutputStatic)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventSyncAggregate, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputClientData, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputProfileSyncAggregate, base.Cfg.MultiInstance.Instance)

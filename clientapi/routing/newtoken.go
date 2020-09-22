@@ -43,6 +43,7 @@ func GenNewToken(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	rpcClient *common.RpcClient,
+	ip string,
 ) (int, core.Coder) {
 	mac := common.GetDeviceMac(device.ID)
 	mac = fmt.Sprintf("%s-%s", mac, "gen")
@@ -77,8 +78,9 @@ func GenNewToken(
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to create device: " + err.Error())
 	}
 
-	log.Infof("login success user %s device %s token %s", dev.UserID, dev.ID, token)
+	log.Infof("login success user %s device %s ip:%s token %s", dev.UserID, dev.ID, ip, token)
 	pubLoginToken(dev.UserID, dev.ID, rpcClient)
+	pubLoginInfo(dev.UserID, ip, device.DisplayName, "newtoken", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      dev.UserID,
 		AccessToken: token,
@@ -97,6 +99,7 @@ func GetSuperAdminToken(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	rpcClient *common.RpcClient,
+	ip string,
 ) (int, core.Coder) {
 	userID := "super_admin"
 	domain := "super_domain"
@@ -150,8 +153,9 @@ func GetSuperAdminToken(
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to create super device: " + err.Error())
 	}
 
-	log.Infof("login success super user %s device %s gen token %s", userID, dev.ID, token)
+	log.Infof("login success super user %s device %s ip:%s gen token %s", userID, dev.ID, ip, token)
 	pubLoginToken(userID, dev.ID, rpcClient)
+	pubLoginInfo(userID, displayName, ip, "super", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      userID,
 		AccessToken: token,

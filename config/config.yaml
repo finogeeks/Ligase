@@ -123,6 +123,10 @@ kafka:
             topic: dismissRoom
             underlying: kafka
             name: dismissRoomProd
+        output_static_data:
+            topic: outputStatic
+            underlying: kafka
+            name: outputStaticProd
     consumers:
         output_room_event_publicroom:
             topic: roomserverOutput
@@ -411,7 +415,7 @@ device_mng:
 state_mgr:
     state_notify: true
     state_offline: 120
-    state_offline_ios: 1209600
+    state_report: 10
 
 encryption:
     mirror: true
@@ -422,4 +426,5 @@ latest_token: 3
 receipt_delay: 5000
 check_receipt: 3000
 online_spec: "0 0 1 * * ?"
+online_detail_spec: "59 59 23 * * ?"
 license: '{"organ_name":"community","expire_time":1627920000000,"total_users":100,"total_rooms":1,"room_members":1,"desc":"community","organ_domain":"community","reg_organ":"community","encryption":false,"secret":"pTRiLIHpGVgT0jsk"}'

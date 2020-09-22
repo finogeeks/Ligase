@@ -63,6 +63,7 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.SettingUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.UserInfoUpdate)
 	addProducer(transportMultiplexer, kafka.Producer.DismissRoom)
+	addProducer(transportMultiplexer, kafka.Producer.OutputStatic)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventPublicRooms, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventAppservice, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventSyncServer, base.Cfg.MultiInstance.Instance)

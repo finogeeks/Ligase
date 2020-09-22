@@ -44,6 +44,7 @@ type PostLoginRequest struct {
 	InitialDisplayName *string        `json:"initial_device_display_name"`
 	IsHuman            *bool          `json:"is_human"`
 	IsAdmin            bool           `json:"is_admin"`
+	IP				   string		  `json:"ip"`
 }
 type PostLoginAdminRequest PostLoginRequest
 
