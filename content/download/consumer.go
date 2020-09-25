@@ -19,9 +19,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -407,6 +409,18 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 	if err == nil {
 		isEmote = contentParam.IsEmote
 	}
+	os.Mkdir("./media", 0644)
+	filename := "./media/" + strconv.FormatInt(time.Now().UnixNano()/1000000, 10) + common.RandString(6)
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		file.Close()
+		os.Remove(filename)
+	}()
+
+	var header http.Header
 	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, "", "", "download", func(response *http.Response) error {
 		if response == nil || response.Body == nil {
 			log.Errorf("download fed netdisk response nil")
@@ -422,101 +436,110 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			return errors.New("fed download response status " + strconv.Itoa(response.StatusCode))
 		}
 
-		reqUrl := p.cfg.Media.UploadUrl
-
-		header := response.Header
-
-		headStr, _ := json.Marshal(header)
-		log.Infof("fed download, header for media upload request: %s, %s", string(headStr), header.Get("Content-Length"))
-
-		newReq, err := http.NewRequest("POST", reqUrl, response.Body)
-		if thumbnail {
-			newReq.URL.Query().Set("thumbnail", "true")
-		} else {
-			newReq.URL.Query().Set("thumbnail", "false")
-		}
-		newReq.Header.Set("X-Consumer-Custom-ID", info.Owner)
-		newReq.Header.Set("X-Consumer-NetDisk-ID", info.NetdiskID)
-		newReq.Header.Set("Content-Type", header.Get("Content-Type"))
-		if info.IsOpenAuth {
-			newReq.Header.Set("X-Consumer-Custom-Public", "true")
+		_, err = io.Copy(file, response.Body)
+		if err != nil && err != io.EOF {
+			return err
 		}
 
-		q := newReq.URL.Query()
-		q.Add("type", info.Type)
-		q.Add("content", info.Content)
-		if isEmote {
-			q.Add("isemote", "true")
-			q.Add("isfed", "true")
-		}
-		if thumbnail {
-			q.Add("thumbnail", "true")
-		} else {
-			q.Add("thumbnail", "false")
-		}
+		log.Infof("federation Download write file success")
 
-		newReq.URL.RawQuery = q.Encode()
-
-		if err != nil {
-			log.Errorf("fed download, upload to local NewRequest error: %v", err)
-			return errors.New("fed download, upload to local NewRequest error:" + err.Error())
-		}
-		newReq.ContentLength, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
-
-		headStr, _ = json.Marshal(newReq.Header)
-		log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
-
-		res, err := p.httpCli.Do(newReq)
-		if err != nil {
-			log.Errorf("fed download, upload file request error: %v", err)
-			return errors.New("fed download, upload file request error:" + err.Error())
-		}
-		respData, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			log.Errorf("upload netdisk read resp err: %v", err)
-			return errors.New("upload netdisk read resp err: %v" + err.Error())
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			if res.StatusCode == http.StatusInternalServerError && bytes.Contains(respData, []byte("duplicate key error")) {
-				log.Warnf("download remote netdiskID duplicate %s", netdiskID)
-				return nil
-			}
-			log.Errorf("fed download, upload file response statusCode %d", res.StatusCode)
-			var errInfo mediatypes.UploadError
-			err = json.Unmarshal(respData, &errInfo)
-			if err != nil {
-				log.Errorf("fed download, upload file decode error: %v, data: %v", err, respData)
-				return errors.New("fed download, upload file decode error: %v" + err.Error())
-			}
-			log.Errorf("fed download, upload file response %v", errInfo)
-			return errors.New("fed download, upload file response" + string(respData))
-		}
-		if isEmote {
-			var resp mediatypes.UploadEmoteResp
-			data_, _ := ioutil.ReadAll(res.Body)
-			err := json.Unmarshal(data_, &resp)
-			if err != nil {
-				log.Errorf("fed download, upload emote unmarhal resp error: %v, data: %v", err, respData)
-				return errors.New("fed download, upload emote unmarhal resp error: %v" + err.Error())
-			}
-			log.Infof("fed download, upload emote succ resp:%+v", resp)
-			return nil
-		}
-		var resp mediatypes.NetDiskResponse
-		err = json.Unmarshal(respData, &resp)
-		if err != nil {
-			log.Errorf("fed download, upload file unmarhal resp error: %v, data: %v", err, respData)
-			return errors.New("fed download, upload file unmarhal resp error: %v" + err.Error())
-		}
-
-		log.Info("MediaId: ", info.NetdiskID, " download in fed success")
+		header = response.Header
 		return nil
 	})
 	if err != nil {
 		log.Errorf("federation Download [%s] error: %v", netdiskID, err)
+		return err
 	}
-	return err
+
+	reqUrl := p.cfg.Media.UploadUrl
+
+	headStr, _ := json.Marshal(header)
+	log.Infof("fed download, header for media upload request: %s, %s", string(headStr), header.Get("Content-Length"))
+
+	file.Seek(0, os.SEEK_SET)
+	newReq, err := http.NewRequest("POST", reqUrl, file)
+	if thumbnail {
+		newReq.URL.Query().Set("thumbnail", "true")
+	} else {
+		newReq.URL.Query().Set("thumbnail", "false")
+	}
+	newReq.Header.Set("X-Consumer-Custom-ID", info.Owner)
+	newReq.Header.Set("X-Consumer-NetDisk-ID", info.NetdiskID)
+	newReq.Header.Set("Content-Type", header.Get("Content-Type"))
+	if info.IsOpenAuth {
+		newReq.Header.Set("X-Consumer-Custom-Public", "true")
+	}
+
+	q := newReq.URL.Query()
+	q.Add("type", info.Type)
+	q.Add("content", info.Content)
+	if isEmote {
+		q.Add("isemote", "true")
+		q.Add("isfed", "true")
+	}
+	if thumbnail {
+		q.Add("thumbnail", "true")
+	} else {
+		q.Add("thumbnail", "false")
+	}
+
+	newReq.URL.RawQuery = q.Encode()
+
+	if err != nil {
+		log.Errorf("fed download, upload to local NewRequest error: %v", err)
+		return errors.New("fed download, upload to local NewRequest error:" + err.Error())
+	}
+	newReq.ContentLength, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
+
+	headStr, _ = json.Marshal(newReq.Header)
+	log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
+
+	res, err := p.httpCli.Do(newReq)
+	if err != nil {
+		log.Errorf("fed download, upload file request error: %v", err)
+		return errors.New("fed download, upload file request error:" + err.Error())
+	}
+	respData, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Errorf("upload netdisk read resp err: %v", err)
+		return errors.New("upload netdisk read resp err: %v" + err.Error())
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusInternalServerError && bytes.Contains(respData, []byte("duplicate key error")) {
+			log.Warnf("download remote netdiskID duplicate %s", netdiskID)
+			return nil
+		}
+		log.Errorf("fed download, upload file response statusCode %d", res.StatusCode)
+		var errInfo mediatypes.UploadError
+		err = json.Unmarshal(respData, &errInfo)
+		if err != nil {
+			log.Errorf("fed download, upload file decode error: %v, data: %v", err, respData)
+			return errors.New("fed download, upload file decode error: %v" + err.Error())
+		}
+		log.Errorf("fed download, upload file response %v", errInfo)
+		return errors.New("fed download, upload file response" + string(respData))
+	}
+	if isEmote {
+		var resp mediatypes.UploadEmoteResp
+		data_, _ := ioutil.ReadAll(res.Body)
+		err := json.Unmarshal(data_, &resp)
+		if err != nil {
+			log.Errorf("fed download, upload emote unmarhal resp error: %v, data: %v", err, respData)
+			return errors.New("fed download, upload emote unmarhal resp error: %v" + err.Error())
+		}
+		log.Infof("fed download, upload emote succ resp:%+v", resp)
+		return nil
+	}
+	var resp mediatypes.NetDiskResponse
+	err = json.Unmarshal(respData, &resp)
+	if err != nil {
+		log.Errorf("fed download, upload file unmarhal resp error: %v, data: %v", err, respData)
+		return errors.New("fed download, upload file unmarhal resp error: %v" + err.Error())
+	}
+
+	log.Info("MediaId: ", info.NetdiskID, " download in fed success")
+	return nil
 }
 
 func (p *DownloadConsumer) getThumbnalUrl(content map[string]interface{}) (string, bool) {

@@ -398,14 +398,6 @@ func (p *Processor) doDownload(
 }
 
 func (p *Processor) httpRequest(userID, method, reqUrl string, req *http.Request) (*http.Response, error) {
-	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout: time.Second * 15,
-		}).DialContext,
-		DisableKeepAlives: true, // fd will leak if set it false(default value)
-	}
-	client := &http.Client{Transport: transport}
-
 	newReq, err := http.NewRequest(method, reqUrl, req.Body)
 	if err != nil {
 		return nil, err
@@ -420,7 +412,7 @@ func (p *Processor) httpRequest(userID, method, reqUrl string, req *http.Request
 	headStr, _ := json.Marshal(newReq.Header)
 	log.Infof("url for netdisk request, userID: %s method: %s url: %s header:%s", userID, method, reqUrl, string(headStr))
 
-	return client.Do(newReq)
+	return p.httpCli.Do(newReq)
 }
 
 func (p *Processor) respDownload(w http.ResponseWriter, header http.Header, statusCode int, body io.Reader) {
