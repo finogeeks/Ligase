@@ -42,6 +42,8 @@ import (
 )
 
 const contentUri = "mxc://%s/%s"
+const HeaderCustomID = "X-Consumer-Custom-ID"
+const FakeUserID = "@fakeUser:fakeDomain.com"
 
 var jsonContentType = []string{"application/json; charset=utf-8"}
 
@@ -199,7 +201,7 @@ func (p *Processor) Download(rw http.ResponseWriter, req *http.Request, device *
 	dstDomain := vars["serverName"]
 	mediaID := vars["mediaId"]
 
-	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "download", true)
+	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "download", true, false)
 }
 
 // /thumbnail/{serverName}/{mediaId}
@@ -221,15 +223,49 @@ func (p *Processor) Thumbnail(rw http.ResponseWriter, req *http.Request, device 
 	dstDomain := vars["serverName"]
 	mediaID := vars["mediaId"]
 
-	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "thumbnail", true)
+	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "thumbnail", true, false)
 }
 
 func (p *Processor) FedDownload(rw http.ResponseWriter, req *http.Request) {
-	p.Download(rw, req, nil)
+	start := time.Now()
+	httpCode := http.StatusOK
+	defer func() {
+		duration := float64(time.Since(start)) / float64(time.Millisecond)
+		code := strconv.Itoa(httpCode)
+		if req.Method != "OPTION" {
+			p.histogram.WithLabelValues(req.Method, "fed download", code).Observe(duration)
+		}
+	}()
+	req = util.RequestWithLogging(req)
+	util.SetCORSHeaders(rw)
+
+	vars := mux.Vars(req)
+
+	dstDomain := vars["serverName"]
+	mediaID := vars["mediaId"]
+
+	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "download", false, true)
 }
 
 func (p *Processor) FedThumbnail(rw http.ResponseWriter, req *http.Request) {
-	p.Thumbnail(rw, req, nil)
+	start := time.Now()
+	httpCode := http.StatusOK
+	defer func() {
+		duration := float64(time.Since(start)) / float64(time.Millisecond)
+		code := strconv.Itoa(httpCode)
+		if req.Method != "OPTION" {
+			p.histogram.WithLabelValues(req.Method, "fed thumbnail", code).Observe(duration)
+		}
+	}()
+	req = util.RequestWithLogging(req)
+	util.SetCORSHeaders(rw)
+
+	vars := mux.Vars(req)
+
+	dstDomain := vars["serverName"]
+	mediaID := vars["mediaId"]
+
+	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "thumbnail", false, true)
 }
 
 func (p *Processor) doDownload(
@@ -239,6 +275,7 @@ func (p *Processor) doDownload(
 	mediaID mediatypes.MediaID,
 	fileType string,
 	useFed bool,
+	isFromFed bool,
 ) int {
 	if req.Method != http.MethodGet {
 		p.responseError(w, util.JSONResponse{
@@ -249,13 +286,6 @@ func (p *Processor) doDownload(
 	}
 
 	cfg := p.cfg
-	// if !useFed && !common.CheckValidDomain(service, cfg.Matrix.ServerName) {
-	// 	p.responseError(w, util.JSONResponse{
-	// 		Code: http.StatusNotFound,
-	// 		JSON: jsonerror.Unknown("Unknown serverName"),
-	// 	})
-	// 	return http.StatusNotFound
-	// }
 
 	netdiskID := getNetDiskID(mediaID)
 	if netdiskID == "" {
@@ -298,11 +328,17 @@ func (p *Processor) doDownload(
 		p.repo.Wait(req.Context(), service, netdiskID)
 	}
 
-	res, err := p.httpRequest("", req.Method, reqUrl, req)
+	var res *http.Response
+	var err error
+	if isFromFed {
+		res, err = p.httpRequest(FakeUserID, req.Method, reqUrl, req)
+	} else {
+		res, err = p.httpRequest("", req.Method, reqUrl, req)
+	}
 
 	fromRemoteDomain := false
 	if err != nil {
-		log.Warnf("NetDiskDownLoad http response, err: %v, res: %v", err, res)
+		log.Warnf("NetDiskDownLoad http response, err: %v", err)
 		if !useFed || common.CheckValidDomain(service, cfg.Matrix.ServerName) {
 			log.Errorw("download file error", log.KeysAndValues{"mediaId", netdiskID, "err", err})
 			p.responseError(w, util.JSONResponse{
@@ -314,10 +350,15 @@ func (p *Processor) doDownload(
 		fromRemoteDomain = true
 	}
 	if err == nil && res.StatusCode != http.StatusOK {
-		log.Warnf("NetDiskDownLoad http response, err: %v, res: %v", err, res)
+		data, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			log.Errorf("NetDiskDownLoad read response err: %v", err)
+		}
+		log.Warnf("NetDiskDownLoad http response, statusCode: %d resp: %s", res.StatusCode, data)
+
 		if !useFed || common.CheckValidDomain(service, cfg.Matrix.ServerName) {
 			var errInfo mediatypes.UploadError
-			err = json.NewDecoder(res.Body).Decode(&errInfo)
+			err = json.Unmarshal(data, &errInfo)
 			if err != nil {
 				log.Errorw("download file error", log.KeysAndValues{"mediaId", netdiskID, "err", err})
 				p.responseError(w, util.JSONResponse{
@@ -329,7 +370,7 @@ func (p *Processor) doDownload(
 
 			p.responseError(w, util.JSONResponse{
 				Code: res.StatusCode,
-				JSON: jsonerror.Unknown("fail download file from net disk : " + errInfo.Error),
+				JSON: jsonerror.Unknown("fail download file from netdisk : " + errInfo.Error),
 			})
 			return res.StatusCode
 		}
@@ -339,7 +380,7 @@ func (p *Processor) doDownload(
 	if fromRemoteDomain {
 		p.consumer.AddReq(service, netdiskID)
 		p.repo.Wait(req.Context(), service, netdiskID)
-		return p.doDownload(w, req, service, mediaID, fileType, false)
+		return p.doDownload(w, req, service, mediaID, fileType, false, isFromFed)
 	} else {
 		log.Info("MediaId: ", netdiskID, " start download response")
 		p.respDownload(w, res.Header, res.StatusCode, res.Body)
@@ -370,18 +411,14 @@ func (p *Processor) httpRequest(userID, method, reqUrl string, req *http.Request
 		return nil, err
 	}
 
-	headStr, _ := json.Marshal(req.Header)
-	log.Infof("header for media upload request: %s, %s", string(headStr), req.Header.Get("Content-Length"))
-
 	newReq.Header = req.Header
-	if userID != "" {
-		newReq.Header.Add("X-Consumer-Custom-ID", userID)
+	if userID != "" && newReq.Header.Get(HeaderCustomID) == "" {
+		newReq.Header.Add(HeaderCustomID, userID)
 	}
 	newReq.ContentLength, _ = strconv.ParseInt(req.Header.Get("Content-Length"), 10, 0)
 
-	headStr, _ = json.Marshal(newReq.Header)
-	log.Infof("url for net disk request: %s", reqUrl)
-	log.Infof("header for net disk request: %s", string(headStr))
+	headStr, _ := json.Marshal(newReq.Header)
+	log.Infof("url for netdisk request, userID: %s method: %s url: %s header:%s", userID, method, reqUrl, string(headStr))
 
 	return client.Do(newReq)
 }
@@ -526,19 +563,19 @@ type ForwardRequest struct {
 
 func (p *Processor) Favorite(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
 	if req.Body == nil {
-		log.Errorf("Favorite %s req.Body is nil", req.Header.Get("X-Consumer-Custom-ID"))
+		log.Errorf("Favorite %s req.Body is nil", req.Header.Get(HeaderCustomID))
 		return
 	}
 	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Errorf("Favorite %s req body error %v", req.Header.Get("X-Consumer-Custom-ID"), err)
+		log.Errorf("Favorite %s req body error %v", req.Header.Get(HeaderCustomID), err)
 		return
 	}
 	defer req.Body.Close()
 	var forwardReq ForwardRequest
 	err = json.Unmarshal(data, &forwardReq)
 	if err != nil {
-		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get("X-Consumer-Custom-ID"), data, err)
+		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get(HeaderCustomID), data, err)
 		return
 	}
 
@@ -586,19 +623,19 @@ func (p *Processor) Unfavorite(rw http.ResponseWriter, req *http.Request, device
 
 func (p *Processor) SingleForward(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
 	if req.Body == nil {
-		log.Errorf("Favorite %s req.Body is nil", req.Header.Get("X-Consumer-Custom-ID"))
+		log.Errorf("Favorite %s req.Body is nil", req.Header.Get(HeaderCustomID))
 		return
 	}
 	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Errorf("Favorite %s req body error %v", req.Header.Get("X-Consumer-Custom-ID"), err)
+		log.Errorf("Favorite %s req body error %v", req.Header.Get(HeaderCustomID), err)
 		return
 	}
 	defer req.Body.Close()
 	var forwardReq ForwardRequest
 	err = json.Unmarshal(data, &forwardReq)
 	if err != nil {
-		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get("X-Consumer-Custom-ID"), data, err)
+		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get(HeaderCustomID), data, err)
 		return
 	}
 
@@ -647,19 +684,19 @@ type MultiForwardRequest struct {
 
 func (p *Processor) MultiForward(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
 	if req.Body == nil {
-		log.Errorf("Favorite %s req.Body is nil", req.Header.Get("X-Consumer-Custom-ID"))
+		log.Errorf("Favorite %s req.Body is nil", req.Header.Get(HeaderCustomID))
 		return
 	}
 	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Errorf("Favorite %s req body error %v", req.Header.Get("X-Consumer-Custom-ID"), err)
+		log.Errorf("Favorite %s req body error %v", req.Header.Get(HeaderCustomID), err)
 		return
 	}
 	defer req.Body.Close()
 	var forwardReq MultiForwardRequest
 	err = json.Unmarshal(data, &forwardReq)
 	if err != nil {
-		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get("X-Consumer-Custom-ID"), data, err)
+		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get(HeaderCustomID), data, err)
 		return
 	}
 
@@ -699,19 +736,19 @@ type MultiForwardPublicRequest struct {
 
 func (p *Processor) MultiResForward(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
 	if req.Body == nil {
-		log.Errorf("Favorite %s req.Body is nil", req.Header.Get("X-Consumer-Custom-ID"))
+		log.Errorf("Favorite %s req.Body is nil", req.Header.Get(HeaderCustomID))
 		return
 	}
 	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Errorf("Favorite %s req body error %v", req.Header.Get("X-Consumer-Custom-ID"), err)
+		log.Errorf("Favorite %s req body error %v", req.Header.Get(HeaderCustomID), err)
 		return
 	}
 	defer req.Body.Close()
 	var forwardReq MultiForwardPublicRequest
 	err = json.Unmarshal(data, &forwardReq)
 	if err != nil {
-		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get("X-Consumer-Custom-ID"), data, err)
+		log.Errorf("Favorite %s unmarshal %v error %v", req.Header.Get(HeaderCustomID), data, err)
 		return
 	}
 

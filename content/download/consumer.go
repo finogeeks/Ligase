@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -98,6 +99,14 @@ func NewConsumer(
 			thumbnailMap:   make(map[string]DownloadInfo),
 			downloadMap:    make(map[string]DownloadInfo),
 			maxWorkerCount: int32(workerCount),
+			httpCli: &http.Client{
+				Transport: &http.Transport{
+					DialContext: (&net.Dialer{
+						Timeout: time.Second * 15,
+					}).DialContext,
+					DisableKeepAlives: true, // fd will leak if set it false(default value)
+				},
+			},
 		}
 		channel.SetHandler(s)
 
@@ -409,6 +418,10 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			}
 		}()
 
+		if response.StatusCode != http.StatusOK {
+			return errors.New("fed download response status " + strconv.Itoa(response.StatusCode))
+		}
+
 		reqUrl := p.cfg.Media.UploadUrl
 
 		header := response.Header
@@ -425,6 +438,9 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		newReq.Header.Set("X-Consumer-Custom-ID", info.Owner)
 		newReq.Header.Set("X-Consumer-NetDisk-ID", info.NetdiskID)
 		newReq.Header.Set("Content-Type", header.Get("Content-Type"))
+		if info.IsOpenAuth {
+			newReq.Header.Set("X-Consumer-Custom-Public", "true")
+		}
 
 		q := newReq.URL.Query()
 		q.Add("type", info.Type)
@@ -439,7 +455,6 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			q.Add("thumbnail", "false")
 		}
 
-		// we must encode illegal chars
 		newReq.URL.RawQuery = q.Encode()
 
 		if err != nil {
@@ -449,7 +464,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		newReq.ContentLength, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
 
 		headStr, _ = json.Marshal(newReq.Header)
-		log.Infof("fed download, header for net disk request: %s", string(headStr))
+		log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
 
 		res, err := p.httpCli.Do(newReq)
 		if err != nil {

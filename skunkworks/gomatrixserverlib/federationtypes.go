@@ -3,6 +3,7 @@ package gomatrixserverlib
 import (
 	"context"
 	"strconv"
+
 	//"encoding/json"
 	"fmt"
 
@@ -498,9 +499,10 @@ type ClaimResponse struct {
 }
 
 type RespMediaInfo struct {
-	NetdiskID string `json:"netdiskID"`
-	Owner     string `json:"owner"`
-	Type      string `json:"type"`
-	SpaceID   string `json:"spaceID"`
-	Content   string `json:"content"`
+	NetdiskID  string `json:"netdiskID"`
+	Owner      string `json:"owner"`
+	Type       string `json:"type"`
+	SpaceID    string `json:"spaceID"`
+	Content    string `json:"content"`
+	IsOpenAuth bool   `json:"isOpenAuth"`
 }
