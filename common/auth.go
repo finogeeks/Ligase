@@ -107,7 +107,8 @@ func VerifyToken(token string, requestURI string, cache service.Cache, cfg confi
 }
 
 func filterTokenCheck(userId string) bool {
-	return strings.Contains(userId, "-qq:") || strings.Contains(userId, "-bot:") || strings.Contains(userId, "@qq_")
+	//return strings.Contains(userId, "-qq:") || strings.Contains(userId, "-bot:") || strings.Contains(userId, "@qq_")
+	return strings.Contains(userId, "-bot:")
 }
 
 // extractAccessToken from a request, or return an error detailing what went wrong. The
