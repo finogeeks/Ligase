@@ -271,7 +271,7 @@ func (p *Processor) FedThumbnail(rw http.ResponseWriter, req *http.Request) {
 func (p *Processor) doDownload(
 	w http.ResponseWriter,
 	req *http.Request,
-	service string,
+	domain string,
 	mediaID mediatypes.MediaID,
 	fileType string,
 	useFed bool,
@@ -285,8 +285,6 @@ func (p *Processor) doDownload(
 		return http.StatusMethodNotAllowed
 	}
 
-	cfg := p.cfg
-
 	netdiskID := getNetDiskID(mediaID)
 	if netdiskID == "" {
 		p.responseError(w, util.JSONResponse{
@@ -296,36 +294,36 @@ func (p *Processor) doDownload(
 		return http.StatusNotFound
 	}
 
+	if p.repo.TryResponseFromLocal(domain, netdiskID, w) {
+		return http.StatusOK
+	}
+
 	var method, width string
 	var reqUrl string
 	switch fileType {
 	case "download":
-		reqUrl = fmt.Sprintf(cfg.Media.DownloadUrl, netdiskID)
+		reqUrl = fmt.Sprintf(p.cfg.Media.DownloadUrl, netdiskID)
 	case "thumbnail":
 		req.ParseForm()
 		scaleType := req.Form.Get("type")
 		if scaleType != "" {
-			reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, scaleType)
+			reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, scaleType)
 		} else {
 			method = req.Form.Get("method")
 			width = req.Form.Get("width")
 			widthInt, _ := strconv.Atoi(width)
 			if method == "scale" {
 				if widthInt <= 100 {
-					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "small")
+					reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "small")
 				} else if widthInt <= 300 {
-					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "middle")
+					reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "middle")
 				} else {
-					reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
+					reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "large")
 				}
 			} else {
-				reqUrl = fmt.Sprintf(cfg.Media.ThumbnailUrl, netdiskID, "large")
+				reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "large")
 			}
 		}
-	}
-
-	if !common.CheckValidDomain(service, cfg.Matrix.ServerName) {
-		p.repo.Wait(req.Context(), service, netdiskID)
 	}
 
 	var res *http.Response
@@ -339,7 +337,7 @@ func (p *Processor) doDownload(
 	fromRemoteDomain := false
 	if err != nil {
 		log.Warnf("NetDiskDownLoad http response, err: %v", err)
-		if !useFed || common.CheckValidDomain(service, cfg.Matrix.ServerName) {
+		if !useFed || common.CheckValidDomain(domain, p.cfg.Matrix.ServerName) {
 			log.Errorw("download file error", log.KeysAndValues{"mediaId", netdiskID, "err", err})
 			p.responseError(w, util.JSONResponse{
 				Code: http.StatusInternalServerError,
@@ -356,7 +354,7 @@ func (p *Processor) doDownload(
 		}
 		log.Warnf("NetDiskDownLoad http response, statusCode: %d resp: %s", res.StatusCode, data)
 
-		if !useFed || common.CheckValidDomain(service, cfg.Matrix.ServerName) {
+		if !useFed || common.CheckValidDomain(domain, p.cfg.Matrix.ServerName) {
 			var errInfo mediatypes.UploadError
 			err = json.Unmarshal(data, &errInfo)
 			if err != nil {
@@ -378,9 +376,9 @@ func (p *Processor) doDownload(
 	}
 
 	if fromRemoteDomain {
-		p.consumer.AddReq(service, netdiskID)
-		p.repo.Wait(req.Context(), service, netdiskID)
-		return p.doDownload(w, req, service, mediaID, fileType, false, isFromFed)
+		p.consumer.AddReq(domain, netdiskID)
+		p.repo.WaitStartDownload(req.Context(), domain, netdiskID)
+		return p.doDownload(w, req, domain, mediaID, fileType, false, isFromFed)
 	} else {
 		log.Info("MediaId: ", netdiskID, " start download response")
 		p.respDownload(w, res.Header, res.StatusCode, res.Body)

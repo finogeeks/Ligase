@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,6 +40,7 @@ import (
 )
 
 const kDefaultWorkerCount = 10
+const FakeUserID = "@fakeUser:fakeDomain.com"
 
 type DownloadInfo struct {
 	retryTimes int
@@ -368,7 +368,7 @@ func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte)
 
 // AddReq 不会保存到数据库
 func (p *DownloadConsumer) AddReq(domain, netdiskID string) {
-	p.pushDownload("", "@fakeUser:fakeDomain.com", "", domain, netdiskID, 0)
+	p.pushDownload("", FakeUserID, "", domain, netdiskID, 0)
 }
 
 func (p *DownloadConsumer) parseEv(ev *gomatrixserverlib.Event) (domain, url, thumbnailUrl string) {
@@ -409,35 +409,21 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 	if err == nil {
 		isEmote = contentParam.IsEmote
 	}
-	os.Mkdir("./media", 0644)
-	filename := "./media/" + strconv.FormatInt(time.Now().UnixNano()/1000000, 10) + common.RandString(6)
-	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		file.Close()
-		os.Remove(filename)
-	}()
 
+	var body io.ReadCloser
 	var header http.Header
 	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, "", "", "download", func(response *http.Response) error {
 		if response == nil || response.Body == nil {
 			log.Errorf("download fed netdisk response nil")
 			return errors.New("download fed netdisk response nil")
 		}
-		defer func() {
-			if response != nil && response.Body != nil {
-				response.Body.Close()
-			}
-		}()
 
 		if response.StatusCode != http.StatusOK {
 			return errors.New("fed download response status " + strconv.Itoa(response.StatusCode))
 		}
 
-		_, err = io.Copy(file, response.Body)
-		if err != nil && err != io.EOF {
+		body, err = p.repo.WriteToFile(domain, netdiskID, response.Body)
+		if err != nil {
 			return err
 		}
 
@@ -446,6 +432,9 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		header = response.Header
 		return nil
 	})
+	if body != nil {
+		defer body.Close()
+	}
 	if err != nil {
 		log.Errorf("federation Download [%s] error: %v", netdiskID, err)
 		return err
@@ -456,19 +445,16 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 	headStr, _ := json.Marshal(header)
 	log.Infof("fed download, header for media upload request: %s, %s", string(headStr), header.Get("Content-Length"))
 
-	file.Seek(0, os.SEEK_SET)
-	newReq, err := http.NewRequest("POST", reqUrl, file)
+	newReq, err := http.NewRequest("POST", reqUrl, body)
 	if thumbnail {
 		newReq.URL.Query().Set("thumbnail", "true")
 	} else {
 		newReq.URL.Query().Set("thumbnail", "false")
 	}
+	newReq.Header.Set("Content-Type", header.Get("Content-Type"))
 	newReq.Header.Set("X-Consumer-Custom-ID", info.Owner)
 	newReq.Header.Set("X-Consumer-NetDisk-ID", info.NetdiskID)
-	newReq.Header.Set("Content-Type", header.Get("Content-Type"))
-	if info.IsOpenAuth {
-		newReq.Header.Set("X-Consumer-Custom-Public", "true")
-	}
+	newReq.Header.Set("X-Consumer-Custom-Public", strconv.FormatBool(info.IsOpenAuth))
 
 	q := newReq.URL.Query()
 	q.Add("type", info.Type)
@@ -520,6 +506,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		log.Errorf("fed download, upload file response %v", errInfo)
 		return errors.New("fed download, upload file response" + string(respData))
 	}
+
 	if isEmote {
 		var resp mediatypes.UploadEmoteResp
 		data_, _ := ioutil.ReadAll(res.Body)
