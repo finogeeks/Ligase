@@ -422,7 +422,9 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			return errors.New("fed download response status " + strconv.Itoa(response.StatusCode))
 		}
 
-		body, err = p.repo.WriteToFile(domain, netdiskID, response.Body)
+		contentLength, _ := strconv.ParseInt(response.Header.Get("Content-Length"), 10, 64)
+
+		body, err = p.repo.WriteToFile(domain, netdiskID, response.Body, contentLength)
 		if err != nil {
 			return err
 		}

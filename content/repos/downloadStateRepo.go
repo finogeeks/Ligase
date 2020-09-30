@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,6 +45,8 @@ type DownloadStateRepo struct {
 
 	downloadFiles sync.Map
 	refMutex      sync.Mutex
+
+	downloadingSize sync.Map
 }
 
 func NewDownloadStateRepo() *DownloadStateRepo {
@@ -227,6 +230,7 @@ func (r *DownloadStateRepo) decrDownloadRef(fn string) {
 	newVal := atomic.AddInt32(v.(*int32), -1)
 	if newVal <= 0 {
 		r.downloadFiles.Delete(fn)
+		r.downloadingSize.Delete(fn)
 		os.Remove(fn)
 	}
 }
@@ -246,12 +250,13 @@ func (r *FileReader) Close() error {
 	return r.file.Close()
 }
 
-func (r *DownloadStateRepo) WriteToFile(domain, netdiskID string, reader io.Reader) (io.ReadCloser, error) {
+func (r *DownloadStateRepo) WriteToFile(domain, netdiskID string, reader io.Reader, contentLength int64) (io.ReadCloser, error) {
 	fn := r.GetDownloadFilename(domain, netdiskID)
 	file, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return nil, err
 	}
+	r.downloadingSize.Store(fn, contentLength)
 
 	r.incrDownloadRef(fn, true)
 
@@ -272,6 +277,13 @@ func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID string, write
 		return false
 	}
 	log.Infof("download file from local domain: %s netdiskID: %s", domain, netdiskID)
+	filesize := int64(0)
+	if sizeVal, _ := r.downloadingSize.Load(fn); sizeVal != nil {
+		filesize = sizeVal.(int64)
+	}
+	if filesize > 0 {
+		writer.Header().Set("Content-Length", strconv.FormatInt(filesize, 10))
+	}
 	writer.WriteHeader(http.StatusOK)
 	buf := make([]byte, 409600)
 	for {
