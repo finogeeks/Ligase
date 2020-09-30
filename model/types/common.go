@@ -98,6 +98,12 @@ type NotifyUserState struct {
 	CurState  int			   `json:"cur_state"`
 }
 
+type NotifyOnlineDetail struct {
+	UserID 	  			string 			`json:"user_id"`
+	LastActive			int64 			`json:"last_active"`
+	Duration  			int64 			`json:"duration"`
+}
+
 type ProfileContent struct {
 	UserID       string `json:"user_id,omitempty"`
 	DisplayName  string `json:"display_name,omitempty"`
@@ -417,4 +423,27 @@ type TimeLineItem struct {
 	Start 	int64 							`json:"start"`
 	Ev 		*gomatrixserverlib.ClientEvent	`json:"ev"`
 	TraceId string 							`json:"trace_id"`
+}
+
+const (
+	STATIC_LOGIN 	= 	"static_login"
+	STATIC_ONLINE 	=	"static_online"
+)
+
+type StaticLoginItem struct {
+	UserId 		string 		`json:"user_id"`
+	TimeStamp 	int64 		`json:"timestamp"`
+	IP 			string 		`json:"ip"`
+	Version 	string 		`json:"version"`
+	Source 		string 		`json:"source"`
+}
+
+type StaticOnlineItem struct {
+	Detail []*NotifyOnlineDetail `json:"detail"`
+}
+
+type StaticItem struct {
+	Type 	string				`json:"type"`
+	Login 	*StaticLoginItem	`json:"login,omitempty"`
+	Online  *StaticOnlineItem 	`json:"online,omitempty"`
 }

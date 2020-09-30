@@ -270,3 +270,19 @@ type DismissRoomRequest struct {
 
 type DismissRoomResponse struct {
 }
+
+type GetOnlineCountRequest struct {
+	Inst 	string 		`json:"inst"`
+}
+
+type GetOnlineCountResponse struct {
+	Count 	int64 		`json:"count"`
+}
+
+type GetOnlineUsersRequest struct {
+	Inst 	string 		`json:"inst"`
+}
+
+type GetOnlineUsersResponse struct {
+	Users 	[]string 	`json:"users"`
+}

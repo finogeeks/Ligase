@@ -2026,3 +2026,11 @@ func (externalReq *PostClaimClientKeysRequest) Decode(data []byte) error {
 func (externalReq *DismissRoomRequest) Decode(data []byte) error {
 	return json.Unmarshal(data, externalReq)
 }
+
+func (externalReq *GetOnlineCountRequest) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}
+
+func (externalReq *GetOnlineUsersRequest) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}
