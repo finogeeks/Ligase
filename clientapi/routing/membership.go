@@ -399,6 +399,9 @@ func buildMembershipEvent(
 			log.Infof("buildevent join and autojoin handle SendMembership traceId:%s membership:%s buildMembershipEvent builder.SetContent for user %s roomID:%s error %v", traceId, membership, userID, roomID, err)
 			return e, nil
 		}
+	}else{
+		log.Errorf("build event err:%v", err)
+		return nil, err
 	}
 
 	createEvent, _ := queryRes.Create()
