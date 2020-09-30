@@ -277,7 +277,7 @@ func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID string, write
 	for {
 		n, err := file.Read(buf)
 		if err == io.EOF {
-			if r.IsDownloading(domain, netdiskID) {
+			if !r.IsDownloading(domain, netdiskID) {
 				if n > 0 {
 					writer.Write(buf[:n])
 				}
