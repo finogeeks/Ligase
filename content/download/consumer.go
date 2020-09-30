@@ -222,7 +222,14 @@ func (p *DownloadConsumer) workerProcessor() {
 		err := p.download(info.userID, domain, netdiskID, thumbnail)
 		if err != nil {
 			p.repo.RemoveDownloading(key)
-			p.pushRetry(domain, netdiskID, thumbnail, info)
+			if info.retryTimes >= 5 {
+				log.Infof("netdisk download %s:%s retry times %d, stop retry", domain, netdiskID, info.retryTimes)
+				if info.roomID != "" && info.eventID != "" {
+					p.db.UpdateMediaDownload(context.TODO(), info.roomID, info.eventID, true)
+				}
+			} else {
+				p.pushRetry(domain, netdiskID, thumbnail, info)
+			}
 		} else {
 			p.repo.RemoveDownloading(key)
 			if info.roomID != "" && info.eventID != "" {
@@ -305,10 +312,6 @@ func (p *DownloadConsumer) getInQue(key string, isDelete bool) (info DownloadInf
 }
 
 func (p *DownloadConsumer) pushRetry(domain, netdiskID string, thumbnail bool, info DownloadInfo) {
-	if info.retryTimes >= 5 {
-		log.Infof("netdisk download %s:%s retry times %d, stop retry", domain, netdiskID, info.retryTimes)
-		return
-	}
 	info.retryTimes++
 	p.retryQueMutex.Lock()
 	defer p.retryQueMutex.Unlock()
