@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
@@ -26,8 +27,6 @@ import (
 	"syscall"
 	"time"
 
-	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
@@ -41,8 +40,10 @@ import (
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	_ "github.com/finogeeks/ligase/plugins"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	_ "github.com/finogeeks/ligase/storage/implements"
 	models "github.com/finogeeks/ligase/storage/model"
 )
@@ -175,6 +176,7 @@ func handleSignal() {
 }
 
 func Entry() {
+	os.Mkdir("media", 0644)
 	procName := "content"
 	flag.Usage = usage
 

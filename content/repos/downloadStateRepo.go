@@ -290,6 +290,7 @@ func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID string, write
 			writer.Write(buf[:n])
 		}
 	}
+	log.Infof("download file from local finished domain: %s netdiskID: %s", domain, netdiskID)
 
 	return true
 }

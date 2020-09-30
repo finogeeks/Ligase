@@ -427,7 +427,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			return err
 		}
 
-		log.Infof("federation Download write file success")
+		log.Infof("federation Download write file success domain: %s netdiskID: %s", domain, netdiskID)
 
 		header = response.Header
 		return nil
