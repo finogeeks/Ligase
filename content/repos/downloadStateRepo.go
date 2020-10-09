@@ -55,20 +55,20 @@ func NewDownloadStateRepo() *DownloadStateRepo {
 	}
 }
 
-func (r *DownloadStateRepo) BuildKey(domain, netdiskID string) string {
-	return domain + "/" + netdiskID
+func (r *DownloadStateRepo) BuildKey(domain, netdiskID, thumbnailType string) string {
+	return domain + "/" + netdiskID + "/" + thumbnailType
 }
 
-func (r *DownloadStateRepo) SplitKey(key string) (domain, netdiskID string, ok bool) {
-	ss := strings.SplitN(key, "/", 2)
-	if len(ss) < 2 {
-		return "", "", false
+func (r *DownloadStateRepo) SplitKey(key string) (domain, netdiskID, thumbnailType string, ok bool) {
+	ss := strings.SplitN(key, "/", 3)
+	if len(ss) < 3 {
+		return "", "", "", false
 	}
-	return ss[0], ss[1], true
+	return ss[0], ss[1], ss[2], true
 }
 
-func (r *DownloadStateRepo) IsDownloading(domain, netdiskID string) bool {
-	key := r.BuildKey(domain, netdiskID)
+func (r *DownloadStateRepo) IsDownloading(domain, netdiskID, thumbnailType string) bool {
+	key := r.BuildKey(domain, netdiskID, thumbnailType)
 	_, ok := r.downloading.Load(key)
 	return ok
 }
@@ -90,8 +90,8 @@ func (r *DownloadStateRepo) RemoveDownloading(key string) {
 	r.downloading.Delete(key)
 }
 
-func (r *DownloadStateRepo) Wait(ctx context.Context, domain, netdiskID string) bool {
-	key := r.BuildKey(domain, netdiskID)
+func (r *DownloadStateRepo) Wait(ctx context.Context, domain, netdiskID, thumbnailType string) bool {
+	key := r.BuildKey(domain, netdiskID, thumbnailType)
 	v, ok := r.downloading.Load(key)
 	if !ok {
 		return false
@@ -99,7 +99,7 @@ func (r *DownloadStateRepo) Wait(ctx context.Context, domain, netdiskID string) 
 	if v.(*downloadingConds).hasFinished {
 		return false
 	}
-	log.Infof("wait download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+	log.Infof("wait download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 	r.mutex.Lock()
 	r.waiting[key] = r.waiting[key] + 1
 	r.mutex.Unlock()
@@ -116,31 +116,31 @@ func (r *DownloadStateRepo) Wait(ctx context.Context, domain, netdiskID string) 
 
 	ch := make(chan struct{}, 1)
 	go func(ch chan struct{}, conds *downloadingConds) {
-		log.Infof("begin waiting download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("begin waiting download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 		conds.finishedDownloadCond.L.Lock()
 		if conds.hasFinished {
 			conds.finishedDownloadCond.L.Unlock()
 			ch <- struct{}{}
-			log.Infof("finished waiting immediately download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+			log.Infof("finished waiting immediately download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 			return
 		}
 		conds.finishedDownloadCond.Wait()
 		conds.finishedDownloadCond.L.Unlock()
 		ch <- struct{}{}
-		log.Infof("finished waiting download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("finished waiting download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 	}(ch, v.(*downloadingConds))
 	select {
 	case <-ctx.Done():
-		log.Infof("cancel download while waiting from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("cancel download while waiting from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 		return true
 	case <-ch:
-		log.Infof("finished download while waiting from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("finished download while waiting from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 		return false
 	}
 }
 
-func (r *DownloadStateRepo) WaitStartDownload(ctx context.Context, domain, netdiskID string) bool {
-	key := r.BuildKey(domain, netdiskID)
+func (r *DownloadStateRepo) WaitStartDownload(ctx context.Context, domain, netdiskID, thumbnailType string) bool {
+	key := r.BuildKey(domain, netdiskID, thumbnailType)
 	v, ok := r.downloading.Load(key)
 	if !ok {
 		return false
@@ -148,7 +148,7 @@ func (r *DownloadStateRepo) WaitStartDownload(ctx context.Context, domain, netdi
 	if v.(*downloadingConds).hasStart {
 		return false
 	}
-	log.Infof("wait download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+	log.Infof("wait download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 	r.mutex.Lock()
 	r.waiting[key] = r.waiting[key] + 1
 	r.mutex.Unlock()
@@ -165,31 +165,31 @@ func (r *DownloadStateRepo) WaitStartDownload(ctx context.Context, domain, netdi
 
 	ch := make(chan struct{}, 1)
 	go func(ch chan struct{}, conds *downloadingConds) {
-		log.Infof("begin waiting download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("begin waiting download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 		conds.startDownloadCond.L.Lock()
 		if conds.hasStart {
 			conds.startDownloadCond.L.Unlock()
 			ch <- struct{}{}
-			log.Infof("finished waiting immediately download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+			log.Infof("finished waiting immediately download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 			return
 		}
 		conds.startDownloadCond.Wait()
 		conds.startDownloadCond.L.Unlock()
 		ch <- struct{}{}
-		log.Infof("finished waiting download from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("finished waiting download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 	}(ch, v.(*downloadingConds))
 	select {
 	case <-ctx.Done():
-		log.Infof("cancel download while waiting from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("cancel download while waiting from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 		return true
 	case <-ch:
-		log.Infof("finished download while waiting from remote, domain: %s, netdiskID: %s", domain, netdiskID)
+		log.Infof("finished download while waiting from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 		return false
 	}
 }
 
-func (r *DownloadStateRepo) StartDownload(domain, netdiskID string) {
-	key := r.BuildKey(domain, netdiskID)
+func (r *DownloadStateRepo) StartDownload(domain, netdiskID, thumbnailType string) {
+	key := r.BuildKey(domain, netdiskID, thumbnailType)
 	val, _ := r.downloading.Load(key)
 	if val != nil {
 		conds := val.(*downloadingConds)
@@ -200,8 +200,8 @@ func (r *DownloadStateRepo) StartDownload(domain, netdiskID string) {
 	}
 }
 
-func (r *DownloadStateRepo) GetDownloadFilename(domain, netdiskID string) string {
-	return fmt.Sprintf("./media/%s_%s", domain, netdiskID)
+func (r *DownloadStateRepo) GetDownloadFilename(domain, netdiskID, thumbnailType string) string {
+	return fmt.Sprintf("./media/%s_%s_%s", domain, netdiskID, thumbnailType)
 }
 
 func (r *DownloadStateRepo) incrDownloadRef(fn string, init bool) bool {
@@ -250,8 +250,8 @@ func (r *FileReader) Close() error {
 	return r.file.Close()
 }
 
-func (r *DownloadStateRepo) WriteToFile(domain, netdiskID string, reader io.Reader, contentLength int64) (io.ReadCloser, error) {
-	fn := r.GetDownloadFilename(domain, netdiskID)
+func (r *DownloadStateRepo) WriteToFile(domain, netdiskID, thumbnailType string, reader io.Reader, contentLength int64) (io.ReadCloser, error) {
+	fn := r.GetDownloadFilename(domain, netdiskID, thumbnailType)
 	file, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return nil, err
@@ -260,14 +260,14 @@ func (r *DownloadStateRepo) WriteToFile(domain, netdiskID string, reader io.Read
 
 	r.incrDownloadRef(fn, true)
 
-	r.StartDownload(domain, netdiskID)
+	r.StartDownload(domain, netdiskID, thumbnailType)
 	_, err = io.Copy(file, reader)
 	file.Seek(0, os.SEEK_SET)
 	return &FileReader{file, fn, r}, err
 }
 
-func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID string, writer http.ResponseWriter) bool {
-	fn := r.GetDownloadFilename(domain, netdiskID)
+func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID, thumbnailType string, writer http.ResponseWriter) bool {
+	fn := r.GetDownloadFilename(domain, netdiskID, thumbnailType)
 	if !r.incrDownloadRef(fn, false) {
 		return false
 	}
@@ -276,7 +276,7 @@ func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID string, write
 	if err != nil {
 		return false
 	}
-	log.Infof("download file from local domain: %s netdiskID: %s", domain, netdiskID)
+	log.Infof("download file from local domain: %s netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 	filesize := int64(0)
 	if sizeVal, _ := r.downloadingSize.Load(fn); sizeVal != nil {
 		filesize = sizeVal.(int64)
@@ -289,7 +289,7 @@ func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID string, write
 	for {
 		n, err := file.Read(buf)
 		if err == io.EOF {
-			if !r.IsDownloading(domain, netdiskID) {
+			if !r.IsDownloading(domain, netdiskID, thumbnailType) {
 				if n > 0 {
 					writer.Write(buf[:n])
 				}
@@ -302,7 +302,7 @@ func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID string, write
 			writer.Write(buf[:n])
 		}
 	}
-	log.Infof("download file from local finished domain: %s netdiskID: %s", domain, netdiskID)
+	log.Infof("download file from local finished domain: %s netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 
 	return true
 }
@@ -326,12 +326,15 @@ func (w WaitListSorted) Len() int           { return len(w) }
 func (w WaitListSorted) Swap(i, j int)      { w[i], w[j] = w[j], w[i] }
 
 func (r *DownloadStateRepo) GetWaitingList() WaitListSorted {
-	resp := WaitListSorted{}
-	r.mutex.Lock()
-	for key, amt := range r.waiting {
-		resp = append(resp, WaitElem{key, amt})
-	}
-	r.mutex.Unlock()
+	resp := func() WaitListSorted {
+		resp := WaitListSorted{}
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+		for key, amt := range r.waiting {
+			resp = append(resp, WaitElem{key, amt})
+		}
+		return resp
+	}()
 	sort.Sort(resp)
 	return resp
 }

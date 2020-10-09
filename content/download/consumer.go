@@ -50,10 +50,11 @@ type DownloadInfo struct {
 }
 
 type RetryInfo struct {
-	domain       string
-	netdiskID    string
-	thumbnail    bool
-	downloadInfo DownloadInfo
+	domain        string
+	netdiskID     string
+	thumbnailType string
+	thumbnail     bool
+	downloadInfo  DownloadInfo
 }
 
 type DownloadConsumer struct {
@@ -145,7 +146,7 @@ func (p *DownloadConsumer) Start() error {
 		userID := ev.Sender()
 		if url != "" {
 			_, netdiskID := p.splitMxc(url)
-			p.pushDownload(roomID, userID, eventIDs[i], domain, netdiskID, 0)
+			p.pushDownload(roomID, userID, eventIDs[i], domain, netdiskID, "", 0)
 		}
 		if thumbnailUrl != "" {
 			_, netdiskID := p.splitMxc(thumbnailUrl)
@@ -181,7 +182,7 @@ func (p *DownloadConsumer) startRetry() {
 					if thumbnail {
 						p.pushThumbnail(info.roomID, info.userID, info.eventID, v.domain, v.netdiskID, info.retryTimes)
 					} else {
-						p.pushDownload(info.roomID, info.userID, info.eventID, v.domain, v.netdiskID, info.retryTimes)
+						p.pushDownload(info.roomID, info.userID, info.eventID, v.domain, v.netdiskID, v.thumbnailType, info.retryTimes)
 					}
 				}
 			}
@@ -190,8 +191,6 @@ func (p *DownloadConsumer) startRetry() {
 }
 
 func (p *DownloadConsumer) startWorkerIfNeed() {
-	p.getMutex.Lock()
-	defer p.getMutex.Unlock()
 	if p.curWorkerCount >= p.maxWorkerCount {
 		return
 	}
@@ -218,8 +217,8 @@ func (p *DownloadConsumer) workerProcessor() {
 		if !ok {
 			break
 		}
-		domain, netdiskID, _ := p.repo.SplitKey(key)
-		err := p.download(info.userID, domain, netdiskID, thumbnail)
+		domain, netdiskID, thumbnailType, _ := p.repo.SplitKey(key)
+		err := p.download(info.userID, domain, netdiskID, thumbnailType, thumbnail)
 		if err != nil {
 			p.repo.RemoveDownloading(key)
 			if info.retryTimes >= 5 {
@@ -323,16 +322,22 @@ func (p *DownloadConsumer) pushRetry(domain, netdiskID string, thumbnail bool, i
 	})
 }
 
+// pushThumbnail legacy，有些旧数据在content中有thumbnail字段，原图和缩略图的netdiskID不是同一个的，为了保证旧数据没有问题
 func (p *DownloadConsumer) pushThumbnail(roomID, userID, eventID, domain, netdiskID string, retryTimes int) {
-	key := p.repo.BuildKey(domain, netdiskID)
+	key := p.repo.BuildKey(domain, netdiskID, "")
 	p.repo.AddDownload(key)
+	p.getMutex.Lock()
+	defer p.getMutex.Unlock()
 	p.thumbnailMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
 	p.startWorkerIfNeed()
 }
 
-func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdiskID string, retryTimes int) {
-	key := p.repo.BuildKey(domain, netdiskID)
+// pushDownload thumbnailType字段和pushThumbnail函数的缩略图有一点差别，这里netdiskID和原图是一样的
+func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdiskID, thumbnailType string, retryTimes int) {
+	key := p.repo.BuildKey(domain, netdiskID, thumbnailType)
 	p.repo.AddDownload(key)
+	p.getMutex.Lock()
+	defer p.getMutex.Unlock()
 	p.downloadMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
 	p.startWorkerIfNeed()
 }
@@ -361,7 +366,7 @@ func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte)
 	eventID := ev.EventID()
 	if url != "" {
 		_, netdiskID := p.splitMxc(url)
-		p.pushDownload(roomID, userID, eventID, domain, netdiskID, 0)
+		p.pushDownload(roomID, userID, eventID, domain, netdiskID, "", 0)
 	}
 	if thumbnailUrl != "" {
 		_, netdiskID := p.splitMxc(thumbnailUrl)
@@ -370,8 +375,8 @@ func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte)
 }
 
 // AddReq 不会保存到数据库
-func (p *DownloadConsumer) AddReq(domain, netdiskID string) {
-	p.pushDownload("", FakeUserID, "", domain, netdiskID, 0)
+func (p *DownloadConsumer) AddReq(domain, netdiskID, thumbnailType string) {
+	p.pushDownload("", FakeUserID, "", domain, netdiskID, thumbnailType, 0)
 }
 
 func (p *DownloadConsumer) parseEv(ev *gomatrixserverlib.Event) (domain, url, thumbnailUrl string) {
@@ -398,8 +403,9 @@ func (p *DownloadConsumer) parseEv(ev *gomatrixserverlib.Event) (domain, url, th
 	return
 }
 
-func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail bool) error {
-	log.Infof("federation Download netdisk %s from remote %s", netdiskID, domain)
+// download thumbnailType是用于判断下载原图的缩略图，thumbnail是遗留的字段，上传时给网盘判断是否缩略图
+func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType string, thumbnail bool) error {
+	log.Infof("federation Download netdisk %s from remote %s, thumbnailType: %s", netdiskID, domain, thumbnailType)
 	destination, _ := p.feddomains.GetDomainHost(domain)
 	info, err := p.fedClient.LookupMediaInfo(context.TODO(), destination, netdiskID, userID)
 	if err != nil {
@@ -415,7 +421,27 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 
 	var body io.ReadCloser
 	var header http.Header
-	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, "", "", "download", func(response *http.Response) error {
+	fileType := "download"
+	method := ""
+	width := ""
+	if thumbnailType != "" {
+		switch thumbnailType {
+		case "small":
+			fileType = "thumbnail"
+			method = "scale"
+			width = "100"
+		case "middle":
+			fileType = "thumbnail"
+			method = "scale"
+			width = "300"
+		case "large":
+			fileType = "thumbnail"
+			method = "scale"
+			width = "500"
+		}
+	}
+	log.Infof("federation Download from remote netdisk %s from remote %s, thumbnailType: %s, fileType: %s method: %s, width: %s", netdiskID, domain, thumbnailType, fileType, method, width)
+	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, width, method, fileType, func(response *http.Response) error {
 		if response == nil || response.Body == nil {
 			log.Errorf("download fed netdisk response nil")
 			return errors.New("download fed netdisk response nil")
@@ -427,7 +453,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 
 		contentLength, _ := strconv.ParseInt(response.Header.Get("Content-Length"), 10, 64)
 
-		body, err = p.repo.WriteToFile(domain, netdiskID, response.Body, contentLength)
+		body, err = p.repo.WriteToFile(domain, netdiskID, thumbnailType, response.Body, contentLength)
 		if err != nil {
 			return err
 		}
@@ -445,89 +471,90 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 		return err
 	}
 
-	reqUrl := p.cfg.Media.UploadUrl
+	if method == "" { // method = "" means it's a thumbnail, no need to upload
+		reqUrl := p.cfg.Media.UploadUrl
 
-	headStr, _ := json.Marshal(header)
-	log.Infof("fed download, header for media upload request: %s, %s", string(headStr), header.Get("Content-Length"))
+		headStr, _ := json.Marshal(header)
+		log.Infof("fed download, header for media upload request: %s, %s", string(headStr), header.Get("Content-Length"))
 
-	newReq, err := http.NewRequest("POST", reqUrl, body)
-	if thumbnail {
-		newReq.URL.Query().Set("thumbnail", "true")
-	} else {
-		newReq.URL.Query().Set("thumbnail", "false")
-	}
-	newReq.Header.Set("Content-Type", header.Get("Content-Type"))
-	newReq.Header.Set("X-Consumer-Custom-ID", info.Owner)
-	newReq.Header.Set("X-Consumer-NetDisk-ID", info.NetdiskID)
-	newReq.Header.Set("X-Consumer-Custom-Public", strconv.FormatBool(info.IsOpenAuth))
+		newReq, err := http.NewRequest("POST", reqUrl, body)
+		if err != nil {
+			log.Errorf("fed download, upload to local NewRequest error: %v", err)
+			return errors.New("fed download, upload to local NewRequest error:" + err.Error())
+		}
+		if thumbnail {
+			newReq.URL.Query().Set("thumbnail", "true")
+		} else {
+			newReq.URL.Query().Set("thumbnail", "false")
+		}
+		newReq.Header.Set("Content-Type", header.Get("Content-Type"))
+		newReq.Header.Set("X-Consumer-Custom-ID", info.Owner)
+		newReq.Header.Set("X-Consumer-NetDisk-ID", info.NetdiskID)
+		newReq.Header.Set("X-Consumer-Custom-Public", strconv.FormatBool(info.IsOpenAuth))
 
-	q := newReq.URL.Query()
-	q.Add("type", info.Type)
-	q.Add("content", info.Content)
-	if isEmote {
-		q.Add("isemote", "true")
-		q.Add("isfed", "true")
-	}
-	if thumbnail {
-		q.Add("thumbnail", "true")
-	} else {
-		q.Add("thumbnail", "false")
-	}
+		q := newReq.URL.Query()
+		q.Add("type", info.Type)
+		q.Add("content", info.Content)
+		if isEmote {
+			q.Add("isemote", "true")
+			q.Add("isfed", "true")
+		}
+		if thumbnail {
+			q.Add("thumbnail", "true")
+		} else {
+			q.Add("thumbnail", "false")
+		}
 
-	newReq.URL.RawQuery = q.Encode()
+		newReq.URL.RawQuery = q.Encode()
 
-	if err != nil {
-		log.Errorf("fed download, upload to local NewRequest error: %v", err)
-		return errors.New("fed download, upload to local NewRequest error:" + err.Error())
-	}
-	newReq.ContentLength, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
+		newReq.ContentLength, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
 
-	headStr, _ = json.Marshal(newReq.Header)
-	log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
+		headStr, _ = json.Marshal(newReq.Header)
+		log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
 
-	res, err := p.httpCli.Do(newReq)
-	if err != nil {
-		log.Errorf("fed download, upload file request error: %v", err)
-		return errors.New("fed download, upload file request error:" + err.Error())
-	}
-	respData, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		log.Errorf("upload netdisk read resp err: %v", err)
-		return errors.New("upload netdisk read resp err: %v" + err.Error())
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		if res.StatusCode == http.StatusInternalServerError && bytes.Contains(respData, []byte("duplicate key error")) {
-			log.Warnf("download remote netdiskID duplicate %s", netdiskID)
+		res, err := p.httpCli.Do(newReq)
+		if err != nil {
+			log.Errorf("fed download, upload file request error: %v", err)
+			return errors.New("fed download, upload file request error:" + err.Error())
+		}
+		respData, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			log.Errorf("upload netdisk read resp err: %v", err)
+			return errors.New("upload netdisk read resp err: %v" + err.Error())
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			if res.StatusCode == http.StatusInternalServerError && bytes.Contains(respData, []byte("duplicate key error")) {
+				log.Warnf("download remote netdiskID duplicate %s", netdiskID)
+				return nil
+			}
+			log.Errorf("fed download, upload file response statusCode %d", res.StatusCode)
+			var errInfo mediatypes.UploadError
+			err = json.Unmarshal(respData, &errInfo)
+			if err != nil {
+				log.Errorf("fed download, upload file decode error: %v, data: %v", err, respData)
+				return errors.New("fed download, upload file decode error: %v" + err.Error())
+			}
+			log.Errorf("fed download, upload file response %v", errInfo)
+			return errors.New("fed download, upload file response" + string(respData))
+		}
+		if isEmote {
+			var resp mediatypes.UploadEmoteResp
+			data_, _ := ioutil.ReadAll(res.Body)
+			err := json.Unmarshal(data_, &resp)
+			if err != nil {
+				log.Errorf("fed download, upload emote unmarhal resp error: %v, data: %v", err, respData)
+				return errors.New("fed download, upload emote unmarhal resp error: %v" + err.Error())
+			}
+			log.Infof("fed download, upload emote succ resp:%+v", resp)
 			return nil
 		}
-		log.Errorf("fed download, upload file response statusCode %d", res.StatusCode)
-		var errInfo mediatypes.UploadError
-		err = json.Unmarshal(respData, &errInfo)
+		var resp mediatypes.NetDiskResponse
+		err = json.Unmarshal(respData, &resp)
 		if err != nil {
-			log.Errorf("fed download, upload file decode error: %v, data: %v", err, respData)
-			return errors.New("fed download, upload file decode error: %v" + err.Error())
+			log.Errorf("fed download, upload file unmarhal resp error: %v, data: %v", err, respData)
+			return errors.New("fed download, upload file unmarhal resp error: %v" + err.Error())
 		}
-		log.Errorf("fed download, upload file response %v", errInfo)
-		return errors.New("fed download, upload file response" + string(respData))
-	}
-
-	if isEmote {
-		var resp mediatypes.UploadEmoteResp
-		data_, _ := ioutil.ReadAll(res.Body)
-		err := json.Unmarshal(data_, &resp)
-		if err != nil {
-			log.Errorf("fed download, upload emote unmarhal resp error: %v, data: %v", err, respData)
-			return errors.New("fed download, upload emote unmarhal resp error: %v" + err.Error())
-		}
-		log.Infof("fed download, upload emote succ resp:%+v", resp)
-		return nil
-	}
-	var resp mediatypes.NetDiskResponse
-	err = json.Unmarshal(respData, &resp)
-	if err != nil {
-		log.Errorf("fed download, upload file unmarhal resp error: %v, data: %v", err, respData)
-		return errors.New("fed download, upload file unmarhal resp error: %v" + err.Error())
 	}
 
 	log.Info("MediaId: ", info.NetdiskID, " download in fed success")

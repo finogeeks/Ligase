@@ -99,7 +99,7 @@ func (p *Processor) CheckEmote(rw http.ResponseWriter, req *http.Request, device
 	domain := vars["serverName"]
 	mediaID := vars["mediaId"]
 	if !common.CheckValidDomain(domain, p.cfg.Matrix.ServerName) {
-		p.repo.Wait(req.Context(), domain, mediaID)
+		p.repo.Wait(req.Context(), domain, mediaID, "")
 	}
 	reqUrl := p.BuildBaseURL(p.cfg.Media.NetdiskUrl, "check", "emote", mediaID)
 	log.Infof("forwardproxy CheckEmote url %s", reqUrl)
@@ -112,7 +112,7 @@ func (p *Processor) FavoriteEmote(rw http.ResponseWriter, req *http.Request, dev
 	domain := vars["serverName"]
 	mediaID := vars["mediaId"]
 	if !common.CheckValidDomain(domain, p.cfg.Matrix.ServerName) {
-		p.repo.Wait(req.Context(), domain, mediaID)
+		p.repo.Wait(req.Context(), domain, mediaID, "")
 	}
 	reqUrl := p.BuildBaseURL(p.cfg.Media.NetdiskUrl, "favorite", "emote", mediaID)
 	log.Infof("forwardproxy FavoriteEmote url %s", reqUrl)
@@ -125,7 +125,7 @@ func (p *Processor) FavoriteFileEmote(rw http.ResponseWriter, req *http.Request,
 	domain := vars["serverName"]
 	mediaID := vars["mediaId"]
 	if !common.CheckValidDomain(domain, p.cfg.Matrix.ServerName) {
-		p.repo.Wait(req.Context(), domain, mediaID)
+		p.repo.Wait(req.Context(), domain, mediaID, "")
 	}
 	reqUrl := p.BuildBaseURL(p.cfg.Media.NetdiskUrl, "favorite", "fileemote", mediaID)
 	log.Infof("forwardproxy FavoriteFileEmote url %s", reqUrl)

@@ -243,8 +243,9 @@ func (p *Processor) FedDownload(rw http.ResponseWriter, req *http.Request) {
 
 	dstDomain := vars["serverName"]
 	mediaID := vars["mediaId"]
+	fileType := vars["fileType"]
 
-	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "download", false, true)
+	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), fileType, false, true)
 }
 
 func (p *Processor) FedThumbnail(rw http.ResponseWriter, req *http.Request) {
@@ -264,8 +265,9 @@ func (p *Processor) FedThumbnail(rw http.ResponseWriter, req *http.Request) {
 
 	dstDomain := vars["serverName"]
 	mediaID := vars["mediaId"]
+	fileType := vars["fileType"]
 
-	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), "thumbnail", false, true)
+	httpCode = p.doDownload(rw, req, dstDomain, mediatypes.MediaID(mediaID), fileType, false, true)
 }
 
 func (p *Processor) doDownload(
@@ -294,10 +296,7 @@ func (p *Processor) doDownload(
 		return http.StatusNotFound
 	}
 
-	if p.repo.TryResponseFromLocal(domain, netdiskID, w) {
-		return http.StatusOK
-	}
-
+	var scaleType string
 	var method, width string
 	var reqUrl string
 	switch fileType {
@@ -305,25 +304,29 @@ func (p *Processor) doDownload(
 		reqUrl = fmt.Sprintf(p.cfg.Media.DownloadUrl, netdiskID)
 	case "thumbnail":
 		req.ParseForm()
-		scaleType := req.Form.Get("type")
-		if scaleType != "" {
-			reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, scaleType)
-		} else {
+		log.Infof("download thumbnail form, type: %s, method: %s, width: %s", req.Form.Get("type"), req.Form.Get("method"), req.Form.Get("width"))
+		scaleType = req.Form.Get("type")
+		if scaleType == "" {
 			method = req.Form.Get("method")
 			width = req.Form.Get("width")
 			widthInt, _ := strconv.Atoi(width)
 			if method == "scale" {
 				if widthInt <= 100 {
-					reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "small")
+					scaleType = "small"
 				} else if widthInt <= 300 {
-					reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "middle")
+					scaleType = "middle"
 				} else {
-					reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "large")
+					scaleType = "large"
 				}
 			} else {
-				reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, "large")
+				scaleType = "large"
 			}
 		}
+		reqUrl = fmt.Sprintf(p.cfg.Media.ThumbnailUrl, netdiskID, scaleType)
+	}
+
+	if p.repo.TryResponseFromLocal(domain, netdiskID, scaleType, w) {
+		return http.StatusOK
 	}
 
 	var res *http.Response
@@ -376,8 +379,8 @@ func (p *Processor) doDownload(
 	}
 
 	if fromRemoteDomain {
-		p.consumer.AddReq(domain, netdiskID)
-		p.repo.WaitStartDownload(req.Context(), domain, netdiskID)
+		p.consumer.AddReq(domain, netdiskID, scaleType)
+		p.repo.WaitStartDownload(req.Context(), domain, netdiskID, scaleType)
 		return p.doDownload(w, req, domain, mediaID, fileType, false, isFromFed)
 	} else {
 		log.Info("MediaId: ", netdiskID, " start download response")
@@ -580,7 +583,7 @@ func (p *Processor) Favorite(rw http.ResponseWriter, req *http.Request, device *
 		if url, ok := mapGetString(content, "o_url"); ok {
 			domain, netdiskID := common.SplitMxc(url)
 			if domain != "" {
-				p.repo.Wait(req.Context(), domain, netdiskID)
+				p.repo.Wait(req.Context(), domain, "", netdiskID)
 			}
 		}
 	}
@@ -640,7 +643,7 @@ func (p *Processor) SingleForward(rw http.ResponseWriter, req *http.Request, dev
 		if url, ok := mapGetString(content, "o_url"); ok {
 			domain, netdiskID := common.SplitMxc(url)
 			if domain != "" {
-				p.repo.Wait(req.Context(), domain, netdiskID)
+				p.repo.Wait(req.Context(), domain, "", netdiskID)
 			}
 		}
 	}
@@ -701,7 +704,7 @@ func (p *Processor) MultiForward(rw http.ResponseWriter, req *http.Request, devi
 		if url, ok := mapGetString(content, "o_url"); ok {
 			domain, netdiskID := common.SplitMxc(url)
 			if domain != "" {
-				p.repo.Wait(req.Context(), domain, netdiskID)
+				p.repo.Wait(req.Context(), domain, "", netdiskID)
 			}
 		}
 	}
@@ -745,7 +748,7 @@ func (p *Processor) MultiResForward(rw http.ResponseWriter, req *http.Request, d
 	for _, v := range forwardReq.SrcNetdiskIDs {
 		domain, netdiskID := common.SplitMxc(v)
 		if domain != "" {
-			p.repo.Wait(req.Context(), domain, netdiskID)
+			p.repo.Wait(req.Context(), domain, "", netdiskID)
 		}
 	}
 
