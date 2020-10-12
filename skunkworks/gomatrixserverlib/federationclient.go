@@ -385,11 +385,15 @@ func (ac *FederationClient) Download(
 	if err != nil {
 		return err
 	}
-	if r.Form == nil {
-		r.Form = make(url.Values)
-	}
-	r.Form.Set("width", width)
-	r.Form.Set("method", method)
+	// if r.Form == nil {
+	// 	r.Form = make(url.Values)
+	// }
+	// r.Form.Set("width", width)
+	// r.Form.Set("method", method)
+	q := r.URL.Query()
+	q.Add("width", width)
+	q.Add("method", method)
+	r.URL.RawQuery = q.Encode()
 
 	response, err := ac.Client.DoHTTPRequest(ctx, r, true)
 	if response != nil {
