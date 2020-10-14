@@ -149,6 +149,8 @@ func makeMediaAPI(r *mux.Router, atuh bool, url string, handler func(http.Respon
 		defer func() {
 			if e := recover(); e != nil {
 				log.Errorf("Media API: %s panic %v", req.RequestURI, e)
+				rw.WriteHeader(http.StatusInternalServerError)
+				rw.Write([]byte("Internal Server Error"))
 			}
 		}()
 		if atuh {

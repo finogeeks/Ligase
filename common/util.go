@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
+	mathRand "math/rand"
 	"net"
 	"net/http"
 	"runtime"
@@ -479,4 +480,13 @@ func SplitArray(arr []interface{}, num int) (segmens []interface{}) {
 		segmens = append(segmens, arr[beg:end])
 	}
 	return
+}
+
+func RandString(len int) string {
+	bytes := make([]byte, len)
+	for i := 0; i < len; i++ {
+		b := mathRand.Intn(26) + 65
+		bytes[i] = byte(b)
+	}
+	return string(bytes)
 }

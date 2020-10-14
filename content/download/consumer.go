@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -39,11 +40,21 @@ import (
 )
 
 const kDefaultWorkerCount = 10
+const FakeUserID = "@fakeUser:fakeDomain.com"
 
 type DownloadInfo struct {
-	roomID  string
-	userID  string
-	eventID string
+	retryTimes int
+	roomID     string
+	userID     string
+	eventID    string
+}
+
+type RetryInfo struct {
+	domain        string
+	netdiskID     string
+	thumbnailType string
+	thumbnail     bool
+	downloadInfo  DownloadInfo
 }
 
 type DownloadConsumer struct {
@@ -61,6 +72,11 @@ type DownloadConsumer struct {
 
 	maxWorkerCount int32
 	curWorkerCount int32
+
+	httpCli *http.Client
+
+	retryQue      []RetryInfo
+	retryQueMutex sync.Mutex
 }
 
 func NewConsumer(
@@ -86,6 +102,14 @@ func NewConsumer(
 			thumbnailMap:   make(map[string]DownloadInfo),
 			downloadMap:    make(map[string]DownloadInfo),
 			maxWorkerCount: int32(workerCount),
+			httpCli: &http.Client{
+				Transport: &http.Transport{
+					DialContext: (&net.Dialer{
+						Timeout: time.Second * 15,
+					}).DialContext,
+					DisableKeepAlives: true, // fd will leak if set it false(default value)
+				},
+			},
 		}
 		channel.SetHandler(s)
 
@@ -122,19 +146,51 @@ func (p *DownloadConsumer) Start() error {
 		userID := ev.Sender()
 		if url != "" {
 			_, netdiskID := p.splitMxc(url)
-			p.pushDownload(roomID, userID, eventIDs[i], domain, netdiskID)
+			p.pushDownload(roomID, userID, eventIDs[i], domain, netdiskID, "", 0)
 		}
 		if thumbnailUrl != "" {
 			_, netdiskID := p.splitMxc(thumbnailUrl)
-			p.pushThumbnail(roomID, userID, eventIDs[i], domain, netdiskID)
+			p.pushThumbnail(roomID, userID, eventIDs[i], domain, netdiskID, 0)
 		}
 	}
+
+	p.startRetry()
+
 	return nil
 }
 
+func (p *DownloadConsumer) startRetry() {
+	go func() {
+		for {
+			time.Sleep(time.Second * 5)
+
+			que := func() []RetryInfo {
+				p.retryQueMutex.Lock()
+				defer p.retryQueMutex.Unlock()
+				if len(p.retryQue) > 0 {
+					que := p.retryQue
+					p.retryQue = nil
+					return que
+				}
+				return nil
+			}()
+
+			for _, v := range que {
+				thumbnail := v.thumbnail
+				info := v.downloadInfo
+				if info.roomID != "" && info.eventID != "" {
+					if thumbnail {
+						p.pushThumbnail(info.roomID, info.userID, info.eventID, v.domain, v.netdiskID, info.retryTimes)
+					} else {
+						p.pushDownload(info.roomID, info.userID, info.eventID, v.domain, v.netdiskID, v.thumbnailType, info.retryTimes)
+					}
+				}
+			}
+		}
+	}()
+}
+
 func (p *DownloadConsumer) startWorkerIfNeed() {
-	p.getMutex.Lock()
-	defer p.getMutex.Unlock()
 	if p.curWorkerCount >= p.maxWorkerCount {
 		return
 	}
@@ -161,16 +217,17 @@ func (p *DownloadConsumer) workerProcessor() {
 		if !ok {
 			break
 		}
-		domain, netdiskID, _ := p.repo.SplitKey(key)
-		err := p.download(info.userID, domain, netdiskID, thumbnail)
+		domain, netdiskID, thumbnailType, _ := p.repo.SplitKey(key)
+		err := p.download(info.userID, domain, netdiskID, thumbnailType, thumbnail)
 		if err != nil {
 			p.repo.RemoveDownloading(key)
-			if info.roomID != "" && info.eventID != "" {
-				if thumbnail {
-					p.pushThumbnail(info.roomID, info.userID, info.eventID, domain, netdiskID)
-				} else {
-					p.pushDownload(info.roomID, info.userID, info.eventID, domain, netdiskID)
+			if info.retryTimes >= 5 {
+				log.Infof("netdisk download %s:%s retry times %d, stop retry", domain, netdiskID, info.retryTimes)
+				if info.roomID != "" && info.eventID != "" {
+					p.db.UpdateMediaDownload(context.TODO(), info.roomID, info.eventID, true)
 				}
+			} else {
+				p.pushRetry(domain, netdiskID, thumbnail, info)
 			}
 		} else {
 			p.repo.RemoveDownloading(key)
@@ -253,17 +310,35 @@ func (p *DownloadConsumer) getInQue(key string, isDelete bool) (info DownloadInf
 	return DownloadInfo{}, false, false
 }
 
-func (p *DownloadConsumer) pushThumbnail(roomID, userID, eventID, domain, netdiskID string) {
-	key := p.repo.BuildKey(domain, netdiskID)
+func (p *DownloadConsumer) pushRetry(domain, netdiskID string, thumbnail bool, info DownloadInfo) {
+	info.retryTimes++
+	p.retryQueMutex.Lock()
+	defer p.retryQueMutex.Unlock()
+	p.retryQue = append(p.retryQue, RetryInfo{
+		domain:       domain,
+		netdiskID:    netdiskID,
+		thumbnail:    thumbnail,
+		downloadInfo: info,
+	})
+}
+
+// pushThumbnail legacy，有些旧数据在content中有thumbnail字段，原图和缩略图的netdiskID不是同一个的，为了保证旧数据没有问题
+func (p *DownloadConsumer) pushThumbnail(roomID, userID, eventID, domain, netdiskID string, retryTimes int) {
+	key := p.repo.BuildKey(domain, netdiskID, "")
 	p.repo.AddDownload(key)
-	p.thumbnailMap[key] = DownloadInfo{roomID, userID, eventID}
+	p.getMutex.Lock()
+	defer p.getMutex.Unlock()
+	p.thumbnailMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
 	p.startWorkerIfNeed()
 }
 
-func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdiskID string) {
-	key := p.repo.BuildKey(domain, netdiskID)
+// pushDownload thumbnailType字段和pushThumbnail函数的缩略图有一点差别，这里netdiskID和原图是一样的
+func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdiskID, thumbnailType string, retryTimes int) {
+	key := p.repo.BuildKey(domain, netdiskID, thumbnailType)
 	p.repo.AddDownload(key)
-	p.downloadMap[key] = DownloadInfo{roomID, userID, eventID}
+	p.getMutex.Lock()
+	defer p.getMutex.Unlock()
+	p.downloadMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
 	p.startWorkerIfNeed()
 }
 
@@ -291,17 +366,17 @@ func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte)
 	eventID := ev.EventID()
 	if url != "" {
 		_, netdiskID := p.splitMxc(url)
-		p.pushDownload(roomID, userID, eventID, domain, netdiskID)
+		p.pushDownload(roomID, userID, eventID, domain, netdiskID, "", 0)
 	}
 	if thumbnailUrl != "" {
 		_, netdiskID := p.splitMxc(thumbnailUrl)
-		p.pushThumbnail(roomID, userID, eventID, domain, netdiskID)
+		p.pushThumbnail(roomID, userID, eventID, domain, netdiskID, 0)
 	}
 }
 
 // AddReq 不会保存到数据库
-func (p *DownloadConsumer) AddReq(domain, netdiskID string) {
-	p.pushDownload("", "@fakeUser:fakeDomain.com", "", domain, netdiskID)
+func (p *DownloadConsumer) AddReq(domain, netdiskID, thumbnailType string) {
+	p.pushDownload("", FakeUserID, "", domain, netdiskID, thumbnailType, 0)
 }
 
 func (p *DownloadConsumer) parseEv(ev *gomatrixserverlib.Event) (domain, url, thumbnailUrl string) {
@@ -328,8 +403,9 @@ func (p *DownloadConsumer) parseEv(ev *gomatrixserverlib.Event) (domain, url, th
 	return
 }
 
-func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail bool) error {
-	log.Infof("federation Download netdisk %s from remote %s", netdiskID, domain)
+// download thumbnailType是用于判断下载原图的缩略图，thumbnail是遗留的字段，上传时给网盘判断是否缩略图
+func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType string, thumbnail bool) error {
+	log.Infof("federation Download netdisk %s from remote %s, thumbnailType: %s", netdiskID, domain, thumbnailType)
 	destination, _ := p.feddomains.GetDomainHost(domain)
 	info, err := p.fedClient.LookupMediaInfo(context.TODO(), destination, netdiskID, userID)
 	if err != nil {
@@ -342,33 +418,79 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 	if err == nil {
 		isEmote = contentParam.IsEmote
 	}
-	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, "", "", "download", func(response *http.Response) error {
+
+	var body io.ReadCloser
+	var header http.Header
+	fileType := "download"
+	method := ""
+	width := ""
+	if thumbnailType != "" {
+		switch thumbnailType {
+		case "small":
+			fileType = "thumbnail"
+			method = "scale"
+			width = "100"
+		case "middle":
+			fileType = "thumbnail"
+			method = "scale"
+			width = "300"
+		case "large":
+			fileType = "thumbnail"
+			method = "scale"
+			width = "500"
+		}
+	}
+	log.Infof("federation Download from remote netdisk %s from remote %s, thumbnailType: %s, fileType: %s method: %s, width: %s", netdiskID, domain, thumbnailType, fileType, method, width)
+	err = p.fedClient.Download(context.TODO(), destination, domain, netdiskID, width, method, fileType, func(response *http.Response) error {
 		if response == nil || response.Body == nil {
 			log.Errorf("download fed netdisk response nil")
 			return errors.New("download fed netdisk response nil")
 		}
-		defer func() {
-			if response != nil && response.Body != nil {
-				response.Body.Close()
-			}
-		}()
 
+		if response.StatusCode != http.StatusOK {
+			return errors.New("fed download response status " + strconv.Itoa(response.StatusCode))
+		}
+
+		contentLength, _ := strconv.ParseInt(response.Header.Get("Content-Length"), 10, 64)
+
+		body, err = p.repo.WriteToFile(domain, netdiskID, thumbnailType, response.Body, contentLength)
+		if err != nil {
+			return err
+		}
+
+		log.Infof("federation Download write file success domain: %s netdiskID: %s", domain, netdiskID)
+
+		header = response.Header
+		return nil
+	})
+	if body != nil {
+		defer body.Close()
+	}
+	if err != nil {
+		log.Errorf("federation Download [%s] error: %v", netdiskID, err)
+		return err
+	}
+
+	if method == "" { // method = "" means it's a thumbnail, no need to upload
 		reqUrl := p.cfg.Media.UploadUrl
-
-		header := response.Header
 
 		headStr, _ := json.Marshal(header)
 		log.Infof("fed download, header for media upload request: %s, %s", string(headStr), header.Get("Content-Length"))
 
-		newReq, err := http.NewRequest("POST", reqUrl, response.Body)
+		newReq, err := http.NewRequest("POST", reqUrl, body)
+		if err != nil {
+			log.Errorf("fed download, upload to local NewRequest error: %v", err)
+			return errors.New("fed download, upload to local NewRequest error:" + err.Error())
+		}
 		if thumbnail {
 			newReq.URL.Query().Set("thumbnail", "true")
 		} else {
 			newReq.URL.Query().Set("thumbnail", "false")
 		}
+		newReq.Header.Set("Content-Type", header.Get("Content-Type"))
 		newReq.Header.Set("X-Consumer-Custom-ID", info.Owner)
 		newReq.Header.Set("X-Consumer-NetDisk-ID", info.NetdiskID)
-		newReq.Header.Set("Content-Type", header.Get("Content-Type"))
+		newReq.Header.Set("X-Consumer-Custom-Public", strconv.FormatBool(info.IsOpenAuth))
 
 		q := newReq.URL.Query()
 		q.Add("type", info.Type)
@@ -383,27 +505,14 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			q.Add("thumbnail", "false")
 		}
 
-		// we must encode illegal chars
 		newReq.URL.RawQuery = q.Encode()
 
-		if err != nil {
-			log.Errorf("fed download, upload to local NewRequest error: %v", err)
-			return errors.New("fed download, upload to local NewRequest error:" + err.Error())
-		}
 		newReq.ContentLength, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
 
 		headStr, _ = json.Marshal(newReq.Header)
-		log.Infof("fed download, header for net disk request: %s", string(headStr))
+		log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
 
-		transport := &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout: time.Second * 15,
-			}).DialContext,
-			DisableKeepAlives: true, // fd will leak if set it false(default value)
-		}
-		client := &http.Client{Transport: transport}
-
-		res, err := client.Do(newReq)
+		res, err := p.httpCli.Do(newReq)
 		if err != nil {
 			log.Errorf("fed download, upload file request error: %v", err)
 			return errors.New("fed download, upload file request error:" + err.Error())
@@ -446,14 +555,10 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID string, thumbnail 
 			log.Errorf("fed download, upload file unmarhal resp error: %v, data: %v", err, respData)
 			return errors.New("fed download, upload file unmarhal resp error: %v" + err.Error())
 		}
-
-		log.Info("MediaId: ", info.NetdiskID, " download in fed success")
-		return nil
-	})
-	if err != nil {
-		log.Errorf("federation Download [%s] error: %v", netdiskID, err)
 	}
-	return err
+
+	log.Info("MediaId: ", info.NetdiskID, " download in fed success")
+	return nil
 }
 
 func (p *DownloadConsumer) getThumbnalUrl(content map[string]interface{}) (string, bool) {

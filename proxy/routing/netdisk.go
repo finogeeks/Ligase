@@ -28,11 +28,11 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/federation/fedreq/rpc"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/mediatypes"
-	"github.com/finogeeks/ligase/federation/fedreq/rpc"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const contentUri = "mxc://%s/%s"
@@ -216,7 +216,7 @@ func NetDiskDownLoad(
 
 			responseError(w, util.JSONResponse{
 				Code: res.StatusCode,
-				JSON: jsonerror.Unknown("fail download file from net disk : " + errInfo.Error),
+				JSON: jsonerror.Unknown("fail download file from netdisk : " + errInfo.Error),
 			})
 			return res.StatusCode
 		}
@@ -282,7 +282,7 @@ func NetDiskDownLoad(
 		newReq.ContentLength, _ = strconv.ParseInt(req.Header.Get("Content-Length"), 10, 0)
 
 		headStr, _ = json.Marshal(newReq.Header)
-		log.Infof("fed download, header for net disk request: %s", string(headStr))
+		log.Infof("fed download, header for netdisk request: %s", string(headStr))
 
 		res, err := client.Do(newReq)
 
@@ -390,7 +390,7 @@ func httpRequest(userID, method, reqUrl string, req *http.Request) (*http.Respon
 	newReq.ContentLength, _ = strconv.ParseInt(req.Header.Get("Content-Length"), 10, 0)
 
 	headStr, _ = json.Marshal(newReq.Header)
-	log.Infof("header for net disk request: %s", string(headStr))
+	log.Infof("header for netdisk request: %s", string(headStr))
 
 	return client.Do(newReq)
 }
