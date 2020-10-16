@@ -246,7 +246,10 @@ func (r *FileReader) Read(data []byte) (int, error) {
 }
 
 func (r *FileReader) Close() error {
-	r.r.decrDownloadRef(r.fn)
+	go func() {
+		time.Sleep(time.Second * 30)
+		r.r.decrDownloadRef(r.fn)
+	}()
 	return r.file.Close()
 }
 
