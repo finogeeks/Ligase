@@ -115,6 +115,22 @@ var GetAction5 = func() []interface{} {
 	return actions
 }
 
+var GetAction6 = func() []interface{} {
+	var actions []interface{}
+	actions = append(actions, "notify")
+	tweaks := []pushapitypes.Tweak{
+		{
+			SetTweak: "sound",
+			Value:    "default",
+		},
+	}
+
+	for _, v := range tweaks {
+		actions = append(actions, v)
+	}
+	return actions
+}
+
 var BaseRuleIds = func() map[string]string {
 	rules := map[string]string{
 		"global/override/.m.rule.master":                "override",
@@ -284,7 +300,7 @@ var BaseUnderRideRules = func() []pushapitypes.PushRule {
 					Pattern: "m.room.message",
 				},
 			},
-			Actions: GetAction5(),
+			Actions: GetAction6(),
 		},
 		{
 			RuleId:  "global/underride/.m.rule.encrypted",
