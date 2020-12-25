@@ -115,19 +115,35 @@ var GetAction5 = func() []interface{} {
 	return actions
 }
 
+var GetAction6 = func() []interface{} {
+	var actions []interface{}
+	actions = append(actions, "notify")
+	tweaks := []pushapitypes.Tweak{
+		{
+			SetTweak: "sound",
+			Value:    "default",
+		},
+	}
+
+	for _, v := range tweaks {
+		actions = append(actions, v)
+	}
+	return actions
+}
+
 var BaseRuleIds = func() map[string]string {
 	rules := map[string]string{
-		"global/override/.m.rule.master":                "override",
-		"global/override/.m.rule.suppress_notices":      "override",
-		"global/override/.m.rule.invite_for_me":         "override",
-		"global/override/.m.rule.member_event":          "override",
-		"global/override/.m.rule.signals":               "override",
-		"global/content/.m.rule.contains_user_name":     "content",
-		"global/underride/.m.rule.call":                 "underride",
-		"global/underride/.m.rule.room_one_to_one":      "underride",
-		"global/underride/.m.rule.message":              "underride",
-		"global/underride/.m.rule.video":                "underride",
-		"global/underride/.m.rule.encrypted":            "underride",
+		"global/override/.m.rule.master":            "override",
+		"global/override/.m.rule.suppress_notices":  "override",
+		"global/override/.m.rule.invite_for_me":     "override",
+		"global/override/.m.rule.member_event":      "override",
+		"global/override/.m.rule.signals":           "override",
+		"global/content/.m.rule.contains_user_name": "content",
+		"global/underride/.m.rule.call":             "underride",
+		"global/underride/.m.rule.room_one_to_one":  "underride",
+		"global/underride/.m.rule.message":          "underride",
+		"global/underride/.m.rule.video":            "underride",
+		"global/underride/.m.rule.encrypted":        "underride",
 	}
 	return rules
 }
@@ -272,7 +288,7 @@ var BaseUnderRideRules = func() []pushapitypes.PushRule {
 					Pattern: "m.room.message",
 				},
 			},
-			Actions: GetAction5(),
+			Actions: GetAction6(),
 		},
 		{
 			RuleId:  "global/underride/.m.rule.encrypted",
