@@ -109,6 +109,12 @@ func PostEvent(
 		return http.StatusNotFound, jsonerror.NotFound(err.Error()) //err
 	}
 
+	if queryRes.HistoryVisibility != nil {
+		msg := "history visibility is limited to be set only once"
+		log.Errorw(msg, log.KeysAndValues{"txnid", txnAndDeviceID, "userID", userID, "roomID", roomID})
+		return http.StatusForbidden, jsonerror.Forbidden(msg)
+	}
+
 	domainID, _ := common.DomainFromID(userID)
 	e, err := common.BuildEvent(&builder, domainID, cfg, idg)
 	log.Infof("------------------------PostEvent txnId:%s build-event %v", txnAndDeviceID.TransactionID, (time.Now().UnixNano()-last)/1000)
