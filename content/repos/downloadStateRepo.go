@@ -253,11 +253,11 @@ func (r *FileReader) Close() error {
 	return r.file.Close()
 }
 
-func (r *DownloadStateRepo) WriteToFile(domain, netdiskID, thumbnailType string, reader io.Reader, contentLength int64) (io.ReadCloser, error) {
+func (r *DownloadStateRepo) WriteToFile(domain, netdiskID, thumbnailType string, reader io.Reader, contentLength int64) (io.ReadCloser, int64, error) {
 	fn := r.GetDownloadFilename(domain, netdiskID, thumbnailType)
 	file, err := os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	r.downloadingSize.Store(fn, contentLength)
 
@@ -265,8 +265,12 @@ func (r *DownloadStateRepo) WriteToFile(domain, netdiskID, thumbnailType string,
 
 	r.StartDownload(domain, netdiskID, thumbnailType)
 	_, err = io.Copy(file, reader)
+	size := int64(0)
+	if stat, err := file.Stat(); err == nil {
+		size = stat.Size()
+	}
 	file.Seek(0, os.SEEK_SET)
-	return &FileReader{file, fn, r}, err
+	return &FileReader{file, fn, r}, size, err
 }
 
 func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID, thumbnailType string, writer http.ResponseWriter) bool {
