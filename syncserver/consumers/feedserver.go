@@ -20,8 +20,9 @@ package consumers
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/model/pushapitypes"
 	"time"
+
+	"github.com/finogeeks/ligase/model/pushapitypes"
 
 	"github.com/finogeeks/ligase/syncserver/extra"
 
@@ -62,7 +63,7 @@ type RoomEventFeedConsumer struct {
 	chanSize              uint32
 	msgChan               []chan roomserverapi.OutputEvent
 	idg                   *uid.UidGenerator
-	insertChan 			  chan types.TimeLineItem
+	insertChan            chan types.TimeLineItem
 }
 
 func NewRoomEventFeedConsumer(
@@ -125,8 +126,11 @@ func (s *RoomEventFeedConsumer) startWorker(msgChan chan roomserverapi.OutputEve
 		switch data.Type {
 		case roomserverapi.OutputTypeNewRoomEvent:
 			s.onNewRoomEvent(context.TODO(), data.NewRoomEvent)
-		case roomserverapi.OutputBackfillRoomEvent:
-			s.onBackFillEvent(context.TODO(), data.NewRoomEvent)
+			// Backfill is used to handle history visibility event.
+			/*
+				case roomserverapi.OutputBackfillRoomEvent:
+					s.onBackFillEvent(context.TODO(), data.NewRoomEvent)
+			*/
 		}
 	}
 }
@@ -142,7 +146,7 @@ func (s *RoomEventFeedConsumer) Start() error {
 	return nil
 }
 
-func (s *RoomEventFeedConsumer) insertTimeline(msgChan chan types.TimeLineItem){
+func (s *RoomEventFeedConsumer) insertTimeline(msgChan chan types.TimeLineItem) {
 	for timelineItem := range msgChan {
 		ev := timelineItem.Ev
 		s.roomHistoryTimeLine.AddEv(ev, ev.EventOffset, true)
@@ -168,12 +172,15 @@ func (s *RoomEventFeedConsumer) OnMessage(topic string, partition int32, data []
 			idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
 			s.msgChan[idx] <- output
 		}
-	case roomserverapi.OutputBackfillRoomEvent:
-		if common.IsRelatedRequest(output.NewRoomEvent.Event.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
-			log.Infow("sync writer received back fill event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID})
-			idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
-			s.msgChan[idx] <- output
-		}
+	// Backfill is used to handle history visibility event.
+	/*
+		case roomserverapi.OutputBackfillRoomEvent:
+			if common.IsRelatedRequest(output.NewRoomEvent.Event.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
+				log.Infow("sync writer received back fill event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID})
+				idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
+				s.msgChan[idx] <- output
+			}
+	*/
 	default:
 		log.Debugw("syncapi: ignoring unknown output type", log.KeysAndValues{"type", output.Type})
 	}
@@ -255,7 +262,7 @@ func (s *RoomEventFeedConsumer) processRedactEv(ev *gomatrixserverlib.ClientEven
 	}
 }
 
-func (s *RoomEventFeedConsumer) updateReactionEvent(roomID string, reaction *types.ReactionContent){
+func (s *RoomEventFeedConsumer) updateReactionEvent(roomID string, reaction *types.ReactionContent) {
 	var originEv gomatrixserverlib.ClientEvent
 	stream := s.roomHistoryTimeLine.GetStreamEv(roomID, reaction.EventID)
 	if stream != nil {
@@ -273,7 +280,7 @@ func (s *RoomEventFeedConsumer) updateReactionEvent(roomID string, reaction *typ
 	}
 	unsigned := types.Unsigned{}
 	if originEv.Unsigned != nil {
-		err := json.Unmarshal(originEv.Unsigned,&unsigned)
+		err := json.Unmarshal(originEv.Unsigned, &unsigned)
 		if err != nil {
 			log.Errorf("updateReactionEvent json.Unmarshal  origin eventID:%s unsigned err:%v", reaction.EventID, err)
 			return
@@ -282,11 +289,11 @@ func (s *RoomEventFeedConsumer) updateReactionEvent(roomID string, reaction *typ
 	if unsigned.Relations != nil {
 		if unsigned.Relations.Anno == nil {
 			return
-		}else{
+		} else {
 			if unsigned.Relations.Anno.Chunk == nil {
 				return
-			}else{
-				for idx,item := range unsigned.Relations.Anno.Chunk{
+			} else {
+				for idx, item := range unsigned.Relations.Anno.Chunk {
 					if item.Key == reaction.Key {
 						item.Count--
 						if item.Count <= 0 {
@@ -298,13 +305,13 @@ func (s *RoomEventFeedConsumer) updateReactionEvent(roomID string, reaction *typ
 				if len(unsigned.Relations.Anno.Chunk) <= 0 {
 					if unsigned.Relations.RelayTo == nil {
 						unsigned.Relations = nil
-					}else{
+					} else {
 						unsigned.Relations.Anno = nil
 					}
 				}
 			}
 		}
-	}else{
+	} else {
 		return
 	}
 	unsignedBytes, err := json.Marshal(unsigned)
@@ -319,7 +326,7 @@ func (s *RoomEventFeedConsumer) updateReactionEvent(roomID string, reaction *typ
 	log.Infof("updateReactionEvent eventID:%s  succ", originEv.EventID)
 }
 
-func (s *RoomEventFeedConsumer) parseRelatesContent(redactEv gomatrixserverlib.ClientEvent)(reaction *types.ReactionContent){
+func (s *RoomEventFeedConsumer) parseRelatesContent(redactEv gomatrixserverlib.ClientEvent) (reaction *types.ReactionContent) {
 	var originContent map[string]interface{}
 	err := json.Unmarshal(redactEv.Content, &originContent)
 	if err != nil {
@@ -331,12 +338,12 @@ func (s *RoomEventFeedConsumer) parseRelatesContent(redactEv gomatrixserverlib.C
 		return nil
 	}
 	b, err := json.Marshal(v)
-	json.Unmarshal(b,&reaction)
+	json.Unmarshal(b, &reaction)
 	originEventID := reaction.EventID
 	//is reaction relay
 	if originEventID != "" && reaction.RelType == "m.annotation" {
 		return reaction
-	}else{
+	} else {
 		//other ignore
 		return nil
 	}
@@ -714,24 +721,24 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	if s.cfg.CalculateReadCount {
 		traceId, _ := s.idg.Next()
 		staticObj := &pushapitypes.StaticObj{
-			TraceId: fmt.Sprintf("%d", traceId),
-			RoomID: ev.RoomID,
-			EventID: ev.EventID,
-			Type: ev.Type,
-			Start: time.Now().UnixNano()/1000,
-			MemAllSpend: 0,
-			MemSpend: 0,
-			MemCount: 0,
-			RuleSpend: 0,
-			RuleCount: 0,
-			UnreadSpend: 0,
+			TraceId:        fmt.Sprintf("%d", traceId),
+			RoomID:         ev.RoomID,
+			EventID:        ev.EventID,
+			Type:           ev.Type,
+			Start:          time.Now().UnixNano() / 1000,
+			MemAllSpend:    0,
+			MemSpend:       0,
+			MemCount:       0,
+			RuleSpend:      0,
+			RuleCount:      0,
+			UnreadSpend:    0,
 			PushCacheSpend: 0,
-			ChanSpend: 0,
-			PushRuleCount: 0,
-			PusherCount: 0,
-			ProfileSpend: 0,
+			ChanSpend:      0,
+			PushRuleCount:  0,
+			PusherCount:    0,
+			ProfileSpend:   0,
 		}
-		s.pushConsumer.DispthEvent(&ev,staticObj,s.insertChan)
+		s.pushConsumer.DispthEvent(&ev, staticObj, s.insertChan)
 	}
 	return nil
 }

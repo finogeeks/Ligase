@@ -16,6 +16,7 @@ package repos
 
 import (
 	"sync"
+	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/feedstypes"
@@ -554,6 +555,17 @@ func (rs *RoomState) onUserMembershipChange(user string, visibility, preMembersh
 
 	log.Debugf("onUserMembershipChange user:%s visibility:%s, mem:%s", user, visibility, membership)
 
+	log.Infow("+++++++++++++++++++++++++++++++++++++onUserMembershipChange, before sleep",
+		log.KeysAndValues{"user", user, "preMembership", preMembership, "membership", membership, "len(items)", len(items)})
+
+	for _, v := range items {
+		log.Infow("+++++++++++++++++++++++++++++++++onUserMembershipChange, items", log.KeysAndValues{"user", user, "membership", membership, "v", v})
+	}
+
+	if membership == "join" {
+		time.Sleep(500 * time.Millisecond)
+	}
+
 	if membership == "leave" || membership == "ban" { //离开标记下
 		if preMembership == "join" { //may invite->leave
 			if len(items) == 0 {
@@ -611,6 +623,13 @@ func (rs *RoomState) onUserMembershipChange(user string, visibility, preMembersh
 		items = append(items, ri)
 		log.Debugf("onUserMembershipChange user:%s add view start:%d end:%d", user, ri.Start, ri.End)
 
+		log.Infow("+++++++++++++++++++++++++++++++++++++onUserMembershipChange, after calculate",
+			log.KeysAndValues{"user", user, "preMembership", preMembership, "membership", membership, "len(items)", len(items)})
+
+		for _, v := range items {
+			log.Infow("+++++++++++++++++++++++++++++++++onUserMembershipChange, items", log.KeysAndValues{"user", user, "membership", membership, "v", v})
+		}
+
 		rs.userMemberView.Store(user, items)
 	}
 }
@@ -646,14 +665,27 @@ func (rs *RoomState) GetEventVisibility(user string) []RangeItem {
 
 	val, ok := rs.userMemberView.Load(user) // before history-visibility event arrive, no user view build
 	if !ok {
+		log.Infow("====================================GetEventVisibility, userMemberView has not been loaded.",
+			log.KeysAndValues{"user", user})
 		return []RangeItem{{0, -1, false, 0}}
 	}
+
+	log.Infow("====================================GetEventVisibility, before sleep",
+		log.KeysAndValues{"user", user})
+	time.Sleep(1000 * time.Millisecond)
+	log.Infow("====================================GetEventVisibility, before sleep",
+		log.KeysAndValues{"user", user})
 
 	userMemberView := val.([]*RangeItem)
 	items := []RangeItem{}
 	for i := 0; i < len(userMemberView); i++ {
 		items = append(items, *userMemberView[i])
 	}
+
+	for _, v := range items {
+		log.Infow("=======================================GetEventVisibility, items", log.KeysAndValues{"user", user, "v", v})
+	}
+
 	return items
 }
 
