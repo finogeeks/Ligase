@@ -19,8 +19,6 @@ package consumers
 
 import (
 	"context"
-	"math"
-	"math/rand"
 	"time"
 
 	"github.com/finogeeks/ligase/adapter"
@@ -30,6 +28,7 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
@@ -128,7 +127,7 @@ func (s *EventFeedConsumer) dispthInsertUserTimeLine(ev *gomatrixserverlib.Clien
 
 func (s *EventFeedConsumer) onInsertUserTimeLine(data *UtlContent) {
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
-		delay := math.Max(0, 11-math.Pow(float64(rand.Intn(200)), 1/1.5))
+		delay := utils.GetRandomSleepSecondsForDebug()
 		log.Infof("roomId:%s event_id:%s user:%s sleep %ds", data.ev.RoomID, data.ev.EventID, data.user, delay)
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
