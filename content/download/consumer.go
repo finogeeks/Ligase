@@ -420,6 +420,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 	}
 
 	var body io.ReadCloser
+	var size int64
 	var header http.Header
 	fileType := "download"
 	method := ""
@@ -453,7 +454,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 
 		contentLength, _ := strconv.ParseInt(response.Header.Get("Content-Length"), 10, 64)
 
-		body, err = p.repo.WriteToFile(domain, netdiskID, thumbnailType, response.Body, contentLength)
+		body, size, err = p.repo.WriteToFile(domain, netdiskID, thumbnailType, response.Body, contentLength)
 		if err != nil {
 			return err
 		}
@@ -507,7 +508,12 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 
 		newReq.URL.RawQuery = q.Encode()
 
-		newReq.ContentLength, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
+		if size <= 0 {
+			size, _ = strconv.ParseInt(header.Get("Content-Length"), 10, 0)
+		}
+
+		newReq.ContentLength = size
+		newReq.Header.Set("Content-Length", strconv.FormatInt(size, 10))
 
 		headStr, _ = json.Marshal(newReq.Header)
 		log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
