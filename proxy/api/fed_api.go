@@ -17,8 +17,6 @@ package api
 import (
 	"fmt"
 	"io/ioutil"
-	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -29,6 +27,7 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
@@ -373,7 +372,7 @@ func (ReqPutFedSend) Process(ud interface{}, msg core.Coder, device *authtypes.D
 
 	//only for debug
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
-		delay := math.Max(0, 11-math.Pow(float64(rand.Intn(200)), 1/1.5))
+		delay := utils.GetRandomSleepSecondsForDebug()
 		log.Debugf("fed recv transationID:%s sleep %ds", req.TxnID, delay)
 		time.Sleep(time.Duration(delay) * time.Second)
 	}

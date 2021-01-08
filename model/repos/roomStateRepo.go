@@ -16,12 +16,15 @@ package repos
 
 import (
 	"sync"
+	"time"
 
+	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -288,6 +291,11 @@ func (rs *RoomState) onMembership(ev *gomatrixserverlib.ClientEvent, offset int6
 		pre = "invite"
 	}
 
+	// Calculate history visibility first in case error occurs.
+	if member.Membership != pre {
+		rs.onUserMembershipChange(*ev.StateKey, rs.historyVisibility, pre, member.Membership, int64(ev.OriginServerTS))
+	}
+
 	if member.Membership == "join" {
 		rs.join.Store(*ev.StateKey, offset)
 	} else if member.Membership == "invite" {
@@ -305,8 +313,6 @@ func (rs *RoomState) onMembership(ev *gomatrixserverlib.ClientEvent, offset int6
 		} else if pre == "leave" {
 			rs.leave.Delete(*ev.StateKey)
 		}
-
-		rs.onUserMembershipChange(*ev.StateKey, rs.historyVisibility, pre, member.Membership, int64(ev.OriginServerTS))
 	}
 }
 
@@ -551,6 +557,15 @@ func (rs *RoomState) onUserMembershipChange(user string, visibility, preMembersh
 
 	log.Debugf("onUserMembershipChange user:%s visibility:%s, mem:%s", user, visibility, membership)
 
+	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
+		delay := utils.GetRandomSleepSecondsForDebug()
+		log.Infow("====================================onUserMembershipChange, before sleep",
+			log.KeysAndValues{"user", user, "membership", membership, "offset", offset, "delay", delay})
+		time.Sleep(time.Duration(delay) * time.Second)
+		log.Infow("====================================onUserMembershipChange, after sleep",
+			log.KeysAndValues{"user", user, "membership", membership, "offset", offset, "delay", delay})
+	}
+
 	if membership == "leave" || membership == "ban" { //离开标记下
 		if preMembership == "join" { //may invite->leave
 			if len(items) == 0 {
@@ -613,16 +628,12 @@ func (rs *RoomState) onUserMembershipChange(user string, visibility, preMembersh
 }
 
 func (rs *RoomState) CheckEventVisibility(user string, pos int64) bool {
-	if _, ok := rs.userMemberViewOk.Load(user); !ok {
-		rs.ArrangeVisibilityRange(user)
-		rs.userMemberViewOk.Store(user, struct{}{})
-	}
-	visible := false
 	val, ok := rs.userMemberView.Load(user) //may sync happen before history-visibility event arrive, no user view build
 	if !ok {
 		return true
 	}
 
+	visible := false
 	userMemberView := val.([]*RangeItem)
 	for i := 0; i < len(userMemberView); i++ {
 		item := userMemberView[i]
@@ -644,14 +655,19 @@ func (rs *RoomState) GetEventVisibility(user string) []RangeItem {
 	if len(user) == 0 {
 		return nil
 	}
-	if _, ok := rs.userMemberViewOk.Load(user); !ok {
-		rs.ArrangeVisibilityRange(user)
-		rs.userMemberViewOk.Store(user, struct{}{})
-	}
 
 	val, ok := rs.userMemberView.Load(user) // before history-visibility event arrive, no user view build
 	if !ok {
 		return []RangeItem{{0, -1, false, 0}}
+	}
+
+	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
+		delay := utils.GetRandomSleepSecondsForDebug()
+		log.Infow("====================================GetEventVisibility, before sleep",
+			log.KeysAndValues{"user", user, "delay", delay})
+		time.Sleep(time.Duration(delay) * time.Second)
+		log.Infow("====================================GetEventVisibility, after sleep",
+			log.KeysAndValues{"user", user, "delay", delay})
 	}
 
 	userMemberView := val.([]*RangeItem)
@@ -659,36 +675,8 @@ func (rs *RoomState) GetEventVisibility(user string) []RangeItem {
 	for i := 0; i < len(userMemberView); i++ {
 		items = append(items, *userMemberView[i])
 	}
+
 	return items
-}
-
-func (rs *RoomState) ArrangeVisibilityRange(user string) {
-	//add history tl
-	var items []*RangeItem
-	if val, ok := rs.userMemberView.Load(user); ok {
-		items = val.([]*RangeItem)
-	} else {
-		items = []*RangeItem{}
-	}
-
-	for i := 0; i < len(rs.visiableTl); i++ {
-		hsItem := rs.visiableTl[i]
-		need := true
-
-		for j := 0; j < len(items); j++ {
-			cur := items[j]
-			if cur.Start <= hsItem.Start && (cur.End == -1 || cur.End >= hsItem.End) {
-				need = false
-				break
-			}
-		}
-
-		if need {
-			items = append(items, hsItem)
-			log.Debugf("onUserMembershipChange user:%s add view start:%d end:%d", user, hsItem.Start, hsItem.End)
-		}
-	}
-	rs.userMemberView.Store(user, items)
 }
 
 func (rs *RoomState) findRangeIdx(ranges []*RangeItem, evTS int64, isRef bool) int {
