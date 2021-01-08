@@ -21,6 +21,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
+	"math/rand"
 	"os"
 	"strings"
 )
@@ -80,4 +82,8 @@ func DoUnCompress(compressSrc []byte) []byte {
 	r, _ := zlib.NewReader(b)
 	io.Copy(&out, r)
 	return out.Bytes()
+}
+
+func GetRandomSleepSecondsForDebug() float64 {
+	return math.Max(0, 11-math.Pow(float64(rand.Intn(200)), 1/1.5))
 }
