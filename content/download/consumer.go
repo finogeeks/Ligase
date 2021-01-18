@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
@@ -43,10 +44,11 @@ const kDefaultWorkerCount = 10
 const FakeUserID = "@fakeUser:fakeDomain.com"
 
 type DownloadInfo struct {
-	retryTimes int
-	roomID     string
-	userID     string
-	eventID    string
+	retryTimes    int
+	roomID        string
+	userID        string
+	eventID       string
+	isDownloading int32
 }
 
 type RetryInfo struct {
@@ -67,8 +69,7 @@ type DownloadConsumer struct {
 	thumbnailMap map[string]DownloadInfo
 	downloadMap  map[string]DownloadInfo
 
-	curWatingList repos.WaitListSorted
-	getMutex      sync.Mutex
+	getMutex sync.Mutex
 
 	maxWorkerCount int32
 	curWorkerCount int32
@@ -219,8 +220,15 @@ func (p *DownloadConsumer) workerProcessor() {
 		}
 		domain, netdiskID, thumbnailType, _ := p.repo.SplitKey(key)
 		err := p.download(info.userID, domain, netdiskID, thumbnailType, thumbnail)
+		p.getMutex.Lock()
+		p.repo.RemoveDownloading(key)
+		if _, ok := p.thumbnailMap[key]; ok {
+			delete(p.thumbnailMap, key)
+		} else if _, ok := p.downloadMap[key]; ok {
+			delete(p.downloadMap, key)
+		}
+		p.getMutex.Unlock()
 		if err != nil {
-			p.repo.RemoveDownloading(key)
 			if info.retryTimes >= 5 {
 				log.Infof("netdisk download %s:%s retry times %d, stop retry", domain, netdiskID, info.retryTimes)
 				if info.roomID != "" && info.eventID != "" {
@@ -230,7 +238,6 @@ func (p *DownloadConsumer) workerProcessor() {
 				p.pushRetry(domain, netdiskID, thumbnail, info)
 			}
 		} else {
-			p.repo.RemoveDownloading(key)
 			if info.roomID != "" && info.eventID != "" {
 				p.db.UpdateMediaDownload(context.TODO(), info.roomID, info.eventID, true)
 			}
@@ -239,75 +246,33 @@ func (p *DownloadConsumer) workerProcessor() {
 }
 
 func (p *DownloadConsumer) getOne() (info DownloadInfo, key string, thumbnail, ok bool) {
-	if len(p.curWatingList) == 0 {
-		waitingList := p.repo.GetWaitingList()
-		p.curWatingList = waitingList
-	}
-	if len(p.curWatingList) > 0 {
-		for len(p.curWatingList) > 0 {
-			elem := p.curWatingList[0]
-			p.curWatingList = p.curWatingList[1:]
-			key = elem.GetKey()
-			info, thumbnail, ok = p.getInQue(key, true)
-			if ok {
-				return
-			}
-		}
-	}
 	if len(p.thumbnailMap) > 0 {
 		key := ""
 		info := DownloadInfo{}
 		for k, v := range p.thumbnailMap {
+			if !atomic.CompareAndSwapInt32(&v.isDownloading, 0, 1) {
+				continue
+			}
 			key = k
 			info = v
 			break
 		}
-		delete(p.thumbnailMap, key)
 		return info, key, true, true
 	}
 	if len(p.downloadMap) > 0 {
 		key := ""
 		info := DownloadInfo{}
 		for k, v := range p.downloadMap {
+			if !atomic.CompareAndSwapInt32(&v.isDownloading, 0, 1) {
+				continue
+			}
 			key = k
 			info = v
 			break
 		}
-		delete(p.downloadMap, key)
 		return info, key, false, true
 	}
 	return DownloadInfo{}, "", false, false
-}
-
-func (p *DownloadConsumer) getFirstValidOne(list repos.WaitListSorted) (ret repos.WaitListSorted, info DownloadInfo, key string, thumbnail, ok bool) {
-	for len(list) > 0 {
-		elem := list[0]
-		list = list[1:]
-		key := elem.GetKey()
-		info, thumbnail, ok := p.getInQue(key, true)
-		if ok {
-			return list, info, key, thumbnail, true
-		}
-	}
-	return list, DownloadInfo{}, "", false, false
-}
-
-func (p *DownloadConsumer) getInQue(key string, isDelete bool) (info DownloadInfo, thumbnail, ok bool) {
-	// don't lock
-	if v, ok := p.thumbnailMap[key]; ok {
-		if isDelete {
-			delete(p.thumbnailMap, key)
-		}
-		return v, true, true
-	}
-	if v, ok := p.downloadMap[key]; ok {
-		if isDelete {
-			delete(p.downloadMap, key)
-		}
-		return v, false, true
-	}
-
-	return DownloadInfo{}, false, false
 }
 
 func (p *DownloadConsumer) pushRetry(domain, netdiskID string, thumbnail bool, info DownloadInfo) {
@@ -325,21 +290,25 @@ func (p *DownloadConsumer) pushRetry(domain, netdiskID string, thumbnail bool, i
 // pushThumbnail legacy，有些旧数据在content中有thumbnail字段，原图和缩略图的netdiskID不是同一个的，为了保证旧数据没有问题
 func (p *DownloadConsumer) pushThumbnail(roomID, userID, eventID, domain, netdiskID string, retryTimes int) {
 	key := p.repo.BuildKey(domain, netdiskID, "")
-	p.repo.AddDownload(key)
 	p.getMutex.Lock()
 	defer p.getMutex.Unlock()
-	p.thumbnailMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
-	p.startWorkerIfNeed()
+	p.repo.AddDownload(key)
+	if _, ok := p.thumbnailMap[key]; !ok {
+		p.thumbnailMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID, 0}
+		p.startWorkerIfNeed()
+	}
 }
 
 // pushDownload thumbnailType字段和pushThumbnail函数的缩略图有一点差别，这里netdiskID和原图是一样的
 func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdiskID, thumbnailType string, retryTimes int) {
 	key := p.repo.BuildKey(domain, netdiskID, thumbnailType)
-	p.repo.AddDownload(key)
 	p.getMutex.Lock()
 	defer p.getMutex.Unlock()
-	p.downloadMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID}
-	p.startWorkerIfNeed()
+	p.repo.AddDownload(key)
+	if _, ok := p.downloadMap[key]; !ok {
+		p.downloadMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID, 0}
+		p.startWorkerIfNeed()
+	}
 }
 
 func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte) {
