@@ -21,14 +21,16 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"time"
+
 	"github.com/finogeeks/ligase/model/publicroomstypes"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 func init() {
@@ -57,6 +59,9 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if public.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	public.db.SetMaxOpenConns(30)
+	public.db.SetMaxIdleConns(30)
+	public.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{public.statements.getSchema()}
 	for _, sqlStr := range schemas {

@@ -17,12 +17,14 @@ package pushapi
 import (
 	"context"
 	"database/sql"
-	"github.com/finogeeks/ligase/model/pushapitypes"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"time"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/model/pushapitypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 )
 
 func init() {
@@ -50,6 +52,9 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	d.db.SetMaxOpenConns(30)
+	d.db.SetMaxIdleConns(30)
+	d.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{d.pushers.getSchema(), d.pushRules.getSchema(), d.pushRulesEnable.getSchema()}
 	for _, sqlStr := range schemas {
@@ -152,7 +157,7 @@ func (d *DataBase) AddPusher(
 }
 
 func (d *DataBase) OnAddPusher(
-	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64,  lang string, data []byte, deviceID string,
+	ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64, lang string, data []byte, deviceID string,
 ) error {
 	return d.pushers.onInsertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, pushKeyTs, lang, data, deviceID)
 }
@@ -207,18 +212,18 @@ func (d *DataBase) GetPushRulesEnableTotal(
 
 func (d *DataBase) LoadPusher(
 	ctx context.Context,
-)([]pushapitypes.Pusher, error){
+) ([]pushapitypes.Pusher, error) {
 	return d.pushers.loadPusher(ctx)
 }
 
 func (d *DataBase) LoadPushRule(
 	ctx context.Context,
-)([]pushapitypes.PushRuleData, error){
+) ([]pushapitypes.PushRuleData, error) {
 	return d.pushRules.loadPushRule(ctx)
 }
 
 func (d *DataBase) LoadPushRuleEnable(
 	ctx context.Context,
-)([]pushapitypes.PushRuleEnable, error){
+) ([]pushapitypes.PushRuleEnable, error) {
 	return d.pushRulesEnable.loadPushRuleEnable(ctx)
 }

@@ -22,12 +22,12 @@ import (
 	"database/sql"
 	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"golang.org/x/crypto/bcrypt"
 
 	_ "github.com/lib/pq"
@@ -64,6 +64,9 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if acc.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	acc.db.SetMaxOpenConns(30)
+	acc.db.SetMaxIdleConns(30)
+	acc.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{acc.accounts.getSchema(), acc.profiles.getSchema(), acc.accountData.getSchema(), acc.filter.getSchema(), acc.tags.getSchema(), acc.userInfo.getSchema()}
 	for _, sqlStr := range schemas {
