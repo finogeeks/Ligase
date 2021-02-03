@@ -85,7 +85,17 @@ func (tl *STDEventStreamRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
 }
 
 func (tl *STDEventStreamRepo) AddSTDEventStream(dataStream *types.StdEvent, targetUserID, targetDeviceID string) {
-	tl.LoadHistory(targetUserID, targetDeviceID, true)
+	// no need to load from db, because the sync request will load from db if the offset is out of range
+	// tl.LoadHistory(targetUserID, targetDeviceID, true)
+	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
+	if _, ok := tl.ready.Load(key); !ok {
+		if _, loaded := tl.loading.LoadOrStore(key, true); loaded {
+			tl.CheckLoadReady(targetUserID, targetDeviceID, true)
+		} else {
+			defer tl.loading.Delete(key)
+			defer tl.ready.Store(key, true)
+		}
+	}
 	offset, _ := tl.idg.Next()
 	bytes, _ := json.Marshal(dataStream)
 	log.Infof("STDEventStreamRepo.AddSTDEventStream offset:%d targetUserID %s targetDeviceID %s content %s", offset, targetUserID, targetDeviceID, string(bytes))
@@ -155,8 +165,7 @@ func (tl *STDEventStreamRepo) LoadHistory(targetUserID, targetDeviceID string, s
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
 
 	if _, ok := tl.ready.Load(key); !ok {
-		if _, ok := tl.loading.Load(key); !ok {
-			tl.loading.Store(key, true)
+		if _, loaded := tl.loading.LoadOrStore(key, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(targetUserID, targetDeviceID)
 			} else {
@@ -297,6 +306,7 @@ func (tl *STDEventStreamRepo) GetUnReadStreamsFrom(targetUserID, targetDeviceID 
 
 	feeds, _, _, lower, upper := stdTimeLine.GetAllFeeds()
 
+	offsetMap := map[int64]struct{}{}
 	var resp []feedstypes.STDEventStream
 	if offset < lower {
 		// load from db
@@ -321,21 +331,25 @@ func (tl *STDEventStreamRepo) GetUnReadStreamsFrom(targetUserID, targetDeviceID 
 			stdStream.TargetUserID = targetUserID
 			stdStream.TargetDeviceID = targetDeviceID
 			resp = append(resp, stdStream)
+			offsetMap[offsets[i]] = struct{}{}
 		}
-	} else {
-		for _, v := range feeds {
-			feed := v.(*feedstypes.STDEventStream)
-			if feed == nil || feed.Read {
-				continue
-			}
-			if feed.GetOffset() <= offset {
-				if updateRead {
-					feed.Read = true // no need to store anymore.
-				}
-				continue
-			}
-			resp = append(resp, *feed)
+	}
+	for _, v := range feeds {
+		feed := v.(*feedstypes.STDEventStream)
+		feedOffset := feed.GetOffset()
+		if _, ok := offsetMap[feedOffset]; ok {
+			continue
 		}
+		if feed == nil || feed.Read {
+			continue
+		}
+		if feed.GetOffset() <= offset {
+			if updateRead {
+				feed.Read = true // no need to store anymore.
+			}
+			continue
+		}
+		resp = append(resp, *feed)
 	}
 	return resp, upper, nil
 }
