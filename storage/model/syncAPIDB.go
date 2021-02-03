@@ -133,6 +133,13 @@ type SyncAPIDatabase interface {
 		targetDeviceID string,
 		limit int64,
 	) ([]types.StdEvent, []int64, error)
+	GetHistoryStdStreamAfter(
+		ctx context.Context,
+		targetUserID,
+		targetDeviceID string,
+		afterOffset int64,
+		limit int64,
+	) ([]types.StdEvent, []int64, error)
 	GetHistoryEvents(
 		ctx context.Context,
 		roomid string,
@@ -145,7 +152,7 @@ type SyncAPIDatabase interface {
 	GetJoinRoomOffsets(
 		ctx context.Context,
 		eventIDs []string,
-	)([]int64,[]string,[]string,error)
+	) ([]int64, []string, []string, error)
 	GetRoomReceiptLastOffsets(
 		ctx context.Context,
 		roomIDs []string,

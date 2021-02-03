@@ -17,17 +17,18 @@ package repos
 import (
 	"context"
 	"fmt"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"sync"
 	"time"
+
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -286,4 +287,55 @@ func (tl *STDEventStreamRepo) flush() {
 		return true
 	})
 	log.Infof("STDEventStreamRepo finished flush")
+}
+
+func (tl *STDEventStreamRepo) GetUnReadStreamsFrom(targetUserID, targetDeviceID string, offset int64, updateRead bool) ([]feedstypes.STDEventStream, int64, error) {
+	stdTimeLine := tl.GetHistory(targetUserID, targetDeviceID)
+	if stdTimeLine == nil {
+		return []feedstypes.STDEventStream{}, 0, nil
+	}
+
+	feeds, _, _, lower, upper := stdTimeLine.GetAllFeeds()
+
+	var resp []feedstypes.STDEventStream
+	if offset < lower {
+		// load from db
+		log.Infof("STDEventStreamRepo.GetUnReadStreamsFrom load from db userID:%s device:%s offset:%d", targetUserID, targetDeviceID, offset)
+		bs := time.Now().UnixNano() / 1000000
+		streams, offsets, err := tl.persist.GetHistoryStdStreamAfter(context.Background(), targetUserID, targetDeviceID, offset, 100)
+		spend := time.Now().UnixNano()/1000000 - bs
+		if err != nil {
+			log.Errorf("STDEventStreamRepo.GetUnReadStreamsFrom load from db userID:%s device:%s offset:%d err:%v", targetUserID, targetDeviceID, offset, err)
+			return nil, 0, err
+		}
+		if spend > types.DB_EXCEED_TIME {
+			log.Warnf("load db exceed %d ms STDEventStreamRepo.GetUnReadStreamsFrom finished userID:%s dev:%s spend:%d ms", types.DB_EXCEED_TIME, targetUserID, targetDeviceID, spend)
+		} else {
+			log.Infof("load db succ STDEventStreamRepo.GetUnReadStreamsFrom finished userID:%s dev:%s spend:%d ms", targetUserID, targetDeviceID, spend)
+		}
+		for i := 0; i < len(streams); i++ {
+			stdStream := feedstypes.STDEventStream{}
+			stdStream.DataStream = &streams[i]
+			stdStream.Offset = offsets[i]
+			stdStream.Written = true
+			stdStream.TargetUserID = targetUserID
+			stdStream.TargetDeviceID = targetDeviceID
+			resp = append(resp, stdStream)
+		}
+	} else {
+		for _, v := range feeds {
+			feed := v.(*feedstypes.STDEventStream)
+			if feed == nil || feed.Read {
+				continue
+			}
+			if feed.GetOffset() <= offset {
+				if updateRead {
+					feed.Read = true // no need to store anymore.
+				}
+				continue
+			}
+			resp = append(resp, *feed)
+		}
+	}
+	return resp, upper, nil
 }
