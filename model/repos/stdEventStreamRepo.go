@@ -20,11 +20,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/adapter"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
@@ -85,6 +87,12 @@ func (tl *STDEventStreamRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
 }
 
 func (tl *STDEventStreamRepo) AddSTDEventStream(dataStream *types.StdEvent, targetUserID, targetDeviceID string) {
+	//only for debug
+	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
+		delay := utils.GetRandomSleepSecondsForDebug()
+		log.Debugf("sendToDevice recv targetUserID:%s targetDeviceID:%s sleep %fs", targetUserID, targetDeviceID, delay)
+		time.Sleep(time.Duration(delay) * time.Second)
+	}
 	// no need to load from db, because the sync request will load from db if the offset is out of range
 	// tl.LoadHistory(targetUserID, targetDeviceID, true)
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
