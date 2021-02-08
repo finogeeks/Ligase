@@ -42,6 +42,8 @@ type STDEventStreamRepo struct {
 	idg        *uid.UidGenerator
 	delay      int
 	updatedKey *sync.Map
+	chanSize   int
+	mutexes    []sync.Mutex
 
 	queryHitCounter mon.LabeledCounter
 }
@@ -52,12 +54,15 @@ func NewSTDEventStreamRepo(
 	maxEntries,
 	gcPerNum,
 	delay int,
+	chanSize int,
 ) *STDEventStreamRepo {
 	tls := new(STDEventStreamRepo)
 	tls.repo = NewTimeLineRepo(bukSize, 500, true, maxEntries, gcPerNum)
 	tls.idg, _ = uid.NewDefaultIdGenerator(cfg.Matrix.InstanceId)
 	tls.updatedKey = new(sync.Map)
 	tls.delay = delay
+	tls.chanSize = chanSize
+	tls.mutexes = make([]sync.Mutex, chanSize)
 
 	tls.startFlush()
 	return tls
@@ -104,6 +109,9 @@ func (tl *STDEventStreamRepo) AddSTDEventStream(dataStream *types.StdEvent, targ
 			defer tl.ready.Store(key, true)
 		}
 	}
+	idx := common.CalcStringHashCode(key) % uint32(tl.chanSize)
+	tl.mutexes[idx].Lock()
+	defer tl.mutexes[idx].Unlock()
 	offset, _ := tl.idg.Next()
 	bytes, _ := json.Marshal(dataStream)
 	log.Infof("STDEventStreamRepo.AddSTDEventStream offset:%d targetUserID %s targetDeviceID %s content %s", offset, targetUserID, targetDeviceID, string(bytes))

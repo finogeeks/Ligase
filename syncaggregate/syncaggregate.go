@@ -51,7 +51,7 @@ func SetupSyncAggregateComponent(
 	clientDataStreamRepo := repos.NewClientDataStreamRepo(4, maxEntries, gcPerNum)
 	userTimeLine := repos.NewUserTimeLineRepo(idg)
 
-	stdEventStreamRepo := repos.NewSTDEventStreamRepo(base.Cfg, 4, maxEntries, gcPerNum, flushDelay)
+	stdEventStreamRepo := repos.NewSTDEventStreamRepo(base.Cfg, 4, maxEntries, gcPerNum, flushDelay, int(syncMngChanNum))
 	onlineRepo := repos.NewOnlineUserRepo(base.Cfg.StateMgr.StateOffline, base.Cfg.StateMgr.StateReport, base.Cfg.OnlineSpec, base.Cfg.OnlineDetail)
 
 	clientDataStreamRepo.SetPersist(syncDB)
