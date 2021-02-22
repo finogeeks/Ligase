@@ -311,7 +311,7 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 			bytes, err := json.Marshal(*syncReq)
 			if err == nil {
 				log.Infof("SyncMng.callSyncLoad load traceid:%s slot:%d user %s device %s instance:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, instance)
-				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, 35000)
+				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, 1000)
 
 				spend := time.Now().UnixNano()/1000000 - bs
 
@@ -342,12 +342,13 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 		}(instance, syncReq, req)
 	}
 	wg.Wait()
-	loaded := true
+	loaded := len(requestMap) == 0
 	req.remoteReady = true
 	req.remoteFinished = true
 	for _, syncReq := range requestMap {
-		if syncReq.LoadReady == false {
-			loaded = false
+		if syncReq.LoadReady {
+			loaded = true
+		} else {
 			log.Warnf("SyncMng.callSyncLoad traceid:%s instance:%d loaded false", req.traceId, syncReq.SyncInstance)
 		}
 	}
