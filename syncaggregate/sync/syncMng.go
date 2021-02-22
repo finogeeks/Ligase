@@ -107,7 +107,7 @@ func (sm *SyncMng) OnStateChange(state *types.NotifyDeviceState) {
 	sm.sendStateChange(state)
 }
 
-func (sm *SyncMng) sendStateChange(state *types.NotifyDeviceState){
+func (sm *SyncMng) sendStateChange(state *types.NotifyDeviceState) {
 	err := common.GetTransportMultiplexer().SendWithRetry(
 		sm.cfg.Kafka.Producer.DeviceStateUpdate.Underlying,
 		sm.cfg.Kafka.Producer.DeviceStateUpdate.Name,
@@ -123,17 +123,17 @@ func (sm *SyncMng) sendStateChange(state *types.NotifyDeviceState){
 }
 
 // other also use this topic, maintain notify data send to kafka same to single notify
-func (sm *SyncMng) OnBatchStateChange(batch []*types.NotifyDeviceState){
+func (sm *SyncMng) OnBatchStateChange(batch []*types.NotifyDeviceState) {
 	if !sm.cfg.StateMgr.StateNotify {
 		log.Warnln("not open state notify cfg")
 		return
 	}
 	log.Infof("cron notify online device len:%d", len(batch))
-	go func(batch []*types.NotifyDeviceState){
+	go func(batch []*types.NotifyDeviceState) {
 		for _, state := range batch {
 			state.DeviceID = common.GetDeviceMac(state.DeviceID)
 			sm.sendStateChange(state)
-			time.Sleep(time.Duration(20)*time.Millisecond)
+			time.Sleep(time.Duration(20) * time.Millisecond)
 		}
 	}(batch)
 }
@@ -196,9 +196,9 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 		}
 	}
 	if presencCache != nil {
-		log.Infof("stateChangePresent succ userID:%s,laststate:%d,curstate:%d, cache: userID:%s presence:%s statusMsg:%s extStatusMsg:%s, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID,  state.LastState, state.CurState, presencCache.UserID, presencCache.Status, presencCache.StatusMsg, presencCache.ExtStatusMsg, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
+		log.Infof("stateChangePresent succ userID:%s,laststate:%d,curstate:%d, cache: userID:%s presence:%s statusMsg:%s extStatusMsg:%s, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID, state.LastState, state.CurState, presencCache.UserID, presencCache.Status, presencCache.StatusMsg, presencCache.ExtStatusMsg, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
 	} else {
-		log.Infof("stateChangePresent succ userID:%s,laststate:%d,curstate:%d, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID,  state.LastState, state.CurState, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
+		log.Infof("stateChangePresent succ userID:%s,laststate:%d,curstate:%d, feed: userID:%s presence:%s statusMsg:%s extStatusMsg:%s", state.UserID, state.LastState, state.CurState, presenceContent.UserID, presenceContent.Presence, presenceContent.StatusMsg, presenceContent.ExtStatusMsg)
 	}
 	statusMsg := presenceContent.StatusMsg
 	extStatusMsg := presenceContent.ExtStatusMsg
@@ -250,7 +250,7 @@ func (sm *SyncMng) GetPushkeyByUserDeviceID(userID, deviceID string) []types.Pus
 		return pushkeys
 	}
 	pushers := push.Pushers{}
-	err := json.Unmarshal(resp.Payload,&pushers)
+	err := json.Unmarshal(resp.Payload, &pushers)
 	if err != nil {
 		log.Error("GetPushkeyByUserDeviceID user:%s device:%s json.Unmarshal error:%v", userID, deviceID, err)
 		return pushkeys
@@ -337,7 +337,7 @@ func (sm *SyncMng) dispatch(uid string, req *request) {
 	sm.msgChan[req.slot] <- req
 }
 
-func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request){
+func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
 	log.Infof("traceid:%s begin reBuildIncreamSyncReqRoom", req.traceId)
 	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
@@ -364,9 +364,9 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request){
 		req.joinRooms = append(req.joinRooms, roomID)
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset && joinOffset > 0 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID,"join","rebuild"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join", "rebuild"))
 			}
-		}else {
+		} else {
 			if joinOffset > 0 {
 				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join", "rebuild"))
 			}
@@ -378,10 +378,10 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request){
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID,"invite","rebuild"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "invite", "rebuild"))
 			}
-		}else{
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID,"invite","rebuild"))
+		} else {
+			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "invite", "rebuild"))
 		}
 		return true
 	})
@@ -390,12 +390,12 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request){
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "leave")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID,"leave","rebuild"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "leave", "rebuild"))
 			}
-		}else{
+		} else {
 			//token has not offset leave room can get only the leave room msg
 			if latestOffset != -1 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset - 1, latestOffset, roomID,"leave", "rebuild"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset-1, latestOffset, roomID, "leave", "rebuild"))
 			}
 		}
 		return true
@@ -456,7 +456,7 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 		request.JoinedRooms = append(request.JoinedRooms, roomID)
 	}
 	bs := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms),maxReceiptOffset)
+	log.Infof("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms), maxReceiptOffset)
 	var wg sync.WaitGroup
 	for instance, syncReq := range requestMap {
 		wg.Add(1)
@@ -841,7 +841,7 @@ func (sm *SyncMng) rpcGetPushData(userID, deviceID string, reqType string) push.
 	byte, err := json.Marshal(push.PushDataRequest{
 		Payload: payload,
 		ReqType: reqType,
-		Slot: common.CalcStringHashCode(userID) % sm.cfg.MultiInstance.SyncServerTotal,
+		Slot:    common.CalcStringHashCode(userID) % sm.cfg.MultiInstance.SyncServerTotal,
 	})
 	if err != nil {
 		resp.Error = fmt.Sprintf("reqType:%s json.Marshal request err:%v", reqType, err)
@@ -856,7 +856,7 @@ func (sm *SyncMng) rpcGetPushData(userID, deviceID string, reqType string) push.
 	if err != nil {
 		resp.Error = fmt.Sprintf("reqType:%s rpc response json.Unmarshal err:%v", reqType, err)
 		return resp
-	}else{
+	} else {
 		return resp
 	}
 }
