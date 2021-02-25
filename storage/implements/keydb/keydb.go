@@ -20,6 +20,7 @@ package keydb
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
@@ -50,6 +51,9 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(30)
+	db.SetMaxIdleConns(30)
+	db.SetConnMaxLifetime(time.Minute * 3)
 	d := new(Database)
 	if _, err = db.Exec(d.statements.getSchema()); err != nil {
 		return nil, err

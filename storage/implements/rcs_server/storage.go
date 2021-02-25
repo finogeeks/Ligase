@@ -17,14 +17,15 @@ package rcs_server
 import (
 	"context"
 	"database/sql"
+	"time"
 
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/log"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/types"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 )
 
 func init() {
@@ -46,6 +47,9 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	d.db.SetMaxOpenConns(30)
+	d.db.SetMaxIdleConns(30)
+	d.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{d.statements.friendshipStatements.getSchema()}
 	for _, sqlStr := range schemas {

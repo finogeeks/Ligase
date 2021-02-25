@@ -17,11 +17,13 @@ package presence
 import (
 	"context"
 	"database/sql"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"time"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 )
 
 func init() {
@@ -47,6 +49,9 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if dataBase.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	dataBase.db.SetMaxOpenConns(30)
+	dataBase.db.SetMaxIdleConns(30)
+	dataBase.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{dataBase.presence.getSchema()}
 	for _, sqlStr := range schemas {

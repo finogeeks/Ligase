@@ -20,6 +20,7 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
@@ -98,6 +99,10 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	d.db.SetMaxOpenConns(30)
+	d.db.SetMaxIdleConns(30)
+	d.db.SetConnMaxLifetime(time.Minute * 3)
+
 	d.topic = topic
 	d.underlying = underlying
 	d.AsyncSave = useAsync

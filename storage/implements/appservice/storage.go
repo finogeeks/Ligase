@@ -17,10 +17,11 @@ package appservice
 import (
 	"context"
 	"database/sql"
+	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 )
 
 func init() {
@@ -47,8 +48,10 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 
 	if result.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
-
 	}
+	result.db.SetMaxOpenConns(30)
+	result.db.SetMaxIdleConns(30)
+	result.db.SetConnMaxLifetime(time.Minute * 3)
 
 	result.topic = topic
 	result.underlying = underlying

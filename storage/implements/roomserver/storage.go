@@ -30,9 +30,9 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	_ "github.com/lib/pq"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
@@ -69,6 +69,9 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	d.db.SetMaxOpenConns(30)
+	d.db.SetMaxIdleConns(30)
+	d.db.SetConnMaxLifetime(time.Minute * 3)
 
 	schemas := []string{
 		d.statements.roomStatements.getSchema(),
