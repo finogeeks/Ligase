@@ -20,6 +20,7 @@ package content
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/finogeeks/ligase/common"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -50,6 +51,10 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if result.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	result.db.SetMaxOpenConns(30)
+	result.db.SetMaxIdleConns(30)
+	result.db.SetConnMaxLifetime(time.Minute * 3)
+
 	if err = result.prepare(); err != nil {
 		return nil, err
 	}

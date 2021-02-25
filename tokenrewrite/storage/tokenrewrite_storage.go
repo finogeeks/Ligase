@@ -17,6 +17,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 type TokenRewriteDataBase struct {
@@ -32,6 +33,9 @@ func NewTokenRewriteDataBase(dataSourceName string) (*TokenRewriteDataBase, erro
 	if d.db, err = sql.Open("postgres", dataSourceName); err != nil {
 		return nil, err
 	}
+	d.db.SetMaxOpenConns(30)
+	d.db.SetMaxIdleConns(30)
+	d.db.SetConnMaxLifetime(time.Minute * 3)
 	if err = d.users.prepare(d.db); err != nil {
 		return nil, err
 	}

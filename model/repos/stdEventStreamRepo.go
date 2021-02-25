@@ -17,17 +17,20 @@ package repos
 import (
 	"context"
 	"fmt"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/adapter"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -39,6 +42,8 @@ type STDEventStreamRepo struct {
 	idg        *uid.UidGenerator
 	delay      int
 	updatedKey *sync.Map
+	chanSize   int
+	mutexes    []sync.Mutex
 
 	queryHitCounter mon.LabeledCounter
 }
@@ -49,12 +54,15 @@ func NewSTDEventStreamRepo(
 	maxEntries,
 	gcPerNum,
 	delay int,
+	chanSize int,
 ) *STDEventStreamRepo {
 	tls := new(STDEventStreamRepo)
 	tls.repo = NewTimeLineRepo(bukSize, 500, true, maxEntries, gcPerNum)
 	tls.idg, _ = uid.NewDefaultIdGenerator(cfg.Matrix.InstanceId)
 	tls.updatedKey = new(sync.Map)
 	tls.delay = delay
+	tls.chanSize = chanSize
+	tls.mutexes = make([]sync.Mutex, chanSize)
 
 	tls.startFlush()
 	return tls
@@ -84,7 +92,26 @@ func (tl *STDEventStreamRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
 }
 
 func (tl *STDEventStreamRepo) AddSTDEventStream(dataStream *types.StdEvent, targetUserID, targetDeviceID string) {
-	tl.LoadHistory(targetUserID, targetDeviceID, true)
+	//only for debug
+	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
+		delay := utils.GetRandomSleepSecondsForDebug()
+		log.Debugf("sendToDevice recv targetUserID:%s targetDeviceID:%s sleep %fs", targetUserID, targetDeviceID, delay)
+		time.Sleep(time.Duration(delay) * time.Second)
+	}
+	// no need to load from db, because the sync request will load from db if the offset is out of range
+	// tl.LoadHistory(targetUserID, targetDeviceID, true)
+	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
+	if _, ok := tl.ready.Load(key); !ok {
+		if _, loaded := tl.loading.LoadOrStore(key, true); loaded {
+			tl.CheckLoadReady(targetUserID, targetDeviceID, true)
+		} else {
+			defer tl.loading.Delete(key)
+			defer tl.ready.Store(key, true)
+		}
+	}
+	idx := common.CalcStringHashCode(key) % uint32(tl.chanSize)
+	tl.mutexes[idx].Lock()
+	defer tl.mutexes[idx].Unlock()
 	offset, _ := tl.idg.Next()
 	bytes, _ := json.Marshal(dataStream)
 	log.Infof("STDEventStreamRepo.AddSTDEventStream offset:%d targetUserID %s targetDeviceID %s content %s", offset, targetUserID, targetDeviceID, string(bytes))
@@ -154,8 +181,7 @@ func (tl *STDEventStreamRepo) LoadHistory(targetUserID, targetDeviceID string, s
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
 
 	if _, ok := tl.ready.Load(key); !ok {
-		if _, ok := tl.loading.Load(key); !ok {
-			tl.loading.Store(key, true)
+		if _, loaded := tl.loading.LoadOrStore(key, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(targetUserID, targetDeviceID)
 			} else {
@@ -286,4 +312,60 @@ func (tl *STDEventStreamRepo) flush() {
 		return true
 	})
 	log.Infof("STDEventStreamRepo finished flush")
+}
+
+func (tl *STDEventStreamRepo) GetUnReadStreamsFrom(targetUserID, targetDeviceID string, offset int64, updateRead bool) ([]feedstypes.STDEventStream, int64, error) {
+	stdTimeLine := tl.GetHistory(targetUserID, targetDeviceID)
+	if stdTimeLine == nil {
+		return []feedstypes.STDEventStream{}, 0, nil
+	}
+
+	feeds, _, _, lower, upper := stdTimeLine.GetAllFeeds()
+
+	offsetMap := map[int64]struct{}{}
+	var resp []feedstypes.STDEventStream
+	if offset < lower {
+		// load from db
+		log.Infof("STDEventStreamRepo.GetUnReadStreamsFrom load from db userID:%s device:%s offset:%d", targetUserID, targetDeviceID, offset)
+		bs := time.Now().UnixNano() / 1000000
+		streams, offsets, err := tl.persist.GetHistoryStdStreamAfter(context.Background(), targetUserID, targetDeviceID, offset, 100)
+		spend := time.Now().UnixNano()/1000000 - bs
+		if err != nil {
+			log.Errorf("STDEventStreamRepo.GetUnReadStreamsFrom load from db userID:%s device:%s offset:%d err:%v", targetUserID, targetDeviceID, offset, err)
+			return nil, 0, err
+		}
+		if spend > types.DB_EXCEED_TIME {
+			log.Warnf("load db exceed %d ms STDEventStreamRepo.GetUnReadStreamsFrom finished userID:%s dev:%s spend:%d ms", types.DB_EXCEED_TIME, targetUserID, targetDeviceID, spend)
+		} else {
+			log.Infof("load db succ STDEventStreamRepo.GetUnReadStreamsFrom finished userID:%s dev:%s spend:%d ms", targetUserID, targetDeviceID, spend)
+		}
+		for i := 0; i < len(streams); i++ {
+			stdStream := feedstypes.STDEventStream{}
+			stdStream.DataStream = &streams[i]
+			stdStream.Offset = offsets[i]
+			stdStream.Written = true
+			stdStream.TargetUserID = targetUserID
+			stdStream.TargetDeviceID = targetDeviceID
+			resp = append(resp, stdStream)
+			offsetMap[offsets[i]] = struct{}{}
+		}
+	}
+	for _, v := range feeds {
+		feed := v.(*feedstypes.STDEventStream)
+		feedOffset := feed.GetOffset()
+		if _, ok := offsetMap[feedOffset]; ok {
+			continue
+		}
+		if feed == nil || feed.Read {
+			continue
+		}
+		if feed.GetOffset() <= offset {
+			if updateRead {
+				feed.Read = true // no need to store anymore.
+			}
+			continue
+		}
+		resp = append(resp, *feed)
+	}
+	return resp, upper, nil
 }

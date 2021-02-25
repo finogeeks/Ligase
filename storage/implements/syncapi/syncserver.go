@@ -20,6 +20,7 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 
@@ -98,6 +99,10 @@ func NewDatabase(driver, createAddr, address, underlying, topic string, useAsync
 	if d.db, err = sql.Open(driver, address); err != nil {
 		return nil, err
 	}
+	d.db.SetMaxOpenConns(30)
+	d.db.SetMaxIdleConns(30)
+	d.db.SetConnMaxLifetime(time.Minute * 3)
+
 	d.topic = topic
 	d.underlying = underlying
 	d.AsyncSave = useAsync
@@ -408,6 +413,16 @@ func (d *Database) GetHistoryStdStream(
 	return d.stdMsg.selectHistoryStream(ctx, targetUserID, targetDeviceID, limit)
 }
 
+func (d *Database) GetHistoryStdStreamAfter(
+	ctx context.Context,
+	targetUserID,
+	targetDeviceID string,
+	afterOffset int64,
+	limit int64,
+) ([]types.StdEvent, []int64, error) {
+	return d.stdMsg.selectHistoryStreamAfter(ctx, targetUserID, targetDeviceID, afterOffset, limit)
+}
+
 func (d *Database) GetHistoryEvents(
 	ctx context.Context,
 	roomid string,
@@ -426,7 +441,7 @@ func (d *Database) GetRoomLastOffsets(
 func (d *Database) GetJoinRoomOffsets(
 	ctx context.Context,
 	eventIDs []string,
-)([]int64,[]string,[]string,error){
+) ([]int64, []string, []string, error) {
 	return d.events.selectEventsByEvents(ctx, eventIDs)
 }
 

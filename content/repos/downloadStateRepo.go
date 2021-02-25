@@ -20,7 +20,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,9 +39,6 @@ type downloadingConds struct {
 type DownloadStateRepo struct {
 	downloading sync.Map
 
-	waiting map[string]int
-	mutex   sync.Mutex
-
 	downloadFiles sync.Map
 	refMutex      sync.Mutex
 
@@ -50,9 +46,7 @@ type DownloadStateRepo struct {
 }
 
 func NewDownloadStateRepo() *DownloadStateRepo {
-	return &DownloadStateRepo{
-		waiting: make(map[string]int),
-	}
+	return &DownloadStateRepo{}
 }
 
 func (r *DownloadStateRepo) BuildKey(domain, netdiskID, thumbnailType string) string {
@@ -100,19 +94,6 @@ func (r *DownloadStateRepo) Wait(ctx context.Context, domain, netdiskID, thumbna
 		return false
 	}
 	log.Infof("wait download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
-	r.mutex.Lock()
-	r.waiting[key] = r.waiting[key] + 1
-	r.mutex.Unlock()
-	defer func(key string) {
-		r.mutex.Lock()
-		defer r.mutex.Unlock()
-		amt := r.waiting[key]
-		if amt == 1 {
-			delete(r.waiting, key)
-		} else {
-			r.waiting[key] = amt - 1
-		}
-	}(key)
 
 	ch := make(chan struct{}, 1)
 	go func(ch chan struct{}, conds *downloadingConds) {
@@ -149,19 +130,6 @@ func (r *DownloadStateRepo) WaitStartDownload(ctx context.Context, domain, netdi
 		return false
 	}
 	log.Infof("wait download from remote, domain: %s, netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
-	r.mutex.Lock()
-	r.waiting[key] = r.waiting[key] + 1
-	r.mutex.Unlock()
-	defer func(key string) {
-		r.mutex.Lock()
-		defer r.mutex.Unlock()
-		amt := r.waiting[key]
-		if amt == 1 {
-			delete(r.waiting, key)
-		} else {
-			r.waiting[key] = amt - 1
-		}
-	}(key)
 
 	ch := make(chan struct{}, 1)
 	go func(ch chan struct{}, conds *downloadingConds) {
@@ -312,36 +280,4 @@ func (r *DownloadStateRepo) TryResponseFromLocal(domain, netdiskID, thumbnailTyp
 	log.Infof("download file from local finished domain: %s netdiskID: %s, thumbnailType: %s", domain, netdiskID, thumbnailType)
 
 	return true
-}
-
-type WaitElem struct {
-	key string
-	amt int
-}
-
-func (we *WaitElem) GetKey() string {
-	return we.key
-}
-func (we *WaitElem) GetAmt() int {
-	return we.amt
-}
-
-type WaitListSorted []WaitElem
-
-func (w WaitListSorted) Less(i, j int) bool { return w[i].amt < w[j].amt }
-func (w WaitListSorted) Len() int           { return len(w) }
-func (w WaitListSorted) Swap(i, j int)      { w[i], w[j] = w[j], w[i] }
-
-func (r *DownloadStateRepo) GetWaitingList() WaitListSorted {
-	resp := func() WaitListSorted {
-		resp := WaitListSorted{}
-		r.mutex.Lock()
-		defer r.mutex.Unlock()
-		for key, amt := range r.waiting {
-			resp = append(resp, WaitElem{key, amt})
-		}
-		return resp
-	}()
-	sort.Sort(resp)
-	return resp
 }

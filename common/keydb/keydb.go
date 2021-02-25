@@ -20,6 +20,7 @@ package keydb
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
@@ -39,6 +40,10 @@ func NewDatabase(driver, address string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(30)
+	db.SetMaxIdleConns(30)
+	db.SetConnMaxLifetime(time.Minute * 3)
+
 	d := &Database{}
 	if _, err = db.Exec(d.statements.getSchema()); err != nil {
 		return nil, err
