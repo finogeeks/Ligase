@@ -25,6 +25,14 @@ func StartPushSender(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	kafka := base.Cfg.Kafka
 
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
+
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
+
 	transportMultiplexer.PreStart()
 
 	pushsender.SetupPushSenderComponent(base)

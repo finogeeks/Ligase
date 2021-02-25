@@ -20,6 +20,7 @@ import (
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"golang.org/x/net/context"
 )
 
 type EduSender struct {
@@ -56,7 +57,7 @@ func (e *EduSender) SetSender(sender *FederationSender) {
 	e.sender = sender
 }
 
-func (e *EduSender) OnMessage(topic string, partition int32, data []byte) {
+func (e *EduSender) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	log.Infof("fed-edu-sender received data topic:%s, data:%s", topic, string(data))
 	var output gomatrixserverlib.EDU
 	if err := json.Unmarshal(data, &output); err != nil {

@@ -152,7 +152,7 @@ func (s *pushRulesStatements) processRecover(rows *sql.Rows) (exists bool, err e
 		update.IsRecovery = true
 		update.PushDBEvents.PushRuleInert = &pushRuleInsert
 		update.SetUid(int64(common.CalcStringHashCode64(pushRuleInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "push_rules")
 		if err2 != nil {
 			log.Errorf("update pushRules cache error: %v", err2)
 			if err == nil {
@@ -176,7 +176,7 @@ func (s *pushRulesStatements) deletePushRule(
 			RuleID: ruleID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "push_rules")
 	}
 
 	return s.onDeletePushRule(ctx, userID, ruleID)
@@ -206,7 +206,7 @@ func (s *pushRulesStatements) insertPushRule(
 			Actions:       actions,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "push_rules")
 	}
 
 	return s.onInsertPushRule(ctx, userID, ruleID, priorityClass, priority, conditions, actions)

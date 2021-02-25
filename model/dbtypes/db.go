@@ -113,6 +113,10 @@ type DBEvent struct {
 }
 
 func (dbe *DBEvent) GetTblName() string {
+	return DBEventKeyToTableStr(dbe.Category, dbe.Key)
+}
+
+func (dbe *DBEvent) GetEventKey() string {
 	return fmt.Sprintf("%s:%d", DBEventKeyToTableStr(dbe.Category, dbe.Key), dbe.Uid)
 }
 

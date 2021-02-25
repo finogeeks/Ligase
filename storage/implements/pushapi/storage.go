@@ -90,7 +90,17 @@ func (d *DataBase) WriteDBEvent(update *dbtypes.DBEvent) error {
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys: []byte(update.GetTblName()),
+			Keys: []byte(update.GetEventKey()),
+			Obj:  update,
+		})
+}
+
+func (d *DataBase) WriteDBEventWithTbl(update *dbtypes.DBEvent, tbl string) error {
+	return common.GetTransportMultiplexer().SendWithRetry(
+		d.underlying,
+		d.topic+"_"+tbl,
+		&core.TransportPubMsg{
+			Keys: []byte(update.GetEventKey()),
 			Obj:  update,
 		})
 }

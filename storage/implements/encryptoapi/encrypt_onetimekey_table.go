@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const oneTimeKeySchema = `
@@ -136,7 +136,7 @@ func (s *oneTimeKeyStatements) processRecover(rows *sql.Rows) (exists bool, err 
 		update.IsRecovery = true
 		update.E2EDBEvents.KeyInsert = &keyInsert
 		update.SetUid(int64(common.CalcStringHashCode64(keyInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "encrypt_onetime_key")
 		if err2 != nil {
 			log.Errorf("update onetimeKey cache error: %v", err2)
 			if err == nil {
@@ -167,7 +167,7 @@ func (s *oneTimeKeyStatements) insertOneTimeKey(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_onetime_key")
 	} else {
 		stmt := s.insertOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID, keyID, keyInfo, algorithm, signature, identifier)
@@ -199,7 +199,7 @@ func (s *oneTimeKeyStatements) deleteOneTimeKey(
 			Algorithm: algorithm,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_onetime_key")
 	} else {
 		stmt := s.deleteOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID, algorithm, keyID)
@@ -230,7 +230,7 @@ func (s *oneTimeKeyStatements) deleteMacOneTimeKey(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_onetime_key")
 	} else {
 		stmt := s.deleteMacOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, userID, identifier, deviceID)
@@ -259,7 +259,7 @@ func (s *oneTimeKeyStatements) deleteDeviceOneTimeKey(
 			DeviceID: deviceID,
 			UserID:   userID,
 		}
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_onetime_key")
 	} else {
 		stmt := s.deleteDeviceOneTimeKeyStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID)

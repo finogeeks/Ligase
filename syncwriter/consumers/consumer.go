@@ -21,17 +21,18 @@ import (
 	"context"
 	jsonRaw "encoding/json"
 	"fmt"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncserver/extra"
 	jsoniter "github.com/json-iterator/go"
@@ -125,7 +126,7 @@ func (s *RoomEventConsumer) Start() error {
 	return nil
 }
 
-func (s *RoomEventConsumer) OnMessage(topic string, partition int32, data []byte) {
+func (s *RoomEventConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("sync writer: message parse failure", log.KeysAndValues{"error", err})
@@ -228,7 +229,7 @@ func (s *RoomEventConsumer) processRedactEv(ev *gomatrixserverlib.ClientEvent) {
 	}
 }
 
-func (s *RoomEventConsumer) updateReactionEvent(roomID string, reaction *types.ReactionContent){
+func (s *RoomEventConsumer) updateReactionEvent(roomID string, reaction *types.ReactionContent) {
 	var originEv gomatrixserverlib.ClientEvent
 	stream := s.roomHistoryTimeLine.GetStreamEv(roomID, reaction.EventID)
 	if stream != nil {
@@ -246,7 +247,7 @@ func (s *RoomEventConsumer) updateReactionEvent(roomID string, reaction *types.R
 	}
 	unsigned := types.Unsigned{}
 	if originEv.Unsigned != nil {
-		err := json.Unmarshal(originEv.Unsigned,&unsigned)
+		err := json.Unmarshal(originEv.Unsigned, &unsigned)
 		if err != nil {
 			log.Errorf("updateReactionEvent json.Unmarshal  origin eventID:%s unsigned err:%v", reaction.EventID, err)
 			return
@@ -255,11 +256,11 @@ func (s *RoomEventConsumer) updateReactionEvent(roomID string, reaction *types.R
 	if unsigned.Relations != nil {
 		if unsigned.Relations.Anno == nil {
 			return
-		}else{
+		} else {
 			if unsigned.Relations.Anno.Chunk == nil {
 				return
-			}else{
-				for idx,item := range unsigned.Relations.Anno.Chunk{
+			} else {
+				for idx, item := range unsigned.Relations.Anno.Chunk {
 					if item.Key == reaction.Key {
 						item.Count--
 						if item.Count <= 0 {
@@ -271,13 +272,13 @@ func (s *RoomEventConsumer) updateReactionEvent(roomID string, reaction *types.R
 				if len(unsigned.Relations.Anno.Chunk) <= 0 {
 					if unsigned.Relations.RelayTo == nil {
 						unsigned.Relations = nil
-					}else{
+					} else {
 						unsigned.Relations.Anno = nil
 					}
 				}
 			}
 		}
-	}else{
+	} else {
 		return
 	}
 	unsignedBytes, err := json.Marshal(unsigned)
@@ -297,8 +298,7 @@ func (s *RoomEventConsumer) updateReactionEvent(roomID string, reaction *types.R
 	}
 }
 
-
-func (s *RoomEventConsumer) parseRelatesContent(redactEv gomatrixserverlib.ClientEvent)(reaction *types.ReactionContent){
+func (s *RoomEventConsumer) parseRelatesContent(redactEv gomatrixserverlib.ClientEvent) (reaction *types.ReactionContent) {
 	var originContent map[string]interface{}
 	err := json.Unmarshal(redactEv.Content, &originContent)
 	if err != nil {
@@ -310,12 +310,12 @@ func (s *RoomEventConsumer) parseRelatesContent(redactEv gomatrixserverlib.Clien
 		return nil
 	}
 	b, err := json.Marshal(v)
-	json.Unmarshal(b,&reaction)
+	json.Unmarshal(b, &reaction)
 	originEventID := reaction.EventID
 	//is reaction relay
 	if originEventID != "" && reaction.RelType == "m.annotation" {
 		return reaction
-	}else{
+	} else {
 		//other ignore
 		return nil
 	}
@@ -325,7 +325,7 @@ func (s *RoomEventConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) 
 	var content map[string]interface{}
 	err := json.Unmarshal(ev.Content, &content)
 	if err != nil {
-		log.Errorf("processMessageEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID,  err)
+		log.Errorf("processMessageEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID, err)
 		return
 	}
 	v, ok := content["m.relates_to"]
@@ -334,7 +334,7 @@ func (s *RoomEventConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) 
 	}
 	mRelayTo := types.MInRelayTo{}
 	b, err := json.Marshal(v)
-	json.Unmarshal(b,&mRelayTo)
+	json.Unmarshal(b, &mRelayTo)
 	inRelayTo := mRelayTo.MRelayTo
 	originEventID := inRelayTo.EventID
 	var originEv gomatrixserverlib.ClientEvent
@@ -348,7 +348,7 @@ func (s *RoomEventConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) 
 		} else {
 			if err != nil {
 				log.Errorf("eventID:%s InRelayTo origin eventID:%s get from db err:%v", ev.EventID, originEventID, err)
-			}else{
+			} else {
 				log.Warnf("can not found eventID:%s InRelayTo origin eventID:%s", ev.EventID, originEventID)
 			}
 			return
@@ -356,7 +356,7 @@ func (s *RoomEventConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) 
 	}
 	unsigned := types.Unsigned{}
 	if originEv.Unsigned != nil {
-		err = json.Unmarshal(originEv.Unsigned,&unsigned)
+		err = json.Unmarshal(originEv.Unsigned, &unsigned)
 		if err != nil {
 			log.Errorf("json.Unmarshal eventID:%s InRelayTo origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
 			return
@@ -366,14 +366,14 @@ func (s *RoomEventConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) 
 		if unsigned.Relations.RelayTo == nil {
 			unsigned.Relations.RelayTo = &types.OriginInRelayTo{}
 			unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
-		}else{
+		} else {
 			if unsigned.Relations.RelayTo.Chunk == nil {
 				unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
-			}else{
+			} else {
 				unsigned.Relations.RelayTo.Chunk = append(unsigned.Relations.RelayTo.Chunk, ev.EventID)
 			}
 		}
-	}else{
+	} else {
 		unsigned.Relations = &types.EventRelations{}
 		unsigned.Relations.RelayTo = &types.OriginInRelayTo{}
 		unsigned.Relations.RelayTo.Chunk = []string{ev.EventID}
@@ -389,7 +389,7 @@ func (s *RoomEventConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) 
 	}
 	if err := s.db.UpdateEvent(context.TODO(), originEv, originEventID, originEv.Type, ev.RoomID); err != nil {
 		log.Errorf("eventID:%s InRelayTo origin eventID:%s update to db err:%v", ev.EventID, originEventID, err)
-	}else{
+	} else {
 		log.Infof("eventID:%s InRelayTo origin eventID:%s succ", ev.EventID, originEventID)
 	}
 }
@@ -398,7 +398,7 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 	var content map[string]interface{}
 	err := json.Unmarshal(ev.Content, &content)
 	if err != nil {
-		log.Errorf("processReactionEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID,  err)
+		log.Errorf("processReactionEv Unmarshal roomId:%s eventId:%s err:%v", ev.RoomID, ev.EventID, err)
 		return
 	}
 	v, ok := content["m.relates_to"]
@@ -407,7 +407,7 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 	}
 	reaction := types.ReactionContent{}
 	b, err := json.Marshal(v)
-	json.Unmarshal(b,&reaction)
+	json.Unmarshal(b, &reaction)
 	originEventID := reaction.EventID
 	var originEv gomatrixserverlib.ClientEvent
 	stream := s.roomHistoryTimeLine.GetStreamEv(ev.RoomID, originEventID)
@@ -420,7 +420,7 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 		} else {
 			if err != nil {
 				log.Errorf("eventID:%s annotation origin eventID:%s get from db err:%v", ev.EventID, originEventID, err)
-			}else{
+			} else {
 				log.Warnf("can not found eventID:%s annotation origin eventID:%s", ev.EventID, originEventID)
 			}
 			return
@@ -428,7 +428,7 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 	}
 	unsigned := types.Unsigned{}
 	if originEv.Unsigned != nil {
-		err = json.Unmarshal(originEv.Unsigned,&unsigned)
+		err = json.Unmarshal(originEv.Unsigned, &unsigned)
 		if err != nil {
 			log.Errorf("json.Unmarshal eventID:%s annotation origin eventID:%s unsigned err:%v", ev.EventID, originEventID, err)
 			return
@@ -438,22 +438,22 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 		if unsigned.Relations.Anno == nil {
 			unsigned.Relations.Anno = &types.Annotations{}
 			annotation := &types.Annotation{
-				Type : ev.Type,
-				Key : reaction.Key,
+				Type:  ev.Type,
+				Key:   reaction.Key,
 				Count: 1,
 			}
 			unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
-		}else{
+		} else {
 			if unsigned.Relations.Anno.Chunk == nil {
 				annotation := &types.Annotation{
-					Type : ev.Type,
-					Key : reaction.Key,
+					Type:  ev.Type,
+					Key:   reaction.Key,
 					Count: 1,
 				}
 				unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
-			}else{
+			} else {
 				hasExsit := false
-				for _,item := range unsigned.Relations.Anno.Chunk{
+				for _, item := range unsigned.Relations.Anno.Chunk {
 					if item.Key == reaction.Key {
 						item.Count++
 						hasExsit = true
@@ -462,20 +462,20 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 				}
 				if !hasExsit {
 					annotation := &types.Annotation{
-						Type : ev.Type,
-						Key : reaction.Key,
+						Type:  ev.Type,
+						Key:   reaction.Key,
 						Count: 1,
 					}
 					unsigned.Relations.Anno.Chunk = append(unsigned.Relations.Anno.Chunk, annotation)
 				}
 			}
 		}
-	}else{
+	} else {
 		unsigned.Relations = &types.EventRelations{}
 		unsigned.Relations.Anno = &types.Annotations{}
 		annotation := &types.Annotation{
-			Type : ev.Type,
-			Key : reaction.Key,
+			Type:  ev.Type,
+			Key:   reaction.Key,
 			Count: 1,
 		}
 		unsigned.Relations.Anno.Chunk = []*types.Annotation{annotation}
@@ -491,7 +491,7 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 	}
 	if err := s.db.UpdateEvent(context.TODO(), originEv, originEventID, originEv.Type, ev.RoomID); err != nil {
 		log.Errorf("eventID:%s annotation origin eventID:%s update to db err:%v", ev.EventID, originEventID, err)
-	}else{
+	} else {
 		log.Infof("eventID:%s annotation origin eventID:%s succ", ev.EventID, originEventID)
 	}
 }

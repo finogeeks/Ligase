@@ -114,13 +114,27 @@ func (d *Database) SetIDGenerator(idg *uid.UidGenerator) {
 	d.idg = idg
 }
 
+func (d *Database) GetDB() *sql.DB {
+	return d.db
+}
+
 // WriteOutputEvents implements OutputRoomEventWriter
 func (d *Database) WriteDBEvent(update *dbtypes.DBEvent) error {
 	return common.GetTransportMultiplexer().SendWithRetry(
 		d.underlying,
 		d.topic,
 		&core.TransportPubMsg{
-			Keys: []byte(update.GetTblName()),
+			Keys: []byte(update.GetEventKey()),
+			Obj:  update,
+		})
+}
+
+func (d *Database) WriteDBEventWithTbl(update *dbtypes.DBEvent, tbl string) error {
+	return common.GetTransportMultiplexer().SendWithRetry(
+		d.underlying,
+		d.topic+"_"+tbl,
+		&core.TransportPubMsg{
+			Keys: []byte(update.GetEventKey()),
 			Obj:  update,
 		})
 }

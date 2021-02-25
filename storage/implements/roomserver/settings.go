@@ -21,8 +21,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const settingsSchema = `
@@ -83,7 +83,7 @@ func (s *settingsStatements) insertSetting(
 			SettingKey: settingKey,
 			Val:        val,
 		}
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "roomserver_settings")
 		return nil
 	}
 
@@ -154,7 +154,7 @@ func (s *settingsStatements) processRecover(rows *sql.Rows) (exists bool, err er
 		update.Key = dbtypes.SettingUpsertKey
 		update.IsRecovery = true
 		update.RoomDBEvents.SettingsInsert = &settingsInsert
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "roomserver_settings")
 		if err2 != nil {
 			log.Errorf("update setting cache error: %v", err2)
 			if err == nil {

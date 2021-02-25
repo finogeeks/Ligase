@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const migDevicesSchema = `
@@ -122,7 +122,7 @@ func (s *migDevicesStatements) processRecover(rows *sql.Rows) (exists bool, err 
 			MigAccessToken: deviceInsert.MigAccessToken,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(deviceInsert.AccessToken)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "mig_device_devices")
 		if err2 != nil {
 			log.Errorf("update migDevice cache error: %v", err2)
 			if err == nil {
@@ -148,7 +148,7 @@ func (s *migDevicesStatements) insertMigDevice(
 			MigAccessToken: mig_access_token,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(access_token)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "mig_device_devices")
 	} else {
 		_, err := s.insertMigDeviceStmt.ExecContext(ctx, access_token, mig_access_token, deviceID, userID)
 		return err

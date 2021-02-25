@@ -19,8 +19,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const roomTagsSchema = `
@@ -118,7 +118,7 @@ func (s *roomTagsStatements) processRecover(rows *sql.Rows) (exists bool, err er
 		update.IsRecovery = true
 		update.AccountDBEvents.RoomTagInsert = &roomTagInsert
 		update.SetUid(int64(common.CalcStringHashCode64(roomTagInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "room_tags")
 		if err2 != nil {
 			log.Errorf("update tag cache error: %v", err2)
 			if err == nil {
@@ -145,7 +145,7 @@ func (s *roomTagsStatements) insertRoomTag(
 			Content: content,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userId)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "room_tags")
 	} else {
 		_, err = stmt.ExecContext(ctx, userId, roomID, tag, content)
 		return
@@ -174,7 +174,7 @@ func (s *roomTagsStatements) deleteRoomTag(
 			Tag:    tag,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userId)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "room_tags")
 	} else {
 		_, err = stmt.ExecContext(ctx, userId, roomID, tag)
 		return

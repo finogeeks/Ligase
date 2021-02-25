@@ -79,7 +79,7 @@ func (s *roomDomainsStatements) insertRoomDomains(
 			Offset:  offset,
 		}
 		update.SetUid(room_nid)
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "roomserver_room_domains")
 		return nil
 	}
 

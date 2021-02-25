@@ -38,6 +38,13 @@ func StartSyncAggregate(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputProfileSyncAggregate, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdateSyncAggregate, base.Cfg.MultiInstance.Instance)
 
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
+
 	transportMultiplexer.PreStart()
 	serverConfDB := base.CreateServerConfDB()
 	cache := base.PrepareCache()

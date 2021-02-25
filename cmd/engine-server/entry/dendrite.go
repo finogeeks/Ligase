@@ -46,6 +46,13 @@ func StartClientAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	addConsumer(transportMultiplexer, kafka.Consumer.InputRoomEvent, base.Cfg.MultiInstance.Instance)
 
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
+
 	transportMultiplexer.PreStart()
 	cache := base.PrepareCache()
 
@@ -173,6 +180,13 @@ func StartFixDBServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.OutputProfileData)
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 	addProducer(transportMultiplexer, kafka.Producer.OutputRoomFedEvent)
+
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
 
 	transportMultiplexer.PreStart()
 	transportMultiplexer.Start()

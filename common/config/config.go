@@ -262,7 +262,8 @@ type Dendrite struct {
 	} `yaml:"nats"`
 	// Postgres Config
 	Database struct {
-		CreateDB DataBaseConf `yaml:"create_db"`
+		EnableBatch bool         `yaml:"enable_batch"`
+		CreateDB    DataBaseConf `yaml:"create_db"`
 		// The Account database stores the login details and account information
 		// for local users. It is accessed by the ClientAPI.
 		Account DataBaseConf `yaml:"account"`

@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const algorithmSchema = `
@@ -126,7 +126,7 @@ func (s *alStatements) processRecover(rows *sql.Rows) (exists bool, err error) {
 		update.IsRecovery = true
 		update.E2EDBEvents.AlInsert = &alsInsert
 		update.SetUid(int64(common.CalcStringHashCode64(alsInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "encrypt_algorithm")
 		if err2 != nil {
 			log.Errorf("update algorithm cache error: %v", err2)
 			if err == nil {
@@ -154,7 +154,7 @@ func (s *alStatements) insertAl(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_algorithm")
 	} else {
 		stmt := s.insertAlStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID, algorithms, identifier)
@@ -184,7 +184,7 @@ func (s *alStatements) deleteAl(
 			UserID:   userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_algorithm")
 	} else {
 		stmt := s.deleteAlStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID)
@@ -215,7 +215,7 @@ func (s *alStatements) deleteMacAl(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_algorithm")
 	} else {
 		stmt := s.deleteMacAlStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID, identifier)

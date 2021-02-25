@@ -167,7 +167,7 @@ func (s *pushersStatements) processRecover(rows *sql.Rows) (exists bool, err err
 		update.IsRecovery = true
 		update.PushDBEvents.PusherInsert = &pusherInsert
 		update.SetUid(int64(common.CalcStringHashCode64(pusherInsert.PushKey)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "pushers")
 		if err2 != nil {
 			log.Errorf("update pushers cache error: %v", err2)
 			if err == nil {
@@ -192,7 +192,7 @@ func (s *pushersStatements) deletePushers(
 			PushKey: pushKey,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "pushers")
 	}
 
 	return s.onDeletePushers(ctx, userID, appID, pushKey)
@@ -218,7 +218,7 @@ func (s *pushersStatements) deletePushersByKey(
 			PushKey: pushKey,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "pushers")
 	}
 
 	return s.onDeletePushersByKey(ctx, appID, pushKey)
@@ -243,7 +243,7 @@ func (s *pushersStatements) deletePushersByKeyOnly(
 			PushKey: pushKey,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "pushers")
 	}
 
 	return s.onDeletePushersByKeyOnly(ctx, pushKey)
@@ -278,7 +278,7 @@ func (s *pushersStatements) insertPusher(
 			DeviceID:          deviceID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(pushKey)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "pushers")
 	}
 
 	return s.onInsertPusher(ctx, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey, pushKeyTs, lang, data, deviceID)

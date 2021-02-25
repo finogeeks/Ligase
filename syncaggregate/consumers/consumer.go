@@ -22,10 +22,6 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/adapter"
-
-	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/utils"
@@ -34,6 +30,8 @@ import (
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
@@ -152,7 +150,7 @@ func (s *EventFeedConsumer) Start() error {
 	return nil
 }
 
-func (s *EventFeedConsumer) OnMessage(topic string, partition int32, data []byte) {
+func (s *EventFeedConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	timespend := common.NewTimeSpend()
 	log.Debugf("EventFeedConsumer onMessage start")
 	var output roomserverapi.OutputEvent

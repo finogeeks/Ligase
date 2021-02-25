@@ -90,7 +90,7 @@ func (s *InputRoomEventConsumer) startWorker(msgChan chan *roomserverapi.RawEven
 }
 
 //when kafka, write data to chan, called by kafka transport
-func (s *InputRoomEventConsumer) OnMessage(topic string, partition int32, data []byte) {
+func (s *InputRoomEventConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	var input roomserverapi.RawEvent
 
 	if err := json.Unmarshal(data, &input); err != nil {

@@ -19,14 +19,15 @@ package consumers
 
 import (
 	"context"
+
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/storage/model"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type ActDataConsumer struct {
@@ -84,7 +85,7 @@ func (s *ActDataConsumer) Start() error {
 	return nil
 }
 
-func (s *ActDataConsumer) OnMessage(topic string, partition int32, data []byte) {
+func (s *ActDataConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	// Parse out the event JSON
 	var output types.ActDataStreamUpdate
 	if err := json.Unmarshal(data, &output); err != nil {

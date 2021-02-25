@@ -17,13 +17,14 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+	"time"
+
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
-	"time"
 )
 
 const userTimeLineSchema = `
@@ -158,7 +159,7 @@ func (s *userTimeLineStatements) insertUserTimeLine(
 			EventOffset: eventOffset,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "syncapi_user_time_line")
 		return nil
 	} else {
 		_, err = s.insertUserTimeLineStmt.ExecContext(ctx, id, roomID, evtNID, userID, roomState, ts, eventOffset)

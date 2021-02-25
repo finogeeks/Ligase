@@ -74,8 +74,7 @@ func (c *DismissRoomConsumer) Start() error {
 }
 
 // if leave fail , continue
-func (c *DismissRoomConsumer) OnMessage(topic string, partition int32, data []byte) {
-	ctx := context.TODO()
+func (c *DismissRoomConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	var req external.DismissRoomRequest
 	err := json.Unmarshal(data, &req)
 	if err != nil {

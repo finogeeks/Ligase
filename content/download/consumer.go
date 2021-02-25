@@ -318,7 +318,7 @@ func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdisk
 	}
 }
 
-func (p *DownloadConsumer) OnMessage(topic string, partition int32, data []byte) {
+func (p *DownloadConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	var ev gomatrixserverlib.Event
 	err := json.Unmarshal(data, &ev)
 	if err != nil {

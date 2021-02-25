@@ -16,12 +16,13 @@ package entry
 
 import (
 	"context"
+	"sync"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	"sync"
 )
 
 type FedDBUpdate struct {
@@ -42,6 +43,12 @@ func StartUpdateDBForFed(
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
 	transportMultiplexer.PreStart()
 	transportMultiplexer.Start()
 

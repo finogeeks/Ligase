@@ -24,6 +24,7 @@ import (
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/dbupdates"
 	"github.com/finogeeks/ligase/dbwriter"
 	"github.com/finogeeks/ligase/encryptoapi"
 	fed "github.com/finogeeks/ligase/federation/fedreq"
@@ -40,6 +41,44 @@ import (
 	"github.com/finogeeks/ligase/syncserver"
 	"github.com/finogeeks/ligase/syncwriter"
 )
+
+var dbUpdateProducerName = []string{
+	"account_accounts",
+	"account_data",
+	"account_filter",
+	"account_profiles",
+	"account_user_info",
+	"room_tags",
+	"device_devices",
+	"mig_device_devices",
+	"encrypt_algorithm",
+	"encrypt_device_key",
+	"encrypt_onetime_key",
+	"presence_presences",
+	"publicroomsapi_public_rooms",
+	"push_rules_enable",
+	"push_rules",
+	"pushers",
+	"roomserver_event_json",
+	"roomserver_events",
+	"roomserver_invites",
+	"roomserver_membership",
+	"roomserver_room_aliases",
+	"roomserver_room_domains",
+	"roomserver_rooms",
+	"roomserver_settings",
+	"roomserver_state_snapshots",
+	"syncapi_client_data_stream",
+	"syncapi_current_room_state",
+	"syncapi_key_change_stream",
+	"syncapi_output_min_stream",
+	"syncapi_output_room_events",
+	"syncapi_presence_data_stream",
+	"syncapi_receipt_data_stream",
+	"syncapi_send_to_device",
+	"syncapi_user_receipt_data",
+	"syncapi_user_time_line",
+}
 
 func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	transportMultiplexer := common.GetTransportMultiplexer()
@@ -83,6 +122,13 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addConsumer(transportMultiplexer, kafka.Consumer.SetttngUpdateProxy, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.DismissRoom, base.Cfg.MultiInstance.Instance)
 
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
+
 	transportMultiplexer.PreStart()
 	cache := base.PrepareCache()
 
@@ -108,6 +154,9 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcCli, cache, newFederation)
 	dbwriter.SetupDBWriterComponent(base)
+
+	dbupdates.SetupDBUpdateComponent(base.Cfg)
+	dbupdates.SetupCacheUpdateComponent(base.Cfg)
 
 	pushsender.SetupPushSenderComponent(base)
 

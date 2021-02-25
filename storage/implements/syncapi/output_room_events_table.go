@@ -485,7 +485,7 @@ func (s *outputRoomEventsStatements) insertEvent(
 			OriginTs:     originTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(event.RoomID)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "syncapi_output_room_events")
 	} else {
 		if encryption.CheckCrypto(event.Type) {
 			_, err = s.insertEventStmt.ExecContext(ctx,
@@ -874,7 +874,7 @@ func (s *outputRoomEventsStatements) UpdateSyncEvent(
 			OriginTs:     originTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(roomID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "syncapi_output_room_events")
 	} else {
 		return s.onUpdateSyncEvent(ctx, domainOffset, originTs, domain, roomID, eventID)
 	}

@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 const accountsSchema = `
@@ -118,7 +118,7 @@ func (s *accountsStatements) insertAccount(
 			AppServiceID: appServiceID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		err := s.db.WriteDBEvent(&update)
+		err := s.db.WriteDBEventWithTbl(&update, "account_accounts")
 		if err != nil {
 			return nil, err
 		}

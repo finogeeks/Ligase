@@ -140,7 +140,7 @@ func (b *Bridge) SetupBridge(cfg *config.Dendrite) {
 	}
 }
 
-func (b *Bridge) OnMessage(topic string, partition int32, data []byte) {
+func (b *Bridge) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	//dec := gob.NewDecoder(bytes.NewReader(data))
 	msg := &model.GobMessage{}
 	//err := dec.Decode(msg)

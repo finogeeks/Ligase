@@ -17,11 +17,12 @@ package pushapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/model/pushapitypes"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const pushRulesEnableSchema = `
@@ -73,10 +74,10 @@ func (s *pushRulesEnableStatements) prepare(d *DataBase) (err error) {
 	return
 }
 
-func (s *pushRulesEnableStatements) loadPushRuleEnable(ctx context.Context) ([]pushapitypes.PushRuleEnable, error){
+func (s *pushRulesEnableStatements) loadPushRuleEnable(ctx context.Context) ([]pushapitypes.PushRuleEnable, error) {
 	offset := 0
 	limit := 1000
-	result :=[]pushapitypes.PushRuleEnable{}
+	result := []pushapitypes.PushRuleEnable{}
 	for {
 		ruleEnables := []pushapitypes.PushRuleEnable{}
 		rows, err := s.recoverPushRuleEnableStmt.QueryContext(ctx, limit, offset)
@@ -89,8 +90,8 @@ func (s *pushRulesEnableStatements) loadPushRuleEnable(ctx context.Context) ([]p
 			if err := rows.Scan(&pushRuleEnable.UserID, &pushRuleEnable.RuleID, &pushRuleEnable.Enabled); err != nil {
 				log.Errorf("load push rule enable scan rows error:%v", err)
 				return nil, err
-			}else{
-				ruleEnables = append(ruleEnables,pushRuleEnable)
+			} else {
+				ruleEnables = append(ruleEnables, pushRuleEnable)
 			}
 		}
 		result = append(result, ruleEnables...)
@@ -141,7 +142,7 @@ func (s *pushRulesEnableStatements) processRecover(rows *sql.Rows) (exists bool,
 		update.IsRecovery = true
 		update.PushDBEvents.PushRuleEnableInsert = &pushRuleEnableInsert
 		update.SetUid(int64(common.CalcStringHashCode64(pushRuleEnableInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "push_rules_enable")
 		if err2 != nil {
 			log.Errorf("update pushRulesEnable cache error: %v", err2)
 			if err == nil {
@@ -166,7 +167,7 @@ func (s *pushRulesEnableStatements) insertPushRuleEnable(
 			Enabled: enable,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "push_rules_enable")
 	}
 
 	return s.onInsertPushRuleEnable(ctx, userID, ruleID, enable)
