@@ -408,6 +408,16 @@ func (d *Database) GetHistoryStdStream(
 	return d.stdMsg.selectHistoryStream(ctx, targetUserID, targetDeviceID, limit)
 }
 
+func (d *Database) GetHistoryStdStreamAfter(
+	ctx context.Context,
+	targetUserID,
+	targetDeviceID string,
+	afterOffset int64,
+	limit int64,
+) ([]types.StdEvent, []int64, error) {
+	return d.stdMsg.selectHistoryStreamAfter(ctx, targetUserID, targetDeviceID, afterOffset, limit)
+}
+
 func (d *Database) GetHistoryEvents(
 	ctx context.Context,
 	roomid string,
@@ -426,7 +436,7 @@ func (d *Database) GetRoomLastOffsets(
 func (d *Database) GetJoinRoomOffsets(
 	ctx context.Context,
 	eventIDs []string,
-)([]int64,[]string,[]string,error){
+) ([]int64, []string, []string, error) {
 	return d.events.selectEventsByEvents(ctx, eventIDs)
 }
 

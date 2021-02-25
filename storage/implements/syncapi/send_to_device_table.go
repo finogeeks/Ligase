@@ -54,6 +54,11 @@ const selectHistorySTDEventsStreamSQL = "" +
 	" WHERE target_user_id = $1 AND target_device_id = $2" +
 	" ORDER BY id DESC LIMIT $3"
 
+const selectHistorySTDEventsStreamAfterSQL = "" +
+	"SELECT id, sender, event_type, event_json FROM syncapi_send_to_device" +
+	" WHERE target_user_id = $1 AND target_device_id = $2 AND id > $3" +
+	" ORDER BY id LIMIT $4"
+
 const deleteSTDSQL = "" +
 	"DELETE FROM syncapi_send_to_device WHERE target_user_id = $1 AND target_device_id = $2 AND id <= $3"
 
@@ -64,12 +69,13 @@ const deleteMacSTDSQL = "" +
 	"DELETE FROM syncapi_send_to_device WHERE target_user_id = $1 AND identifier = $2 AND target_device_id != $3"
 
 type stdEventsStatements struct {
-	db                               *Database
-	insertStdEventStmt               *sql.Stmt
-	selectHistorySTDEventsStreamStmt *sql.Stmt
-	deleteStdEventStmt               *sql.Stmt
-	deleteDeviceStdEventStmt         *sql.Stmt
-	deleteMacStdEventStmt            *sql.Stmt
+	db                                    *Database
+	insertStdEventStmt                    *sql.Stmt
+	selectHistorySTDEventsStreamStmt      *sql.Stmt
+	selectHistorySTDEventsStreamAfterStmt *sql.Stmt
+	deleteStdEventStmt                    *sql.Stmt
+	deleteDeviceStdEventStmt              *sql.Stmt
+	deleteMacStdEventStmt                 *sql.Stmt
 }
 
 func (s *stdEventsStatements) getSchema() string {
@@ -86,6 +92,9 @@ func (s *stdEventsStatements) prepare(db *sql.DB, d *Database) (err error) {
 		return
 	}
 	if s.selectHistorySTDEventsStreamStmt, err = db.Prepare(selectHistorySTDEventsStreamSQL); err != nil {
+		return
+	}
+	if s.selectHistorySTDEventsStreamAfterStmt, err = db.Prepare(selectHistorySTDEventsStreamAfterSQL); err != nil {
 		return
 	}
 	if s.deleteStdEventStmt, err = db.Prepare(deleteSTDSQL); err != nil {
@@ -174,6 +183,40 @@ func (s *stdEventsStatements) selectHistoryStream(
 		err := json.Unmarshal(eventJSON, &stream.Content)
 		if err != nil {
 			log.Errorf("stdEventsStatements.selectHistoryStream err: %v", err)
+			continue
+		}
+
+		streams = append(streams, stream)
+		offset = append(offset, streamPos)
+	}
+	return
+}
+
+func (s *stdEventsStatements) selectHistoryStreamAfter(
+	ctx context.Context,
+	targetUserID,
+	targetDeviceID string,
+	afterOffset int64,
+	limit int64,
+) (streams []types.StdEvent, offset []int64, err error) {
+	rows, err := s.selectHistorySTDEventsStreamAfterStmt.QueryContext(ctx, targetUserID, targetDeviceID, afterOffset, limit)
+	if err != nil {
+		log.Errorf("stdEventsStatements.selectHistoryStreamAfter err: %v", err)
+		return
+	}
+	streams = []types.StdEvent{}
+	offset = []int64{}
+	defer rows.Close()
+	for rows.Next() {
+		var stream types.StdEvent
+		var streamPos int64
+		var eventJSON []byte
+		if err := rows.Scan(&streamPos, &stream.Sender, &stream.Type, &eventJSON); err != nil {
+			return nil, nil, err
+		}
+		err := json.Unmarshal(eventJSON, &stream.Content)
+		if err != nil {
+			log.Errorf("stdEventsStatements.selectHistoryStreamAfter err: %v", err)
 			continue
 		}
 
