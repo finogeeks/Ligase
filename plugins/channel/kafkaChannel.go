@@ -148,10 +148,6 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 		return nil
 	}
 
-	if len(md.Brokers) < replicationFactor {
-		replicationFactor = len(md.Brokers)
-	}
-
 	maxDur, err := time.ParseDuration("60s")
 	if err != nil {
 		log.Errorln("ParseDuration err: ", err)
