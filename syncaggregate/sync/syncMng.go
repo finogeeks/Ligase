@@ -20,8 +20,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
@@ -487,6 +489,12 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			}
 			//log.Infof("SyncMng.buildSyncData sync traceid:%s slot:%d user %s device %s request %s", req.traceId,req.slot, req.device.UserID, req.device.ID, string(bytes))
 			data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, 1000)
+			//only for debug
+			if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
+				delay := utils.GetRandomSleepSecondsForDebug()
+				log.Infof("SyncMng.buildSyncData random sleep %fs", delay)
+				time.Sleep(time.Duration(delay*1000) * time.Millisecond)
+			}
 
 			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {

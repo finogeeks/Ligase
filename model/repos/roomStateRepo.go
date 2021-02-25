@@ -561,7 +561,7 @@ func (rs *RoomState) onUserMembershipChange(user string, visibility, preMembersh
 		delay := utils.GetRandomSleepSecondsForDebug()
 		log.Infow("====================================onUserMembershipChange, before sleep",
 			log.KeysAndValues{"user", user, "membership", membership, "offset", offset, "delay", delay})
-		time.Sleep(time.Duration(delay) * time.Second)
+		time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 		log.Infow("====================================onUserMembershipChange, after sleep",
 			log.KeysAndValues{"user", user, "membership", membership, "offset", offset, "delay", delay})
 	}
@@ -665,7 +665,7 @@ func (rs *RoomState) GetEventVisibility(user string) []RangeItem {
 		delay := utils.GetRandomSleepSecondsForDebug()
 		log.Infow("====================================GetEventVisibility, before sleep",
 			log.KeysAndValues{"user", user, "delay", delay})
-		time.Sleep(time.Duration(delay) * time.Second)
+		time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 		log.Infow("====================================GetEventVisibility, after sleep",
 			log.KeysAndValues{"user", user, "delay", delay})
 	}

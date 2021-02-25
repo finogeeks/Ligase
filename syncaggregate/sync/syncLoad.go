@@ -18,7 +18,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -314,7 +316,12 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, 1000)
 
 				spend := time.Now().UnixNano()/1000000 - bs
-
+				//only for debug
+				if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
+					delay := utils.GetRandomSleepSecondsForDebug()
+					log.Infof("SyncMng.callSyncLoad random sleep %fs", delay)
+					time.Sleep(time.Duration(delay*1000) * time.Millisecond)
+				}
 				if err == nil {
 					var result syncapitypes.SyncServerResponse
 					err := json.Unmarshal(data, &result)
