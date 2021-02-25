@@ -145,6 +145,9 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 				log.Warnf("kafka topic:%s partition:%d reeplicas %d expect %d", topic, vv.ID, len(vv.Replicas), replicationFactor)
 			}
 		}
+		if topic != c.topic {
+			c.cacheTopics.Store(topic, true)
+		}
 		return nil
 	}
 
