@@ -233,6 +233,7 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 	data := new(types.ProfileStreamUpdate)
 	data.UserID = state.UserID
 	data.Presence = content
+	data.Ts = time.Now().UnixNano() / 1000000
 	log.Infof("state change presence user:%s ", state.UserID)
 	common.GetTransportMultiplexer().SendWithRetry(
 		sm.cfg.Kafka.Producer.OutputProfileData.Underlying,

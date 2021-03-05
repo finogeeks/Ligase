@@ -21,6 +21,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
@@ -29,15 +30,15 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 func GetWhoAmi(
@@ -215,6 +216,7 @@ func SetAvatarURL(
 	data := new(types.ProfileStreamUpdate)
 	data.UserID = userID
 	data.Presence = content
+	data.Ts = time.Now().UnixNano() / 1000000
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
@@ -338,6 +340,7 @@ func SetDisplayName(
 	data := new(types.ProfileStreamUpdate)
 	data.UserID = userID
 	data.Presence = content
+	data.Ts = time.Now().UnixNano() / 1000000
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Kafka.Producer.OutputProfileData.Underlying,
 		cfg.Kafka.Producer.OutputProfileData.Name,
