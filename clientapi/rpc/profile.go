@@ -18,17 +18,18 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"github.com/finogeeks/ligase/clientapi/routing"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/nats-io/nats.go"
 )
@@ -188,6 +189,7 @@ func (s *ProfileRpcConsumer) processProfile(profile *types.ProfileContent) {
 		data := new(types.ProfileStreamUpdate)
 		data.UserID = profile.UserID
 		data.Presence = content
+		data.Ts = time.Now().UnixNano() / 1000000
 		common.GetTransportMultiplexer().SendWithRetry(
 			s.cfg.Kafka.Producer.OutputProfileData.Underlying,
 			s.cfg.Kafka.Producer.OutputProfileData.Name,

@@ -15,8 +15,8 @@
 package types
 
 import (
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -67,10 +67,10 @@ const (
 )
 
 const (
-	GET_PUSHER_BY_DEVICE  	= "getPusherByDevice"
-	GET_PUSHRULE_BY_USER 	= "getPushRuleByUser"
-	GET_PUSHDATA_BATCH 		= "getPushDataBatch"
-	GET_PUSHER_BATCH 		= "getPusherBatch"
+	GET_PUSHER_BY_DEVICE = "getPusherByDevice"
+	GET_PUSHRULE_BY_USER = "getPushRuleByUser"
+	GET_PUSHDATA_BATCH   = "getPushDataBatch"
+	GET_PUSHER_BATCH     = "getPusherBatch"
 )
 
 type DeviceState struct {
@@ -93,15 +93,15 @@ type NotifyDeviceState struct {
 }
 
 type NotifyUserState struct {
-	UserID 	  string 		   `json:"user_id"`
-	LastState int 			   `json:"last_state"`
-	CurState  int			   `json:"cur_state"`
+	UserID    string `json:"user_id"`
+	LastState int    `json:"last_state"`
+	CurState  int    `json:"cur_state"`
 }
 
 type NotifyOnlineDetail struct {
-	UserID 	  			string 			`json:"user_id"`
-	LastActive			int64 			`json:"last_active"`
-	Duration  			int64 			`json:"duration"`
+	UserID     string `json:"user_id"`
+	LastActive int64  `json:"last_active"`
+	Duration   int64  `json:"duration"`
 }
 
 type ProfileContent struct {
@@ -127,7 +127,7 @@ type ReceiptContent struct {
 	RoomID      string `json:"room_id,omitempty"`
 	ReceiptType string `json:"receipt_type,omitempty"`
 	EventID     string `json:"event_id,omitempty"`
-	Source 		string `json:"source,omitemty"`
+	Source      string `json:"source,omitemty"`
 }
 
 type TypingContent struct {
@@ -294,9 +294,9 @@ type PresenceJSON struct {
 	Email     string `json:"email"`
 	State     int    `json:"state"`
 
-	LastPresence	    string `json:"last_presence"`
-	LastStatusMsg       string `json:"last_status_msg"`
-	LastExtStatusMsg    string `json:"last_ext_status_msg"`
+	LastPresence     string `json:"last_presence"`
+	LastStatusMsg    string `json:"last_status_msg"`
+	LastExtStatusMsg string `json:"last_ext_status_msg"`
 }
 
 type PresenceShowJSON struct {
@@ -318,10 +318,11 @@ type ActDataStreamUpdate struct {
 }
 
 type ProfileStreamUpdate struct {
-	UserID         string       `json:"user_id"`
-	DeviceID       string       `json:"device_id"`
-	Presence       PresenceJSON `json:"presence"`
-	IsUpdateBase   bool 		`json:"is_update_base"` //matrix /presence/{userID}/status only update presence, status_msg, ext_status_msg
+	UserID       string       `json:"user_id"`
+	DeviceID     string       `json:"device_id"`
+	Presence     PresenceJSON `json:"presence"`
+	IsUpdateBase bool         `json:"is_update_base"` //matrix /presence/{userID}/status only update presence, status_msg, ext_status_msg
+	Ts           int64        `json:"ts,omitempty"`
 }
 
 type StdEvent struct {
@@ -341,12 +342,12 @@ type RedactUnsigned struct {
 	TransactionID   string                         `json:"transaction_id,omitempty"`
 	RedactedBecause *gomatrixserverlib.ClientEvent `json:"redacted_because,omitempty"`
 	UpdatedBecause  *gomatrixserverlib.ClientEvent `json:"updated_because,omitempty"`
-	IsRelated 		*bool 						   `json:"is_related,omitempty"`
+	IsRelated       *bool                          `json:"is_related,omitempty"`
 }
 
 type Unsigned struct {
-	TransactionID string 			`json:"transaction_id,omitempty"`
-	Relations     *EventRelations 	`json:"m.relations,omitempty"`
+	TransactionID string          `json:"transaction_id,omitempty"`
+	Relations     *EventRelations `json:"m.relations,omitempty"`
 }
 
 type EventRelations struct {
@@ -420,22 +421,22 @@ type OnlinePresence struct {
 }
 
 type TimeLineItem struct {
-	Start 	int64 							`json:"start"`
-	Ev 		*gomatrixserverlib.ClientEvent	`json:"ev"`
-	TraceId string 							`json:"trace_id"`
+	Start   int64                          `json:"start"`
+	Ev      *gomatrixserverlib.ClientEvent `json:"ev"`
+	TraceId string                         `json:"trace_id"`
 }
 
 const (
-	STATIC_LOGIN 	= 	"static_login"
-	STATIC_ONLINE 	=	"static_online"
+	STATIC_LOGIN  = "static_login"
+	STATIC_ONLINE = "static_online"
 )
 
 type StaticLoginItem struct {
-	UserId 		string 		`json:"user_id"`
-	TimeStamp 	int64 		`json:"timestamp"`
-	IP 			string 		`json:"ip"`
-	Version 	string 		`json:"version"`
-	Source 		string 		`json:"source"`
+	UserId    string `json:"user_id"`
+	TimeStamp int64  `json:"timestamp"`
+	IP        string `json:"ip"`
+	Version   string `json:"version"`
+	Source    string `json:"source"`
 }
 
 type StaticOnlineItem struct {
@@ -443,7 +444,7 @@ type StaticOnlineItem struct {
 }
 
 type StaticItem struct {
-	Type 	string				`json:"type"`
-	Login 	*StaticLoginItem	`json:"login,omitempty"`
-	Online  *StaticOnlineItem 	`json:"online,omitempty"`
+	Type   string            `json:"type"`
+	Login  *StaticLoginItem  `json:"login,omitempty"`
+	Online *StaticOnlineItem `json:"online,omitempty"`
 }
