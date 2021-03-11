@@ -482,6 +482,26 @@ func SplitArray(arr []interface{}, num int) (segmens []interface{}) {
 	return
 }
 
+func SplitStringArray(arr []string, num int) (segmens [][]string) {
+	max := len(arr)
+	if max < num {
+		segmens = append(segmens, arr[0:max])
+		return
+	}
+	var step = max / num
+	var beg int
+	var end int
+	for i := 0; i < step || end < max; i++ {
+		beg = 0 + i*num
+		end = beg + num
+		if end > max {
+			end = max
+		}
+		segmens = append(segmens, arr[beg:end])
+	}
+	return
+}
+
 func RandString(len int) string {
 	bytes := make([]byte, len)
 	for i := 0; i < len; i++ {

@@ -17,17 +17,17 @@ package api
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"net/http"
 
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 // ClientEvent is an event which is fit for consumption by clients, in accordance with the specification.
@@ -87,16 +87,9 @@ func (ReqGetEventWithID) Process(consumer interface{}, msg core.Coder, device *a
 
 	if len(event) > 0 {
 		roomID := event[0].RoomID
-		joined, err := c.userTimeLine.GetJoinRooms(userID)
+		isJoin, err := c.userTimeLine.CheckIsJoinRoom(userID, roomID)
 		if err != nil {
 			return http.StatusInternalServerError, jsonerror.NotFound(fmt.Sprintf("Could not find user joined rooms %s", userID))
-		}
-
-		isJoin := false
-		if joined != nil {
-			if _, ok := joined.Load(roomID); ok {
-				isJoin = true
-			}
 		}
 
 		if isJoin == false {
