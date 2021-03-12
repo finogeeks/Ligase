@@ -66,8 +66,8 @@ type DownloadConsumer struct {
 	db         model.ContentDatabase
 	repo       *repos.DownloadStateRepo
 
-	thumbnailMap map[string]DownloadInfo
-	downloadMap  map[string]DownloadInfo
+	thumbnailMap map[string]*DownloadInfo
+	downloadMap  map[string]*DownloadInfo
 
 	getMutex sync.Mutex
 
@@ -100,8 +100,8 @@ func NewConsumer(
 			fedClient:      fedClient,
 			db:             db,
 			repo:           repo,
-			thumbnailMap:   make(map[string]DownloadInfo),
-			downloadMap:    make(map[string]DownloadInfo),
+			thumbnailMap:   make(map[string]*DownloadInfo),
+			downloadMap:    make(map[string]*DownloadInfo),
 			maxWorkerCount: int32(workerCount),
 			httpCli: &http.Client{
 				Transport: &http.Transport{
@@ -206,7 +206,7 @@ func (p *DownloadConsumer) workerProcessor() {
 		}
 	}()
 	for {
-		info, key, thumbnail, ok := func() (info DownloadInfo, key string, thumbnail, ok bool) {
+		info, key, thumbnail, ok := func() (info *DownloadInfo, key string, thumbnail, ok bool) {
 			p.getMutex.Lock()
 			defer p.getMutex.Unlock()
 			info, key, thumbnail, ok = p.getOne()
@@ -235,7 +235,7 @@ func (p *DownloadConsumer) workerProcessor() {
 					p.db.UpdateMediaDownload(context.TODO(), info.roomID, info.eventID, true)
 				}
 			} else {
-				p.pushRetry(domain, netdiskID, thumbnail, info)
+				p.pushRetry(domain, netdiskID, thumbnail, *info)
 			}
 		} else {
 			if info.roomID != "" && info.eventID != "" {
@@ -245,34 +245,41 @@ func (p *DownloadConsumer) workerProcessor() {
 	}
 }
 
-func (p *DownloadConsumer) getOne() (info DownloadInfo, key string, thumbnail, ok bool) {
+func (p *DownloadConsumer) getOne() (info *DownloadInfo, key string, thumbnail, ok bool) {
+	ok = false
 	if len(p.thumbnailMap) > 0 {
 		key := ""
-		info := DownloadInfo{}
+		var info *DownloadInfo
 		for k, v := range p.thumbnailMap {
 			if !atomic.CompareAndSwapInt32(&v.isDownloading, 0, 1) {
 				continue
 			}
 			key = k
 			info = v
+			ok = true
 			break
 		}
-		return info, key, true, true
+		if ok {
+			return info, key, true, ok
+		}
 	}
 	if len(p.downloadMap) > 0 {
 		key := ""
-		info := DownloadInfo{}
+		var info *DownloadInfo
 		for k, v := range p.downloadMap {
 			if !atomic.CompareAndSwapInt32(&v.isDownloading, 0, 1) {
 				continue
 			}
 			key = k
 			info = v
+			ok = true
 			break
 		}
-		return info, key, false, true
+		if ok {
+			return info, key, false, ok
+		}
 	}
-	return DownloadInfo{}, "", false, false
+	return nil, "", false, false
 }
 
 func (p *DownloadConsumer) pushRetry(domain, netdiskID string, thumbnail bool, info DownloadInfo) {
@@ -294,7 +301,7 @@ func (p *DownloadConsumer) pushThumbnail(roomID, userID, eventID, domain, netdis
 	defer p.getMutex.Unlock()
 	p.repo.AddDownload(key)
 	if _, ok := p.thumbnailMap[key]; !ok {
-		p.thumbnailMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID, 0}
+		p.thumbnailMap[key] = &DownloadInfo{retryTimes, roomID, userID, eventID, 0}
 		p.startWorkerIfNeed()
 	}
 }
@@ -306,7 +313,7 @@ func (p *DownloadConsumer) pushDownload(roomID, userID, eventID, domain, netdisk
 	defer p.getMutex.Unlock()
 	p.repo.AddDownload(key)
 	if _, ok := p.downloadMap[key]; !ok {
-		p.downloadMap[key] = DownloadInfo{retryTimes, roomID, userID, eventID, 0}
+		p.downloadMap[key] = &DownloadInfo{retryTimes, roomID, userID, eventID, 0}
 		p.startWorkerIfNeed()
 	}
 }
