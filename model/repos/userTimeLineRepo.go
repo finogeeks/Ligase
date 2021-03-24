@@ -17,13 +17,11 @@ package repos
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
-	"reflect"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/finogeeks/ligase/adapter"
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
@@ -123,14 +121,6 @@ func (tl *UserTimeLineRepo) GetFriendShip(userID string, load bool) *sync.Map {
 	return nil
 }
 
-func (tl *UserTimeLineRepo) GetFriendshipReverse(userID string) *sync.Map {
-	friendReverseMap, ok := tl.friendshipReverse.Load(userID)
-	if ok {
-		return friendReverseMap.(*sync.Map)
-	}
-	return nil
-}
-
 func (tl *UserTimeLineRepo) SetReceiptLatest(userID string, offset int64) {
 	tl.receiptMutex.Lock()
 	defer tl.receiptMutex.Unlock()
@@ -162,60 +152,49 @@ func (tl *UserTimeLineRepo) AddP2PEv(ev *gomatrixserverlib.ClientEvent, user str
 			}
 		}
 	}
-	start := time.Now().UnixNano() / 1000000
+	timespend := common.NewTimeSpend()
 	if ev.Type == "m.room.member" {
-		var userJoin *sync.Map
-		var userInvite *sync.Map
-		var userLeave *sync.Map
-		bs := time.Now().UnixNano() / 1000000
-		userJoin, _ = tl.GetJoinRooms(user)
-		spend := time.Now().UnixNano()/1000000 - bs
-		if spend > types.DB_EXCEED_TIME {
-			log.Infof("AddP2PEv user:%s eventID:%s eventOffset:%d get join room spend:%d", user, ev.EventID, ev.EventOffset, spend)
+		timespend := common.NewTimeSpend()
+		userJoin, _ := tl.getJoinRooms(user)
+		timespend.WarnIfExceedf(types.DB_EXCEED_TIME, "AddP2PEv user:%s eventID:%s eventOffset:%d get join room", user, ev.EventID, ev.EventOffset)
+
+		timespend.Reset()
+		userInvite, _ := tl.getInviteRooms(user)
+		timespend.WarnIfExceedf(types.DB_EXCEED_TIME, "AddP2PEv user:%s eventID:%s eventOffset:%d get invite room", user, ev.EventID, ev.EventOffset)
+
+		timespend.Reset()
+		userLeave, _ := tl.getLeaveRooms(user)
+		timespend.WarnIfExceedf(types.DB_EXCEED_TIME, "AddP2PEv user:%s eventID:%s eventOffset:%d get leave room", user, ev.EventID, ev.EventOffset)
+
+		storeMap := func(m *sync.Map, key string, val int64) {
+			if m != nil {
+				m.Store(key, val)
+			}
 		}
-		if userJoin == nil {
-			userJoin = new(sync.Map)
-			tl.join.Store(user, userJoin)
+		deleteMap := func(m *sync.Map, key string) {
+			if m != nil {
+				m.Delete(key)
+			}
 		}
-		bs = time.Now().UnixNano() / 1000000
-		userInvite, _ = tl.GetInviteRooms(user)
-		spend = time.Now().UnixNano()/1000000 - bs
-		if spend > types.DB_EXCEED_TIME {
-			log.Infof("AddP2PEv user:%s eventID:%s eventOffset:%d get invite room spend:%d", user, ev.EventID, ev.EventOffset, spend)
-		}
-		if userInvite == nil {
-			userInvite = new(sync.Map)
-			tl.invite.Store(user, userInvite)
-		}
-		bs = time.Now().UnixNano() / 1000000
-		userLeave, _ = tl.GetLeaveRooms(user)
-		spend = time.Now().UnixNano()/1000000 - bs
-		if spend > types.DB_EXCEED_TIME {
-			log.Infof("AddP2PEv user:%s eventID:%s eventOffset:%d get leave room spend:%d", user, ev.EventID, ev.EventOffset, spend)
-		}
-		if userLeave == nil {
-			userLeave = new(sync.Map)
-			tl.leave.Store(user, userLeave)
-		}
+
 		if user == *ev.StateKey {
 			switch membership {
 			case "join":
-				userJoin.Store(ev.RoomID, ev.EventOffset)
-				userInvite.Delete(ev.RoomID)
-				userLeave.Delete(ev.RoomID)
+				storeMap(userJoin, ev.RoomID, ev.EventOffset)
+				deleteMap(userInvite, ev.RoomID)
+				deleteMap(userLeave, ev.RoomID)
 			case "leave", "ban":
-				userLeave.Store(ev.RoomID, ev.EventOffset)
-				userJoin.Delete(ev.RoomID)
-				userInvite.Delete(ev.RoomID)
+				deleteMap(userJoin, ev.RoomID)
+				deleteMap(userInvite, ev.RoomID)
+				storeMap(userLeave, ev.RoomID, ev.EventOffset)
 			case "invite":
-				userJoin.Delete(ev.RoomID)
-				userLeave.Delete(ev.RoomID)
-				userInvite.Store(ev.RoomID, ev.EventOffset)
+				deleteMap(userJoin, ev.RoomID)
+				storeMap(userInvite, ev.RoomID, ev.EventOffset)
+				deleteMap(userLeave, ev.RoomID)
 			}
 		}
 	}
-	spend := time.Now().UnixNano()/1000000 - start
-	log.Infof("UserTimeLineRepo.AddP2PEv update roomID:%s,eventNID:%d,user:%s,evoffset:%d,membership:%s spend:%d", ev.RoomID, ev.EventNID, user, ev.EventOffset, membership, spend)
+	timespend.Logf(types.DB_EXCEED_TIME, "UserTimeLineRepo.AddP2PEv update roomID:%s,eventNID:%d,user:%s,evoffset:%d,membership:%s", ev.RoomID, ev.EventNID, user, ev.EventOffset, membership)
 }
 
 func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
@@ -223,7 +202,7 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 		tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "LoadUserFriendShip").Add(1)
 		return
 	}
-	joinRooms, err := tl.GetJoinRooms(userID)
+	joinRooms, err := tl.getJoinRooms(userID)
 	if err == nil {
 		var joined []string
 		joinRooms.Range(func(key, value interface{}) bool {
@@ -231,18 +210,13 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 			return true
 		})
 		if len(joined) > 0 {
-			bs := time.Now().UnixNano() / 1000000
+			timespend := common.NewTimeSpend()
 			friends, err := tl.persist.GetFriendShip(context.TODO(), joined)
-			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {
-				log.Errorf("load db failed UserTimeLineRepo.LoadUserFriendShip user %s spend:%d ms err:%v", userID, spend, err)
+				log.Errorf("load db failed UserTimeLineRepo.LoadUserFriendShip user %s spend:%d ms err:%v", userID, timespend.MS(), err)
 				return
 			}
-			if spend > types.DB_EXCEED_TIME {
-				log.Warnf("load db exceed %d ms UserTimeLineRepo.LoadUserFriendShip user:%s spend:%d ms", types.DB_EXCEED_TIME, userID, spend)
-			} else {
-				log.Infof("load db succ UserTimeLineRepo.LoadUserFriendShip user:%s spend:%d ms", userID, spend)
-			}
+			timespend.Logf(types.DB_EXCEED_TIME, "load db succ UserTimeLineRepo.LoadUserFriendShip user:%s", userID)
 			if friends != nil {
 				for _, friend := range friends {
 					tl.addFriendShip(userID, friend)
@@ -250,7 +224,7 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 			}
 		} else {
 			friendMap := new(sync.Map)
-			tl.friendShip.Store(userID, friendMap)
+			tl.friendShip.LoadOrStore(userID, friendMap)
 		}
 	}
 
@@ -259,44 +233,21 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 
 func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) {
 	batchIdInt64, _ := tl.Idg.Next()
-	batchId :=strconv.FormatInt(batchIdInt64,10)
-	loadRooms := []interface{}{}
-	for _, room := range rooms {
-		loadRooms = append(loadRooms, room)
-	}
-	segmens := common.SplitArray(loadRooms,500)
-	for _,sg := range segmens {
-		switch reflect.TypeOf(sg).Kind() {
-		case reflect.Slice, reflect.Array:
-			s := reflect.ValueOf(sg)
-			vals := []string{}
-			for i := 0; i < s.Len(); i++ {
-				if s.Index(i).Interface() == nil {
-					continue
-				}
-				room := s.Index(i).Interface().(string)
-				vals = append(vals, room)
-			}
-			tl.loadRoomLatestByPage(batchId, user, vals)
-		default:
-			log.Warnf("batchId:%s user:%s loadRoomLatest rooms after split type err", batchId, user)
-		}
+	batchId := strconv.FormatInt(batchIdInt64, 10)
+	segmens := common.SplitStringArray(rooms, 500)
+	for _, vals := range segmens {
+		tl.loadRoomLatestByPage(batchId, user, vals)
 	}
 }
 
 func (tl *UserTimeLineRepo) loadRoomLatestByPage(batchId, user string, rooms []string) error {
-	bs := time.Now().UnixNano() / 1000000
+	timespend := common.NewTimeSpend()
 	roomMap, err := tl.persist.GetRoomLastOffsets(context.TODO(), rooms)
-	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
-		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms err:%v",batchId, user,len(rooms), spend, err)
+		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms err:%v", batchId, user, len(rooms), timespend.MS(), err)
 		return err
 	}
-	if spend > types.DB_EXCEED_TIME {
-		log.Warnf("batchId:%s user:%s load db exceed %d ms UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms", batchId, user, types.DB_EXCEED_TIME, len(rooms), spend)
-	} else {
-		log.Infof("batchId:%s user:%s load db succ UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms", batchId, user, len(rooms), spend)
-	}
+	timespend.Logf(types.DB_EXCEED_TIME, "batchId:%s user:%s load db succ UserTimeLineRepo.loadRoomLatest len(rooms):%d", batchId, user, len(rooms))
 	if roomMap != nil {
 		for roomID, offset := range roomMap {
 			tl.UpdateRoomOffset(roomID, offset)
@@ -305,122 +256,139 @@ func (tl *UserTimeLineRepo) loadRoomLatestByPage(batchId, user string, rooms []s
 	return nil
 }
 
-func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map)  {
+func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map) {
 	batchIdInt64, _ := tl.Idg.Next()
-	batchId :=strconv.FormatInt(batchIdInt64,10)
-	loadEvents := []interface{}{}
-	for _, event := range events {
-		loadEvents = append(loadEvents, event)
-	}
-	segmens := common.SplitArray(loadEvents,500)
-	for _,sg := range segmens {
-		switch reflect.TypeOf(sg).Kind() {
-		case reflect.Slice, reflect.Array:
-			s := reflect.ValueOf(sg)
-			vals := []string{}
-			for i := 0; i < s.Len(); i++ {
-				if s.Index(i).Interface() == nil {
-					continue
-				}
-				event := s.Index(i).Interface().(string)
-				vals = append(vals, event)
-			}
-			tl.loadJoinRoomOffsetsByPage(batchId, user, vals, res)
-		default:
-			log.Warnf("batchId:%s user:%s loadJoinRoomOffsets events after split type err", batchId, user)
-		}
+	batchId := strconv.FormatInt(batchIdInt64, 10)
+	segmens := common.SplitStringArray(events, 500)
+	for _, vals := range segmens {
+		tl.loadJoinRoomOffsetsByPage(batchId, user, vals, res)
 	}
 }
 
 func (tl *UserTimeLineRepo) loadJoinRoomOffsetsByPage(batchId, user string, events []string, res *sync.Map) error {
-	bs := time.Now().UnixNano() / 1000000
+	timespend := common.NewTimeSpend()
 	offsets, _, roomIDs, err := tl.persist.GetJoinRoomOffsets(context.TODO(), events)
-	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
-		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomJoinOffsets len(events):%d spend:%d ms err:%v", batchId, user, len(events), spend, err)
+		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomJoinOffsets len(events):%d spend:%d ms err:%v", batchId, user, len(events), timespend.MS(), err)
 		return err
 	}
-	if spend > types.DB_EXCEED_TIME {
-		log.Warnf("batchId:%s user:%s load db exceed %d ms UserTimeLineRepo.loadRoomJoinOffsets len(events):%d spend:%d ms", batchId, user, types.DB_EXCEED_TIME, len(events), spend)
-	} else {
-		log.Infof("batchId:%s user:%s load db succ UserTimeLineRepo.loadRoomJoinOffsets len(events):%d spend:%d ms", batchId, user, len(events), spend)
-	}
+	timespend.Logf(types.DB_EXCEED_TIME, "batchId:%s user:%s load db succ UserTimeLineRepo.loadRoomJoinOffsets len(events):%d", batchId, user, len(events))
 	for idx, roomID := range roomIDs {
 		res.Store(roomID, offsets[idx])
 	}
 	return nil
 }
 
-func (tl *UserTimeLineRepo) GetJoinRooms(user string) (*sync.Map, error) {
-	res := new(sync.Map)
-	if _, ok := tl.joinReady.Load(user); !ok {
-		bs := time.Now().UnixNano() / 1000000
-		rooms, _, events, err := tl.persist.GetRidsForUser(context.TODO(), user)
-		spend := time.Now().UnixNano()/1000000 - bs
+func (tl *UserTimeLineRepo) doLoad(loadMap, readyMap *sync.Map, key string, override bool, loader func() (interface{}, error)) error {
+	if _, ok := readyMap.Load(key); !ok {
+		res, err := loader()
 		if err != nil {
-			log.Errorf("load db failed UserTimeLineRepo.GetJoinRooms user %s spend:%d ms err:%v", user, spend, err)
-			return res, err
+			return err
 		}
-		if spend > types.DB_EXCEED_TIME {
-			log.Warnf("load db exceed %d ms UserTimeLineRepo.GetJoinRooms user:%s spend:%d ms", types.DB_EXCEED_TIME, user, spend)
+
+		if override {
+			loadMap.Store(key, res)
 		} else {
-			log.Infof("load db succ UserTimeLineRepo.GetJoinRooms user:%s spend:%d ms", user, spend)
+			loadMap.LoadOrStore(key, res)
 		}
+		readyMap.Store(key, true)
+	}
+
+	return nil
+}
+
+func (tl *UserTimeLineRepo) LoadJoinRooms(user string) error {
+	err := tl.doLoad(&tl.join, &tl.joinReady, user, false, func() (interface{}, error) {
+		timespend := common.NewTimeSpend()
+		rooms, _, events, err := tl.persist.GetRidsForUser(context.TODO(), user)
+		if err != nil {
+			log.Errorf("load db failed UserTimeLineRepo.GetJoinRooms user %s spend:%d ms err:%v", user, timespend.MS(), err)
+			return nil, err
+		}
+		timespend.Logf(types.DB_EXCEED_TIME, "load db succ UserTimeLineRepo.GetJoinRooms user:%s", user)
 		loadrooms := []string{}
 		loadEvents := []string{}
+		res := new(sync.Map)
 		for idx, id := range rooms {
 			res.Store(id, int64(-1))
-			if tl.GetRoomOffset(id,user,"join") == -1 {
+			if tl.GetRoomOffset(id, user, "join") == -1 {
 				loadrooms = append(loadrooms, id)
 			}
 			loadEvents = append(loadEvents, events[idx])
 		}
-		if len(loadrooms)> 0 {
+		if len(loadrooms) > 0 {
 			tl.loadRoomLatest(user, loadrooms)
 		}
 		if len(loadEvents) > 0 {
 			tl.loadJoinRoomOffsets(user, loadEvents, res)
 		}
-		tl.join.Store(user, res)
-		tl.joinReady.Store(user, true)
 
 		tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "GetJoinRooms").Add(1)
-	}
-
-	val, ok := tl.join.Load(user)
-	if ok == true {
-		tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetJoinRooms").Add(1)
-		return val.(*sync.Map), nil
-	}
-
-	return res, nil
+		return res, nil
+	})
+	return err
 }
 
-func (tl *UserTimeLineRepo) CheckIsJoinRoom(user, room string) (isJoin bool) {
-	joined, _ := tl.GetJoinRooms(user)
-	isJoin = false
-	if joined != nil {
-		if _, ok := joined.Load(room); ok {
-			isJoin = true
-		}
+func (tl *UserTimeLineRepo) getJoinRooms(user string) (*sync.Map, error) {
+	err := tl.LoadJoinRooms(user)
+	if err != nil {
+		return nil, err
 	}
-	return
+
+	val, _ := tl.join.Load(user)
+	tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetJoinRooms").Add(1)
+	return val.(*sync.Map), nil
+}
+
+func (tl *UserTimeLineRepo) GetJoinRoomsMap(user string) (map[string]int64, error) {
+	res, err := tl.getJoinRooms(user)
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]int64{}
+	res.Range(func(k, v interface{}) bool {
+		m[k.(string)] = v.(int64)
+		return true
+	})
+	return m, nil
+}
+
+func (tl *UserTimeLineRepo) GetJoinRoomsArr(user string) ([]string, error) {
+	res, err := tl.getJoinRooms(user)
+	if err != nil {
+		return nil, err
+	}
+	arr := []string{}
+	res.Range(func(k, v interface{}) bool {
+		arr = append(arr, k.(string))
+		return true
+	})
+	return arr, nil
+}
+
+func (tl *UserTimeLineRepo) CheckIsJoinRoom(user, roomID string) (bool, error) {
+	res, err := tl.getJoinRooms(user)
+	if err != nil {
+		return false, err
+	}
+	_, ok := res.Load(roomID)
+	return ok, nil
 }
 
 func (tl *UserTimeLineRepo) GetUserRoomMembership(user, room string) string {
-	joined, _ := tl.GetJoinRooms(user)
+	joined, _ := tl.getJoinRooms(user)
 	if joined != nil {
 		if _, ok := joined.Load(room); ok {
 			return "join"
 		}
 	}
-	invited, _ := tl.GetInviteRooms(user)
+	invited, _ := tl.getInviteRooms(user)
 	if invited != nil {
 		if _, ok := invited.Load(room); ok {
 			return "invite"
 		}
 	}
-	leaved, _ := tl.GetLeaveRooms(user)
+	leaved, _ := tl.getLeaveRooms(user)
 	if leaved != nil {
 		if _, ok := leaved.Load(room); ok {
 			return "leave"
@@ -429,74 +397,90 @@ func (tl *UserTimeLineRepo) GetUserRoomMembership(user, room string) string {
 	return "unknown"
 }
 
-func (tl *UserTimeLineRepo) GetInviteRooms(user string) (*sync.Map, error) {
-	res := new(sync.Map)
-
-	if _, ok := tl.inviteReady.Load(user); !ok {
-		bs := time.Now().UnixNano() / 1000000
+func (tl *UserTimeLineRepo) LoadInviteRooms(user string) error {
+	err := tl.doLoad(&tl.invite, &tl.inviteReady, user, false, func() (interface{}, error) {
+		timespend := common.NewTimeSpend()
 		rooms, offsets, _, err := tl.persist.GetInviteRidsForUser(context.TODO(), user)
-		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
-			log.Errorf("load db failed UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms err:%v", user, spend, err)
+			log.Errorf("load db failed UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms err:%v", user, timespend.MS(), err)
 			return nil, err
 		}
-		if spend > types.DB_EXCEED_TIME {
-			log.Warnf("load db exceed %d ms UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms", types.DB_EXCEED_TIME, user, spend)
-		} else {
-			log.Infof("load db succ UserTimeLineRepo.GetInviteRooms user:%s spend:%d ms", user, spend)
-		}
+		timespend.Logf(types.DB_EXCEED_TIME, "load db succ UserTimeLineRepo.GetInviteRooms user:%s", user)
+		res := new(sync.Map)
 		for idx, id := range rooms {
 			res.Store(id, offsets[idx])
 		}
-
-		tl.invite.Store(user, res)
-		tl.inviteReady.Store(user, true)
-
 		tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "GetInviteRooms").Add(1)
-	}
-
-	val, ok := tl.invite.Load(user)
-	if ok == true {
-		tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetInviteRooms").Add(1)
-		return val.(*sync.Map), nil
-	}
-
-	return res, nil
+		return res, nil
+	})
+	return err
 }
 
-func (tl *UserTimeLineRepo) GetLeaveRooms(user string) (*sync.Map, error) {
-	res := new(sync.Map)
+func (tl *UserTimeLineRepo) getInviteRooms(user string) (*sync.Map, error) {
+	err := tl.LoadInviteRooms(user)
+	if err != nil {
+		return nil, err
+	}
 
-	if _, ok := tl.leaveReady.Load(user); !ok {
-		bs := time.Now().UnixNano() / 1000000
+	val, _ := tl.invite.Load(user)
+	tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetInviteRooms").Add(1)
+	return val.(*sync.Map), nil
+}
+
+func (tl *UserTimeLineRepo) GetInviteRoomsMap(user string) (map[string]int64, error) {
+	res, err := tl.getInviteRooms(user)
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]int64{}
+	res.Range(func(k, v interface{}) bool {
+		m[k.(string)] = v.(int64)
+		return true
+	})
+	return m, nil
+}
+
+func (tl *UserTimeLineRepo) LoadLeaveRooms(user string) error {
+	err := tl.doLoad(&tl.leave, &tl.leaveReady, user, false, func() (interface{}, error) {
+		timespend := common.NewTimeSpend()
 		rooms, _, _, err := tl.persist.GetLeaveRidsForUser(context.TODO(), user)
-		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
-			log.Errorf("load db failed UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms err:%v", user, spend, err)
+			log.Errorf("load db failed UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms err:%v", user, timespend.MS(), err)
 			return nil, err
 		}
-		if spend > types.DB_EXCEED_TIME {
-			log.Warnf("load db exceed %d ms UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms", types.DB_EXCEED_TIME, user, spend)
-		} else {
-			log.Infof("load db succ UserTimeLineRepo.GetLeaveRooms user:%s spend:%d ms", user, spend)
-		}
+		timespend.Logf(types.DB_EXCEED_TIME, "load db succ UserTimeLineRepo.GetLeaveRooms user:%s", user)
+		res := new(sync.Map)
 		for _, id := range rooms {
 			res.Store(id, int64(-1))
 		}
-
-		tl.leave.Store(user, res)
-		tl.leaveReady.Store(user, true)
-
 		tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "GetLeaveRooms").Add(1)
+		return res, nil
+	})
+	return err
+}
+
+func (tl *UserTimeLineRepo) getLeaveRooms(user string) (*sync.Map, error) {
+	err := tl.LoadLeaveRooms(user)
+	if err != nil {
+		return nil, err
 	}
 
-	val, ok := tl.leave.Load(user)
-	if ok == true {
-		tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetLeaveRooms").Add(1)
-		return val.(*sync.Map), nil
-	}
+	val, _ := tl.leave.Load(user)
+	tl.queryHitCounter.WithLabelValues("cache", "UserTimeLineRepo", "GetLeaveRooms").Add(1)
+	return val.(*sync.Map), nil
+}
 
-	return res, nil
+func (tl *UserTimeLineRepo) GetLeaveRoomsMap(user string) (map[string]int64, error) {
+	res, err := tl.getLeaveRooms(user)
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]int64{}
+	res.Range(func(k, v interface{}) bool {
+		m[k.(string)] = v.(int64)
+		return true
+	})
+	return m, nil
 }
 
 func (tl *UserTimeLineRepo) CheckUserLoadingReady(user string) bool {
@@ -508,19 +492,13 @@ func (tl *UserTimeLineRepo) LoadHistory(user string, isHuman bool) {
 	if tl.CheckUserLoadingReady(user) == false {
 		if isHuman {
 			if _, ok := tl.receiptLatest.Load(user); !ok {
-				bs := time.Now().UnixNano() / 1000000
+				timespend := common.NewTimeSpend()
 				maxPos, err := tl.persist.GetUserMaxReceiptOffset(context.TODO(), user)
-				spend := time.Now().UnixNano()/1000000 - bs
 				if err != nil {
-					log.Errorf("load db failed UserTimeLineRepo.LoadReceiptHistory user %s spend:%d err %d", user, spend, err)
+					log.Errorf("load db failed UserTimeLineRepo.LoadReceiptHistory user %s spend:%d err %d", user, timespend.MS(), err)
 					return
-				} else {
-					if spend > types.DB_EXCEED_TIME {
-						log.Warnf("load db exceed %d ms UserTimeLineRepo.LoadReceiptHistory user:%s spend:%d ms", types.DB_EXCEED_TIME, user, spend)
-					} else {
-						log.Infof("load db succ UserTimeLineRepo.LoadReceiptHistory user:%s spend:%d ms", user, spend)
-					}
 				}
+				timespend.Logf(types.DB_EXCEED_TIME, "load db succ UserTimeLineRepo.LoadReceiptHistory user:%s", user)
 				log.Warnf("load history update user:%s receipt:%d", user, maxPos)
 
 				tl.SetReceiptLatest(user, maxPos)
@@ -560,14 +538,14 @@ func (tl *UserTimeLineRepo) GetRoomOffset(roomID, user, membership string) int64
 	}
 }
 
-func (tl *UserTimeLineRepo) GetJoinMembershipOffset(user,roomID string) (offset int64) {
-	joins, err := tl.GetJoinRooms(user)
+func (tl *UserTimeLineRepo) GetJoinMembershipOffset(user, roomID string) (offset int64) {
+	joins, err := tl.getJoinRooms(user)
 	if err != nil || joins == nil {
 		return -1
 	}
 	if offset, ok := joins.Load(roomID); ok {
 		return offset.(int64)
-	}else{
+	} else {
 		return -1
 	}
 }
@@ -593,7 +571,7 @@ func (tl *UserTimeLineRepo) GetJoinRoomOffset(roomID string) int64 {
 }
 
 func (tl *UserTimeLineRepo) GetInviteRoomOffset(roomID, user string) int64 {
-	invites, err := tl.GetInviteRooms(user)
+	invites, err := tl.getInviteRooms(user)
 	if err != nil || invites == nil {
 		return -1
 	}
@@ -605,7 +583,7 @@ func (tl *UserTimeLineRepo) GetInviteRoomOffset(roomID, user string) int64 {
 }
 
 func (tl *UserTimeLineRepo) GetLeaveRoomOffset(roomID, user string) int64 {
-	leaves, err := tl.GetLeaveRooms(user)
+	leaves, err := tl.getLeaveRooms(user)
 	if err != nil || leaves == nil {
 		return -1
 	}
@@ -616,8 +594,8 @@ func (tl *UserTimeLineRepo) GetLeaveRoomOffset(roomID, user string) int64 {
 	}
 }
 
-func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceId string) (bool, int64) {
-	curUtl, token, err := tl.LoadToken(user,device,utl)
+func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, traceId string) (bool, int64) {
+	curUtl, token, err := tl.LoadToken(user, device, utl)
 	//load token from redis err
 	if err != nil {
 		log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", traceId, user, device, utl, err)
@@ -628,19 +606,18 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 		log.Infof("traceId:%s user:%s device:%s utl:%d load token miss", traceId, user, device, utl)
 		return true, curUtl
 	}
-	joinedRooms, _ := tl.GetJoinRooms(user)
 	//compare token room offset
 	for roomID, offset := range token {
 		membership := tl.GetUserRoomMembership(user, roomID)
-		roomOffset := tl.GetRoomOffset(roomID, user , membership)
+		roomOffset := tl.GetRoomOffset(roomID, user, membership)
 		if roomOffset != -1 && offset < roomOffset {
 			if membership == "join" {
-				if joinedRooms!=nil && tl.GetJoinMembershipOffset(user, roomID) > 0 {
-					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+				if tl.GetJoinMembershipOffset(user, roomID) > 0 {
+					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
 					return true, curUtl
 				}
-			}else{
-				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+			} else {
+				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
 				return true, curUtl
 			}
 		}
@@ -648,15 +625,16 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 	//compare related room offset
 	//has new joined
 	hasNewJoined := false
+	joinedRooms, _ := tl.getJoinRooms(user)
 	if joinedRooms != nil {
 		joinedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			}else{
+			} else {
 				if tl.GetJoinMembershipOffset(user, key.(string)) > 0 {
 					hasNewJoined = true
 					return false
-				}else{
+				} else {
 					return true
 				}
 			}
@@ -668,12 +646,12 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 	}
 	//has new invite
 	hasNewInvite := false
-	InvitedRooms, _ := tl.GetInviteRooms(user)
+	InvitedRooms, _ := tl.getInviteRooms(user)
 	if InvitedRooms != nil {
 		InvitedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			}else{
+			} else {
 				hasNewInvite = true
 				return false
 			}
@@ -685,17 +663,17 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 	}
 	//has new leave
 	hasNewLeave := false
-	LeavedRooms, _ := tl.GetLeaveRooms(user)
+	LeavedRooms, _ := tl.getLeaveRooms(user)
 	if LeavedRooms != nil {
 		LeavedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			}else{
+			} else {
 				//leave room check self has new msg
 				if value.(int64) != -1 {
 					hasNewLeave = true
 					return false
-				}else{
+				} else {
 					return true
 				}
 			}
@@ -752,11 +730,10 @@ func (tl *UserTimeLineRepo) LoadToken(user, device string, utl int64) (int64, ma
 }
 
 func (tl *UserTimeLineRepo) UpdateToken(user, device string, utl int64, roomOffsets map[string]int64) error {
-	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64) {
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("update user:%s device:%s token spend:%d ms", user, device, spend)
-	}(bs)
+	timespend := common.NewTimeSpend()
+	defer func(timespend *common.TimeSpend) {
+		log.Infof("update user:%s device:%s token spend:%d ms", user, device, timespend.MS())
+	}(timespend)
 	err := tl.cache.SetToken(user, device, utl, roomOffsets)
 	if err != nil {
 		log.Errorf("update user:%s device:%s utl:%d err:%v", user, device, utl, err)

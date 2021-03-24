@@ -16,16 +16,17 @@ package api
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"net/http"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -64,7 +65,7 @@ func (ReqPostReportRoom) Process(consumer interface{}, msg core.Coder, device *a
 	}
 	req := msg.(*external.PostReportRoomRequest)
 	if req.RoomID != "" {
-		isJoin := c.userTimeLine.CheckIsJoinRoom(device.UserID, req.RoomID)
+		isJoin, _ := c.userTimeLine.CheckIsJoinRoom(device.UserID, req.RoomID)
 		if !isJoin {
 			return http.StatusForbidden, jsonerror.BadJSON(fmt.Sprintf("user:%s is not in room:%s", device.UserID, req.RoomID))
 		}

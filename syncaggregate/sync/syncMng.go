@@ -343,17 +343,17 @@ func (sm *SyncMng) dispatch(uid string, req *request) {
 
 func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
 	log.Infof("traceid:%s begin reBuildIncreamSyncReqRoom", req.traceId)
-	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
+	joinRooms, err := sm.userTimeLine.GetJoinRoomsArr(req.device.UserID)
 	if err != nil {
 		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetJoinRooms err:%v", req.traceId, err)
 		return
 	}
-	inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)
+	inviteRooms, err := sm.userTimeLine.GetInviteRoomsMap(req.device.UserID)
 	if err != nil {
 		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetInviteRooms err:%v", req.traceId, err)
 		return
 	}
-	leaveRooms, err := sm.userTimeLine.GetLeaveRooms(req.device.UserID)
+	leaveRooms, err := sm.userTimeLine.GetLeaveRoomsMap(req.device.UserID)
 	if err != nil {
 		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetLeaveRooms err:%v", req.traceId, err)
 		return
@@ -361,8 +361,7 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
 	//rebuild
 	req.reqRooms = sync.Map{}
 	req.joinRooms = []string{}
-	joinRooms.Range(func(key, value interface{}) bool {
-		roomID := key.(string)
+	for _, roomID := range joinRooms {
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join")
 		joinOffset := sm.userTimeLine.GetJoinMembershipOffset(req.device.UserID, roomID)
 		req.joinRooms = append(req.joinRooms, roomID)
@@ -375,10 +374,8 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
 				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join", "rebuild"))
 			}
 		}
-		return true
-	})
-	inviteRooms.Range(func(key, value interface{}) bool {
-		roomID := key.(string)
+	}
+	for roomID := range inviteRooms {
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
@@ -387,10 +384,8 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
 		} else {
 			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "invite", "rebuild"))
 		}
-		return true
-	})
-	leaveRooms.Range(func(key, value interface{}) bool {
-		roomID := key.(string)
+	}
+	for roomID := range leaveRooms {
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "leave")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
@@ -402,18 +397,17 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
 				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset-1, latestOffset, roomID, "leave", "rebuild"))
 			}
 		}
-		return true
-	})
+	}
 }
 
 func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool {
 	//bot not build full sync data
 	if sm.isFullSync(req) && req.device.IsHuman == false {
-		_, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
+		err := sm.userTimeLine.LoadJoinRooms(req.device.UserID)
 		if err != nil {
 			return false
 		}
-		_, err = sm.userTimeLine.GetInviteRooms(req.device.UserID)
+		err = sm.userTimeLine.LoadInviteRooms(req.device.UserID)
 		if err != nil {
 			return false
 		}
@@ -788,13 +782,13 @@ func (sm *SyncMng) addClientAccountData(req *request, response *syncapitypes.Res
 }
 
 func (sm *SyncMng) addRoomAccountData(req *request, response *syncapitypes.Response, accountIDs []string) *syncapitypes.Response {
-	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
+	joinRooms, err := sm.userTimeLine.GetJoinRoomsMap(req.device.UserID)
 	if err != nil {
 		return response
 	}
 	for _, accountID := range accountIDs {
 		actData, _ := sm.cache.GetRoomAccountDataCacheData(accountID)
-		if _, ok := joinRooms.Load(actData.RoomID); !ok {
+		if _, ok := joinRooms[actData.RoomID]; !ok {
 			continue
 		}
 		event := gomatrixserverlib.ClientEvent{
@@ -916,14 +910,14 @@ func (sm *SyncMng) addRoomEmptyTags(req *request, response *syncapitypes.Respons
 func (sm *SyncMng) addRoomTags(req *request, response *syncapitypes.Response, tagIDs []string) *syncapitypes.Response {
 	roomTags := make(map[string]interface{})
 	var tagContent interface{}
-	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
+	joinRooms, err := sm.userTimeLine.GetJoinRoomsMap(req.device.UserID)
 	if err != nil {
 		return response
 	}
 
 	for _, tagID := range tagIDs {
 		tag, _ := sm.cache.GetRoomTagCacheData(tagID)
-		if _, ok := joinRooms.Load(tag.RoomID); !ok {
+		if _, ok := joinRooms[tag.RoomID]; !ok {
 			continue
 		}
 
@@ -1049,7 +1043,7 @@ func (sm *SyncMng) addKeyChangeInfo(req *request, response *syncapitypes.Respons
 func (sm *SyncMng) addTyping(req *request, response *syncapitypes.Response, curRoomID string) {
 	if sm.typingConsumer.ExistsTyping(req.device.UserID, req.device.ID, curRoomID) {
 		events := sm.typingConsumer.GetTyping(req.device.UserID, req.device.ID, curRoomID)
-		joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
+		joinRooms, err := sm.userTimeLine.GetJoinRoomsMap(req.device.UserID)
 		if err != nil {
 			return
 		}
@@ -1061,7 +1055,7 @@ func (sm *SyncMng) addTyping(req *request, response *syncapitypes.Response, curR
 			for _, event := range events {
 				var jr *syncapitypes.JoinResponse
 				roomID := event.RoomID
-				if _, ok := joinRooms.Load(roomID); ok {
+				if _, ok := joinRooms[roomID]; ok {
 					if joinResponse, ok := response.Rooms.Join[roomID]; ok {
 						jr = &joinResponse
 					} else {
@@ -1079,7 +1073,7 @@ func (sm *SyncMng) addTyping(req *request, response *syncapitypes.Response, curR
 				if roomID != curRoomID {
 					continue
 				}
-				if _, ok := joinRooms.Load(roomID); ok {
+				if _, ok := joinRooms[roomID]; ok {
 					if joinResponse, ok := response.Rooms.Join[roomID]; ok {
 						jr = &joinResponse
 					} else {

@@ -17,18 +17,17 @@ package rpc
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/types"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/model/repos"
+	"github.com/finogeeks/ligase/model/types"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/nats-io/nats.go"
-
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type EventRpcConsumer struct {
@@ -106,7 +105,7 @@ func (s *EventRpcConsumer) processOnEvent(eventID, userID, reply string) {
 
 	if len(event) > 0 {
 		roomID := event[0].RoomID
-		joined, err := s.userTimeLine.GetJoinRooms(userID)
+		isJoin, err := s.userTimeLine.CheckIsJoinRoom(userID, roomID)
 		if err != nil {
 			resp := util.JSONResponse{
 				Code: http.StatusInternalServerError,
@@ -114,13 +113,6 @@ func (s *EventRpcConsumer) processOnEvent(eventID, userID, reply string) {
 			}
 			s.rpcClient.PubObj(reply, resp)
 			return
-		}
-
-		isJoin := false
-		if joined != nil {
-			if _, ok := joined.Load(roomID); ok {
-				isJoin = true
-			}
 		}
 
 		if isJoin == false {

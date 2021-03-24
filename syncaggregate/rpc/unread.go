@@ -15,19 +15,18 @@
 package rpc
 
 import (
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/syncapitypes"
-	"github.com/finogeeks/ligase/model/types"
 	"net/http"
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/model/repos"
-	"github.com/nats-io/nats.go"
-
+	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/model/types"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/nats-io/nats.go"
 )
 
 type UnReadRpcConsumer struct {
@@ -89,7 +88,7 @@ func (s *UnReadRpcConsumer) Start() error {
 }
 
 func (s *UnReadRpcConsumer) processOnUnread(userID, reply string) {
-	joinMap, err := s.userTimeLine.GetJoinRooms(userID)
+	joinMap, err := s.userTimeLine.GetJoinRoomsMap(userID)
 	if err != nil {
 		resp := util.JSONResponse{
 			Code: http.StatusInternalServerError,
@@ -103,8 +102,8 @@ func (s *UnReadRpcConsumer) processOnUnread(userID, reply string) {
 	countMap := new(sync.Map)
 	requestMap := make(map[uint32]*syncapitypes.SyncUnreadRequest)
 	if joinMap != nil {
-		joinMap.Range(func(key, value interface{}) bool {
-			instance := common.GetSyncInstance(key.(string), s.cfg.MultiInstance.SyncServerTotal)
+		for roomID := range joinMap {
+			instance := common.GetSyncInstance(roomID, s.cfg.MultiInstance.SyncServerTotal)
 			var request *syncapitypes.SyncUnreadRequest
 			if data, ok := requestMap[instance]; ok {
 				request = data
@@ -112,10 +111,9 @@ func (s *UnReadRpcConsumer) processOnUnread(userID, reply string) {
 				request = &syncapitypes.SyncUnreadRequest{}
 				requestMap[instance] = request
 			}
-			request.JoinRooms = append(request.JoinRooms, key.(string))
+			request.JoinRooms = append(request.JoinRooms, roomID)
 			request.UserID = userID
-			return true
-		})
+		}
 	}
 
 	var wg sync.WaitGroup
