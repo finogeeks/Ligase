@@ -18,7 +18,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -41,7 +43,7 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 		req.joinRooms = append(req.joinRooms, roomID)
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset && joinOffset > 0 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join","build"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join", "build"))
 			}
 		} else {
 			if joinOffset > 0 {
@@ -62,10 +64,10 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "invite","build"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "invite", "build"))
 			}
 		} else {
-			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "invite","build"))
+			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "invite", "build"))
 		}
 		return true
 	})
@@ -81,12 +83,12 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "leave")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "leave","build"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "leave", "build"))
 			}
 		} else {
 			//token has not offset leave room can get only the leave room msg
 			if latestOffset != -1 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset - 1, latestOffset, roomID,"leave", "build"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset-1, latestOffset, roomID, "leave", "build"))
 			}
 		}
 		return true
@@ -95,7 +97,7 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 }
 
 func (sm *SyncMng) buildReqRoom(traceId string, start, end int64, roomID, roomState, source string) *syncapitypes.SyncRoom {
-	log.Infof("traceid:%s roomID:%s start:%d end:%d roomState:%s source:%s", traceId, roomID, start, end, roomState,source)
+	log.Infof("traceid:%s roomID:%s start:%d end:%d roomState:%s source:%s", traceId, roomID, start, end, roomState, source)
 	return &syncapitypes.SyncRoom{
 		RoomID:    roomID,
 		RoomState: roomState,
@@ -132,7 +134,7 @@ func (sm *SyncMng) buildFullSyncRequest(req *request) error {
 	}
 	inviteRooms.Range(func(key, value interface{}) bool {
 		roomID := key.(string)
-		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite"), roomID, "invite","build"))
+		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite"), roomID, "invite", "build"))
 		return true
 	})
 	return nil
@@ -180,12 +182,12 @@ func (sm *SyncMng) callSyncLoad(req *request) {
 func (sm *SyncMng) processSyncLoad(req *request) {
 	user := req.device.UserID
 	log.Infof("traceid:%s SyncMng processRequest begin", req.traceId)
-	bs := time.Now().UnixNano() /1000000
-	defer func(bs int64){
-		spend := time.Now().UnixNano() / 1000000 - bs
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64) {
+		spend := time.Now().UnixNano()/1000000 - bs
 		if spend > 1000 {
 			log.Warnf("trace:%s SyncMng processRequest spend:%d", req.traceId, spend)
-		}else{
+		} else {
 			log.Infof("trace:%s SyncMng processRequest spend:%d", req.traceId, spend)
 		}
 	}(bs)
@@ -311,10 +313,15 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 			bytes, err := json.Marshal(*syncReq)
 			if err == nil {
 				log.Infof("SyncMng.callSyncLoad load traceid:%s slot:%d user %s device %s instance:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, instance)
-				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, 35000)
+				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, int(sm.cfg.Sync.RpcTimeout))
 
 				spend := time.Now().UnixNano()/1000000 - bs
-
+				//only for debug
+				if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
+					delay := utils.GetRandomSleepSecondsForDebug()
+					log.Infof("SyncMng.callSyncLoad random sleep %fs", delay)
+					time.Sleep(time.Duration(delay*1000) * time.Millisecond)
+				}
 				if err == nil {
 					var result syncapitypes.SyncServerResponse
 					err := json.Unmarshal(data, &result)
@@ -342,12 +349,13 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 		}(instance, syncReq, req)
 	}
 	wg.Wait()
-	loaded := true
+	loaded := len(requestMap) == 0
 	req.remoteReady = true
 	req.remoteFinished = true
 	for _, syncReq := range requestMap {
-		if syncReq.LoadReady == false {
-			loaded = false
+		if syncReq.LoadReady {
+			loaded = true
+		} else {
 			log.Warnf("SyncMng.callSyncLoad traceid:%s instance:%d loaded false", req.traceId, syncReq.SyncInstance)
 		}
 	}

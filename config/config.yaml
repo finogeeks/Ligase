@@ -428,3 +428,6 @@ check_receipt: 3000
 online_spec: "0 0 17 * * ?"
 online_detail_spec: "59 59 15 * * ?"
 license: '{"organ_name":"community","expire_time":1627920000000,"total_users":100,"total_rooms":1,"room_members":1,"desc":"community","organ_domain":"community","reg_organ":"community","encryption":false,"secret":"pTRiLIHpGVgT0jsk"}'
+
+sync:
+    rpc_timeout: 2000

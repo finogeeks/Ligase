@@ -128,8 +128,8 @@ func (s *EventFeedConsumer) dispthInsertUserTimeLine(ev *gomatrixserverlib.Clien
 func (s *EventFeedConsumer) onInsertUserTimeLine(data *UtlContent) {
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 		delay := utils.GetRandomSleepSecondsForDebug()
-		log.Infof("roomId:%s event_id:%s user:%s sleep %ds", data.ev.RoomID, data.ev.EventID, data.user, delay)
-		time.Sleep(time.Duration(delay) * time.Second)
+		log.Infof("roomId:%s event_id:%s user:%s sleep %fs", data.ev.RoomID, data.ev.EventID, data.user, delay)
+		time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 	}
 	s.userTimeLine.AddP2PEv(data.ev, data.user)
 }
