@@ -19,8 +19,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/finogeeks/ligase/plugins/message/external"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/authtypes"
