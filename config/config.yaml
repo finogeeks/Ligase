@@ -227,7 +227,7 @@ kafka:
             topic: dismissRoom
             group: dismissRoom-fed
             underlying: kafka
-            name: dismissRoomProd
+            name: dismissRoomCons
 rpc:
     rs_qry_topic: roomserver_query
     alias_topic: roomserver_alias
