@@ -192,7 +192,7 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 		presence = "offline"
 	} else {
 		presence = "online"
-		if feed != nil && presenceContent.Presence != "offline" {
+		if feed != nil && presenceContent.Presence != "offline" && presenceContent.Presence != "" {
 			presence = presenceContent.Presence
 		}
 	}
@@ -971,9 +971,13 @@ func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 	if sm.presenceStreamRepo.ExistsPresence(req.device.UserID, req.marks.preRecv) {
 		log.Infof("add presence for %s", req.device.UserID)
 		friendShipMap := sm.userTimeLine.GetFriendShip(req.device.UserID, true)
+		hasSelf := false
 		if friendShipMap != nil {
 			var presenceEvent gomatrixserverlib.ClientEvent
 			friendShipMap.Range(func(key, _ interface{}) bool {
+				if key.(string) == req.device.UserID {
+					hasSelf = true
+				}
 				feed := sm.presenceStreamRepo.GetHistoryByUserID(key.(string))
 				if feed != nil && feed.GetOffset() > req.marks.preRecv {
 					err := json.Unmarshal(feed.DataStream.Content, &presenceEvent)
@@ -983,15 +987,27 @@ func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 					}
 
 					response.Presence.Events = append(response.Presence.Events, presenceEvent)
-					data, _ := json.Marshal(presenceEvent)
-					log.Infof("add presence for %s %d %d %s", req.device.UserID, feed.GetOffset(), req.marks.preRecv, data)
-
 					if maxPos < feed.GetOffset() {
 						maxPos = feed.GetOffset()
 					}
 				}
 				return true
 			})
+		}
+		if !hasSelf {
+			feed := sm.presenceStreamRepo.GetHistoryByUserID(req.device.UserID)
+			if feed != nil && feed.GetOffset() > req.marks.preRecv {
+				var presenceEvent gomatrixserverlib.ClientEvent
+				err := json.Unmarshal(feed.DataStream.Content, &presenceEvent)
+				if err != nil {
+					log.Errorf("addReceipt: Unmarshal json error for presence traceid:%s userID:%s dev:%s  err:%v", req.traceId, req.device.UserID, req.device.ID, err)
+				} else {
+					response.Presence.Events = append(response.Presence.Events, presenceEvent)
+					if maxPos < feed.GetOffset() {
+						maxPos = feed.GetOffset()
+					}
+				}
+			}
 		}
 	}
 

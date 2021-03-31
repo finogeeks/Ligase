@@ -148,48 +148,55 @@ func (tl *PresenceDataStreamRepo) CheckLoadReady(userID string, sync bool) bool 
 
 func (tl *PresenceDataStreamRepo) loadHistory(userID string) {
 	defer tl.loading.Delete(userID)
-	userMap := tl.userTimeLine.GetFriendShip(userID, true)
-	if userMap != nil {
-		var users []string
-		maxPos := int64(0)
-		userMap.Range(func(key, _ interface{}) bool {
-			if presence, ok := tl.repo.Load(key.(string)); !ok {
-				users = append(users, key.(string))
-			} else {
-				if maxPos < presence.(*feedstypes.PresenceDataStream).Offset {
-					maxPos = presence.(*feedstypes.PresenceDataStream).Offset
-				}
-			}
+	userMap := map[string]struct{}{}
+	friends := tl.userTimeLine.GetFriendShip(userID, true)
+	if friends != nil {
+		friends.Range(func(key, _ interface{}) bool {
+			userMap[key.(string)] = struct{}{}
 			return true
 		})
-		if len(users) > 0 {
-			bs := time.Now().UnixNano() / 1000000
-			streams, offsets, err := tl.persist.GetUserPresenceDataStream(context.TODO(), users)
-			spend := time.Now().UnixNano()/1000000 - bs
-			if err != nil {
-				log.Errorf("load db failed PresenceDataStreamRepo history user:%s spend:%d ms err:%v", userID, spend, err)
-				return
-			}
-			if spend > types.DB_EXCEED_TIME {
-				log.Warnf("load db exceed %d ms PresenceDataStreamRepo history user:%s spend:%d ms", types.DB_EXCEED_TIME, userID, spend)
-			} else {
-				log.Infof("load db succ PresenceDataStreamRepo history user:%s spend:%d ms", userID, spend)
-			}
-
-			for idx := range streams {
-				tl.AddPresenceDataStream(&streams[idx], offsets[idx], false)
-				if offsets[idx] > maxPos {
-					maxPos = offsets[idx]
-				}
+	}
+	if _, ok := userMap[userID]; !ok {
+		userMap[userID] = struct{}{}
+	}
+	var users []string
+	maxPos := int64(0)
+	for key := range userMap {
+		if presence, ok := tl.repo.Load(key); !ok {
+			users = append(users, key)
+		} else {
+			if maxPos < presence.(*feedstypes.PresenceDataStream).Offset {
+				maxPos = presence.(*feedstypes.PresenceDataStream).Offset
 			}
 		}
-		if val, ok := tl.maxPosition.Load(userID); ok {
-			if val.(int64) < maxPos {
-				tl.maxPosition.Store(userID, maxPos)
-			}
+	}
+	if len(users) > 0 {
+		bs := time.Now().UnixNano() / 1000000
+		streams, offsets, err := tl.persist.GetUserPresenceDataStream(context.TODO(), users)
+		spend := time.Now().UnixNano()/1000000 - bs
+		if err != nil {
+			log.Errorf("load db failed PresenceDataStreamRepo history user:%s spend:%d ms err:%v", userID, spend, err)
+			return
+		}
+		if spend > types.DB_EXCEED_TIME {
+			log.Warnf("load db exceed %d ms PresenceDataStreamRepo history user:%s spend:%d ms", types.DB_EXCEED_TIME, userID, spend)
 		} else {
+			log.Infof("load db succ PresenceDataStreamRepo history user:%s spend:%d ms", userID, spend)
+		}
+
+		for idx := range streams {
+			tl.AddPresenceDataStream(&streams[idx], offsets[idx], false)
+			if offsets[idx] > maxPos {
+				maxPos = offsets[idx]
+			}
+		}
+	}
+	if val, ok := tl.maxPosition.Load(userID); ok {
+		if val.(int64) < maxPos {
 			tl.maxPosition.Store(userID, maxPos)
 		}
+	} else {
+		tl.maxPosition.Store(userID, maxPos)
 	}
 	tl.ready.Store(userID, true)
 }
