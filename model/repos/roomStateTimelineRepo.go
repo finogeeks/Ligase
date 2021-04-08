@@ -16,15 +16,15 @@ package repos
 
 import (
 	"context"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"sync"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -205,8 +205,7 @@ func (tl *RoomStateTimeLineRepo) loadStateStreams(roomID string) {
 
 func (tl *RoomStateTimeLineRepo) LoadStates(roomID string, sync bool) {
 	if _, ok := tl.stateReady.Load(roomID); !ok {
-		if _, ok := tl.stateLoading.Load(roomID); !ok {
-			tl.stateLoading.Store(roomID, true)
+		if _, loaded := tl.stateLoading.LoadOrStore(roomID, true); !loaded {
 			if sync == false {
 				go tl.loadStates(roomID)
 			} else {
@@ -269,8 +268,7 @@ func (tl *RoomStateTimeLineRepo) GetStates(roomID string) *feedstypes.TimeLines 
 
 func (tl *RoomStateTimeLineRepo) LoadStreamStates(roomID string, sync bool) {
 	if _, ok := tl.streamReady.Load(roomID); !ok {
-		if _, ok := tl.streamLoading.Load(roomID); !ok {
-			tl.streamLoading.Store(roomID, true)
+		if _, loaded := tl.streamLoading.LoadOrStore(roomID, true); !loaded {
 			if sync == false {
 				go tl.loadStateStreams(roomID)
 			} else {

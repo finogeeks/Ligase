@@ -42,7 +42,7 @@ const insertUserReceiptDataSQL = "" +
 	" DO UPDATE SET content = EXCLUDED.content, evt_offset = EXCLUDED.evt_offset"
 
 const selectHistoryUserReceiptDataSQL = "" +
-	"SELECT evt_offset, content  FROM syncapi_user_receipt_data WHERE room_id = $1 and user_id = $2"
+	"SELECT evt_offset, content FROM syncapi_user_receipt_data WHERE user_id = $1 and room_id = $2"
 
 type userReceiptDataStatements struct {
 	db                               *Database
@@ -97,7 +97,7 @@ func (s *userReceiptDataStatements) onInsertUserReceiptData(
 func (s *userReceiptDataStatements) selectHistoryStream(
 	ctx context.Context, roomID, userID string,
 ) (evtOffset int64, content []byte, err error) {
-	rows, err := s.selectHistoryUserReceiptDataStmt.QueryContext(ctx, roomID, userID)
+	rows, err := s.selectHistoryUserReceiptDataStmt.QueryContext(ctx, userID, roomID)
 	if err != nil {
 		log.Errorf("userReceiptDataStatements.selectHistoryStream err: %v", err)
 		return

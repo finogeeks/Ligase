@@ -96,8 +96,7 @@ func (tl *PresenceDataStreamRepo) AddPresenceDataStream(dataStream *types.Presen
 
 func (tl *PresenceDataStreamRepo) LoadHistory(userID string, sync bool) {
 	if _, ok := tl.ready.Load(userID); !ok {
-		if _, ok := tl.loading.Load(userID); !ok {
-			tl.loading.Store(userID, true)
+		if _, loaded := tl.loading.LoadOrStore(userID, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(userID)
 			} else {

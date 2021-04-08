@@ -17,15 +17,16 @@ package repos
 import (
 	"context"
 	"fmt"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"sync"
+	"time"
+
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
-	"sync"
-	"time"
 )
 
 type KeyChangeStreamRepo struct {
@@ -127,8 +128,7 @@ func (tl *KeyChangeStreamRepo) AddKeyChangeStream(dataStream *types.KeyChangeStr
 
 func (tl *KeyChangeStreamRepo) LoadHistory(userID string, sync bool) {
 	if _, ok := tl.ready.Load(userID); !ok {
-		if _, ok := tl.loading.Load(userID); !ok {
-			tl.loading.Store(userID, true)
+		if _, loaded := tl.loading.LoadOrStore(userID, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(userID)
 			} else {

@@ -16,13 +16,14 @@ package repos
 
 import (
 	"context"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/feedstypes"
-	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/storage/model"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/model/feedstypes"
+	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/storage/model"
 )
 
 type ClientDataStreamRepo struct {
@@ -68,8 +69,7 @@ func (tl *ClientDataStreamRepo) addClientDataStream(dataStream *types.ActDataStr
 
 func (tl *ClientDataStreamRepo) LoadHistory(userID string, sync bool) {
 	if _, ok := tl.ready.Load(userID); !ok {
-		if _, ok := tl.loading.Load(userID); !ok {
-			tl.loading.Store(userID, true)
+		if _, loaded := tl.loading.LoadOrStore(userID, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(userID)
 			} else {
