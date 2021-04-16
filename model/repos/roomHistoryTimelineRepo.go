@@ -57,6 +57,10 @@ func NewRoomHistoryTimeLineRepo(
 	return tls
 }
 
+func (tl *RoomHistoryTimeLineRepo) GetLoadedRoomNumber() (int, int) {
+	return tl.repo.GetKeyNumbers()
+}
+
 func (tl *RoomHistoryTimeLineRepo) SetPersist(db model.SyncAPIDatabase) {
 	tl.persist = db
 }

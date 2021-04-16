@@ -19,8 +19,8 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type TimeLineRepo struct {
@@ -55,6 +55,22 @@ func NewTimeLineRepo(
 	}
 
 	return tl
+}
+
+func (tl *TimeLineRepo) GetKeyNumbers() (int, int) {
+	count := 0
+	for i := 0; i < tl.bukSize; i++ {
+		tl.buks[i].Range(func(key interface{}, value interface{}) bool {
+			count++
+			return true
+		})
+	}
+
+	if tl.lru != nil {
+		return count, tl.lru.maxEntries
+	}
+
+	return count, -1
 }
 
 func (tl *TimeLineRepo) getSlot(key string) int {
