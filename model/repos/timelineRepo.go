@@ -67,7 +67,7 @@ func (tl *TimeLineRepo) GetKeyNumbers() (int, int) {
 	}
 
 	if tl.lru != nil {
-		return count, tl.lru.maxEntries * tl.bukSize
+		return count, tl.lru.maxEntries
 	}
 
 	return count, -1
