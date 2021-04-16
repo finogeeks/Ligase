@@ -16,17 +16,17 @@ package api
 
 import (
 	"fmt"
+	"github.com/finogeeks/ligase/common"
 	"net/http"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -61,14 +61,18 @@ func (ReqGetJoinedRooms) Process(consumer interface{}, msg core.Coder, device *a
 	userID := device.UserID
 
 	resp := new(syncapitypes.JoinedRoomsResp)
-	var err error
-	resp.JoinedRooms, err = c.userTimeLine.GetJoinRoomsArr(userID)
+	joinRooms, err := c.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.NotFound(fmt.Sprintf("Could not find user joined rooms %s", userID))
 	}
 
-	for _, roomId := range resp.JoinedRooms {
-		log.Infof("OnIncomingJoinedRoomMessagesRequest user:%s load join room :%s", userID, roomId)
+	if joinRooms != nil {
+		joinRooms.Range(func(key, value interface{}) bool {
+			roomId := key.(string)
+			log.Infof("OnIncomingJoinedRoomMessagesRequest user:%s load join room :%s", userID, roomId)
+			resp.JoinedRooms = append(resp.JoinedRooms, roomId)
+			return true
+		})
 	}
 
 	return http.StatusOK, resp

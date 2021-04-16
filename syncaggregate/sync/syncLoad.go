@@ -28,14 +28,15 @@ import (
 
 func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 	log.Infof("traceid:%s begin buildIncreamSyncRequset", req.traceId)
-	joinRooms, err := sm.userTimeLine.GetJoinRoomsMap(req.device.UserID)
+	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
 		req.remoteFinished = true
 		log.Errorf("traceid:%s buildIncreamSyncRequset GetJoinRooms err:%v", req.traceId, err)
 		return err
 	}
-	for roomID := range joinRooms {
+	joinRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join")
 		//joinoffset < 0 , invaild room, old backfill join event is < 0
 		joinOffset := sm.userTimeLine.GetJoinMembershipOffset(req.device.UserID, roomID)
@@ -49,15 +50,17 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join", "build"))
 			}
 		}
-	}
-	inviteRooms, err := sm.userTimeLine.GetInviteRoomsMap(req.device.UserID)
+		return true
+	})
+	inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
 		req.remoteFinished = true
 		log.Errorf("traceid:%s buildIncreamSyncRequset GetInviteRooms err:%v", req.traceId, err)
 		return err
 	}
-	for roomID := range inviteRooms {
+	inviteRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
@@ -66,15 +69,17 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 		} else {
 			req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "invite", "build"))
 		}
-	}
-	leaveRooms, err := sm.userTimeLine.GetLeaveRoomsMap(req.device.UserID)
+		return true
+	})
+	leaveRooms, err := sm.userTimeLine.GetLeaveRooms(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
 		req.remoteFinished = true
 		log.Errorf("traceid:%s buildIncreamSyncRequset GetLeaveRooms err:%v", req.traceId, err)
 		return err
 	}
-	for roomID := range leaveRooms {
+	leaveRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
 		latestOffset := sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "leave")
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset {
@@ -86,7 +91,8 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, latestOffset-1, latestOffset, roomID, "leave", "build"))
 			}
 		}
-	}
+		return true
+	})
 	return nil
 }
 
@@ -106,28 +112,31 @@ func (sm *SyncMng) buildFullSyncRequest(req *request) error {
 	if !req.device.IsHuman {
 		return nil
 	}
-	var err error
-	req.joinRooms, err = sm.userTimeLine.GetJoinRoomsArr(req.device.UserID)
+	joinRooms, err := sm.userTimeLine.GetJoinRooms(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
 		req.remoteFinished = true
 		log.Errorf("traceid:%s buildFullSyncRequest GetJoinRooms err:%v", req.traceId, err)
 		return err
 	}
-	for _, roomID := range req.joinRooms {
-		req.joinRooms = append(req.joinRooms, roomID)
+	joinRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
+		req.joinRooms = append(req.joinRooms, key.(string))
 		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join", "build"))
-	}
-	inviteRooms, err := sm.userTimeLine.GetInviteRoomsMap(req.device.UserID)
+		return true
+	})
+	inviteRooms, err := sm.userTimeLine.GetInviteRooms(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
 		req.remoteFinished = true
 		log.Errorf("traceid:%s buildFullSyncRequest GetInviteRooms err:%v", req.traceId, err)
 		return err
 	}
-	for roomID := range inviteRooms {
+	inviteRooms.Range(func(key, value interface{}) bool {
+		roomID := key.(string)
 		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "invite"), roomID, "invite", "build"))
-	}
+		return true
+	})
 	return nil
 }
 

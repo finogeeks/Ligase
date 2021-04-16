@@ -104,10 +104,7 @@ func (s *EventFeedConsumer) SetPresenceStreamRepo(presenceRepo *repos.PresenceDa
 
 func (s *EventFeedConsumer) startWorker(msgChan chan *UtlEvent) {
 	for data := range msgChan {
-		timespend := common.NewTimeSpend()
-		log.Infof("EventFeedConsumer start handler")
 		s.onNewRoomEvent(context.TODO(), data)
-		timespend.Logf(1000, "EventFeedConsumer end handler")
 	}
 }
 
@@ -153,8 +150,6 @@ func (s *EventFeedConsumer) Start() error {
 }
 
 func (s *EventFeedConsumer) OnMessage(topic string, partition int32, data []byte) {
-	timespend := common.NewTimeSpend()
-	log.Infof("EventFeedConsumer onMessage start")
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("sync aggregate: message parse failure", log.KeysAndValues{"error", err})
@@ -188,7 +183,6 @@ func (s *EventFeedConsumer) OnMessage(topic string, partition int32, data []byte
 	default:
 		log.Debugw("sync aggregate: ignoring unknown output type", log.KeysAndValues{"type", output.Type})
 	}
-	timespend.Logf(1000, "EventFeedConsumer onMessage end")
 }
 
 func (s *EventFeedConsumer) onNewRoomEvent(
