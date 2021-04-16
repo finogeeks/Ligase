@@ -15,6 +15,7 @@
 package consumers
 
 import (
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"math"
 	"sort"
 	"time"
@@ -224,7 +225,7 @@ func (s *SyncServer) processIncrementSync(req *syncapitypes.SyncServerRequest) {
 		if (pos > 0 && roomInfo.End > pos) && req.IsHuman == true {
 			// event missing
 			response.AllLoaded = false
-			log.Warnf("SyncServer.processIncrementSync buildRoomJoinResp not all loaded, traceid:%s room:%s", req.TraceID, roomInfo.RoomID)
+			log.Warnf("SyncServer.processIncrementSync buildRoomJoinResp not all loaded, traceid:%s room:%s", req.TraceID,  roomInfo.RoomID)
 		}
 		response.MaxRoomOffset[roomInfo.RoomID] = pos
 		if users != nil {
@@ -513,7 +514,7 @@ func (s *SyncServer) incrementSyncLoading(req *syncapitypes.SyncServerRequest) {
 func (s *SyncServer) addReceipt(req *syncapitypes.SyncServerRequest, maxPos int64, response *syncapitypes.SyncServerResponse) {
 	if !s.receiptDataStreamRepo.ExistsReceipt(req.ReceiptOffset, req.UserID) {
 		response.MaxReceiptOffset = req.ReceiptOffset
-		log.Infof("not ExistsReceipt traceid:%s MaxReceiptOffset:%d maxPos:%d", req.TraceID, response.MaxReceiptOffset, maxPos)
+		log.Infof("not ExistsReceipt traceid:%s MaxReceiptOffset:%d maxPos:%d", req.TraceID,response.MaxReceiptOffset, maxPos)
 		return
 	}
 
