@@ -367,11 +367,11 @@ func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
 		req.joinRooms = append(req.joinRooms, roomID)
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset && joinOffset > 0 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join", "rebuild"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, -1, roomID, "join", "rebuild"))
 			}
 		} else {
 			if joinOffset > 0 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join", "rebuild"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, -1, roomID, "join", "rebuild"))
 			}
 		}
 	}
