@@ -68,6 +68,6 @@ func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *autht
 	return http.StatusOK, &external.GetLRURoomsResponse{
 		Loaded: loaded,
 		Max:    max,
-		Server: fmt.Sprintf("%s%d", os.Getenv("SERVICE_NAME"), c.Cfg.Matrix.InstanceId),
+		Server: fmt.Sprintf("%s%d", os.Getenv("SERVICE_NAME"), c.Cfg.MultiInstance.Instance),
 	}
 }
