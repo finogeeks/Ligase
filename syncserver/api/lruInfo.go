@@ -50,7 +50,7 @@ func (ReqGetLRUInfo) NewRequest() core.Coder {
 }
 func (ReqGetLRUInfo) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	msg := coder.(*external.GetLRURoomsRequest)
-	msg.Timestamp = fmt.Sprintf("%d", time.Now().Second())
+	msg.Timestamp = fmt.Sprintf("%d", time.Now().Unix())
 	return nil
 }
 func (ReqGetLRUInfo) NewResponse(code int) core.Coder {
