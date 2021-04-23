@@ -54,7 +54,7 @@ func (ReqGetLRUInfo) FillRequest(coder core.Coder, req *http.Request, vars map[s
 	return nil
 }
 func (ReqGetLRUInfo) NewResponse(code int) core.Coder {
-	return new(external.GetLRURoomsRequest)
+	return new(external.GetLRURoomsResponse)
 }
 func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
