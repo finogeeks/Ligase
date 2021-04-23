@@ -46,7 +46,7 @@ func (ReqGetLRUInfo) GetMethod() []string {
 func (ReqGetLRUInfo) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
 func (ReqGetLRUInfo) GetPrefix() []string                  { return []string{"r0"} }
 func (ReqGetLRUInfo) NewRequest() core.Coder {
-	return nil
+	return new(external.GetLRURoomsRequest)
 }
 func (ReqGetLRUInfo) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	msg := coder.(*external.GetLRURoomsRequest)
