@@ -15,8 +15,8 @@
 package consumers
 
 import (
-	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
@@ -27,7 +27,6 @@ import (
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
@@ -462,6 +461,8 @@ func (s *SyncServer) incrementSyncLoading(req *syncapitypes.SyncServerRequest) {
 				if s.receiptDataStreamRepo.GetRoomLastOffset(roomInfo.RoomID) > req.ReceiptOffset {
 					if ok := s.receiptDataStreamRepo.CheckLoadReady(roomInfo.RoomID, false); !ok {
 						loaded = false
+					} else {
+
 					}
 					if ok := s.userReceiptRepo.CheckLoadReady(req.UserID, roomInfo.RoomID, false); !ok {
 						loaded = false
@@ -603,6 +604,7 @@ func (s *SyncServer) addReceipt(req *syncapitypes.SyncServerRequest, maxPos int6
 		response.MaxReceiptOffset = maxRes
 		log.Infof("traceid:%s MaxReceiptOffset:%d maxRes not -1", req.TraceID, response.MaxReceiptOffset)
 	}
+	return
 }
 
 func (s *SyncServer) addUnreadCount(response *syncapitypes.SyncServerResponse, userID string) {
@@ -615,249 +617,99 @@ func (s *SyncServer) addUnreadCount(response *syncapitypes.SyncServerResponse, u
 		response.Rooms.Join[rid] = joinRooms
 
 	}
-}
-
-type BuildRoomRespOpt struct {
-	TraceID      string
-	UserID       string
-	DeviceID     string
-	roomID       string
-	Left         int
-	Limit        int
-	reqStart     int64
-	reqEnd       int64
-	realEnd      int64
-	isFullSync   bool
-	addNewUser   bool
-	needOldState bool
-
-	// maxPos histroytimeline max offset
-	maxPos    int64
-	minOffset int64
-	// firstTimeLine histroy timeline min offset
-	firstTimeLine int64
-	firstTs       int64
-
-	meetCreate bool
-}
-
-func newBuildRoomRespOpt(req *syncapitypes.SyncServerRequest, roomID string, reqStart, reqEnd int64) *BuildRoomRespOpt {
-	return &BuildRoomRespOpt{
-		TraceID:       req.TraceID,
-		UserID:        req.UserID,
-		DeviceID:      req.DeviceID,
-		roomID:        roomID,
-		Left:          req.Limit,
-		Limit:         req.Limit,
-		reqStart:      reqStart,
-		reqEnd:        reqEnd,
-		realEnd:       reqEnd,
-		isFullSync:    req.IsFullSync,
-		maxPos:        -1,
-		minOffset:     -1,
-		firstTimeLine: -1,
-		firstTs:       -1,
-	}
-}
-
-func (opt *BuildRoomRespOpt) String() string {
-	return fmt.Sprintf("traceid:%s user:%s device:%s roomID:%s maxPos:%d minOffset:%d addNewUser:%t isFullSync:%t needOldState:%t reqStart:%d reqEnd:%d realEnd:%d limit:%d left:%d firstTimeLine:%d firstTs:%d meetCreate:%t",
-		opt.TraceID,
-		opt.UserID,
-		opt.DeviceID,
-		opt.roomID,
-		opt.maxPos,
-		opt.minOffset,
-		opt.addNewUser,
-		opt.isFullSync,
-		opt.needOldState,
-		opt.reqStart,
-		opt.reqEnd,
-		opt.realEnd,
-		opt.Limit,
-		opt.Left,
-		opt.firstTimeLine,
-		opt.firstTs,
-		opt.meetCreate,
-	)
-}
-
-func (opt *BuildRoomRespOpt) lteStart(offset int64) bool {
-	return offset <= opt.reqStart
-}
-
-func (opt *BuildRoomRespOpt) lteEnd(offset int64) bool {
-	return offset <= opt.reqEnd || opt.reqEnd == -1
-}
-
-func (opt *BuildRoomRespOpt) lteRealEnd(offset int64) bool {
-	return offset <= opt.realEnd || opt.realEnd == -1
-}
-
-func (opt *BuildRoomRespOpt) ltFirst(offset int64) bool {
-	return offset < opt.firstTimeLine
-}
-
-func (opt *BuildRoomRespOpt) isJoinedRoomLimited(msgEvent, states []gomatrixserverlib.ClientEvent) bool {
-	if len(states) > 0 {
-		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s set limit true because len(state event) %d > 0", opt.TraceID, opt.roomID, opt.UserID, len(states))
-		return true
-	}
-	limited := false
-	if opt.addNewUser || opt.isFullSync {
-		limited = true
-	}
-	if opt.Left == 0 || opt.meetCreate {
-		if opt.meetCreate {
-			limited = false
-		} else {
-			limited = true // FIXME: 优化：这里如果凑巧limit=0时，刚好遇到边界，就不应该是true了
-		}
-	}
-	if opt.minOffset > opt.reqStart && len(msgEvent) >= 128 { // FIXME: 128是timlineRepo的大小
-		limited = true
-	}
-
-	if opt.firstTimeLine == -1 {
-		limited = true // 没有交集，应该是true
-	} else {
-		if opt.firstTimeLine > opt.reqStart && opt.reqStart > 0 && len(msgEvent) >= opt.Limit {
-			limited = true
-		}
-	}
-	return limited
-}
-
-func (opt *BuildRoomRespOpt) calcRoomPrevBatch() string {
-	prevBatch := ""
-	//firsttimeline == -1, syncserver historytime not has event, bat syncaggserver judge has event
-	if opt.firstTimeLine == -1 {
-		prevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
-		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s firstTimeLine:-1 ", opt.TraceID, opt.roomID, opt.UserID)
-	} else {
-		// when we call get_messages with param "from"=prev_batch, it will start from prev_batch,
-		// but not from (prev_batch-1), so we set (firstTimeLine-1) to avoid getting repeat message
-		streamPos := opt.firstTimeLine - 1
-		if streamPos < 0 {
-			streamPos = 0
-		}
-		prevBatch = common.BuildPreBatch(streamPos, opt.firstTs)
-	}
-	return prevBatch
+	return
 }
 
 //roomtimeline (]
 func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, roomID string, reqStart, reqEnd int64) (*syncapitypes.JoinResponse, int64, []string) {
-	opt := newBuildRoomRespOpt(req, roomID, reqStart, reqEnd)
-	log.Infof("SyncServer.buildRoomJoinResp start %s", opt)
+	log.Infof("SyncServer.buildRoomJoinResp traceid:%s user:%s device:%s roomID:%s reqStart:%d reqEnd:%d limit:%d isFull:%t", req.TraceID, req.UserID, req.DeviceID, roomID, reqStart, reqEnd, req.Limit, req.IsFullSync)
 	//再加载一遍，避免数据遗漏
 	s.rsTimeline.LoadStates(roomID, true)
 	s.rsTimeline.LoadStreamStates(roomID, true)
 	s.roomHistory.LoadHistory(roomID, true)
 	s.receiptDataStreamRepo.LoadHistory(roomID, true)
-	s.userReceiptRepo.LoadHistory(opt.UserID, roomID, true)
+	s.userReceiptRepo.LoadHistory(req.UserID, roomID, true)
 	minStream := s.roomHistory.GetRoomMinStream(roomID)
 
 	jr := syncapitypes.NewJoinResponse()
-	jr.Timeline.Limited = true
-	jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
-	jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}
+	jr.Timeline.Limited = false
+	//histroytimeline max offset
+	maxPos := int64(-1)
 
 	rs := s.rsCurState.GetRoomState(roomID)
 	if rs == nil {
-		log.Warnf("SyncServer.buildRoomJoinResp rsCurState.GetRoomState nil roomLatest %d %s", s.roomHistory.GetRoomLastOffset(roomID), opt)
-		return jr, opt.maxPos, []string{}
+		log.Warnf("SyncServer.buildRoomJoinResp rsCurState.GetRoomState nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
+		jr.Timeline.Limited = true
+		jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
+		jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}
+		return jr, maxPos, []string{}
 	}
 
 	history := s.roomHistory.GetHistory(roomID)
 	if history == nil {
-		log.Warnf("SyncServer.buildRoomJoinResp roomHistory.GetHistory nil roomLatest %d %s", s.roomHistory.GetRoomLastOffset(roomID), opt)
-		return jr, opt.maxPos, []string{}
+		log.Warnf("SyncServer.buildRoomJoinResp roomHistory.GetHistory nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
+		jr.Timeline.Limited = true
+		jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
+		jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}
+		return jr, maxPos, []string{}
 	}
 
-	stateEvt := rs.GetState("m.room.member", opt.UserID)
+	stateEvt := rs.GetState("m.room.member", req.UserID)
 	if stateEvt == nil {
-		log.Warnf("SyncServer.buildRoomJoinResp rs.GetState nil roomLatest %d %s", s.roomHistory.GetRoomLastOffset(roomID), opt)
+		log.Warnf("SyncServer.buildRoomJoinResp rs.GetState nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
 		//old join members event's has event_offset < 0 event
-		return jr, opt.maxPos, []string{}
+		jr.Timeline.Limited = true
+		jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
+		jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}
+		return jr, maxPos, []string{}
 	}
 
-	states := s.rsTimeline.GetStates(roomID)
-	if states == nil {
-		log.Errorf("SyncServer.buildRoomJoinResp rsTimeline.GetStates nil roomLatest %d %s", s.roomHistory.GetRoomLastOffset(roomID), opt)
-		return jr, opt.maxPos, []string{}
-	}
+	addNewUser := false
 
-	jr.Timeline.Limited = false
-
-	if stateEvt.GetOffset() > opt.reqStart {
+	if stateEvt.GetOffset() > reqStart {
 		joinContent := external.MemberContent{}
 		json.Unmarshal(stateEvt.GetEv().Content, &joinContent)
 		if joinContent.Reason != "BuildMembershipAndFireEvents" {
-			opt.addNewUser = true
+			addNewUser = true
 		}
 	}
 
-	if opt.addNewUser || opt.isFullSync {
-		opt.needOldState = true
-		log.Infof("SyncServer buildRoomJoinResp update stateEvt.Offset:%d %s", stateEvt.Offset, opt)
-		opt.reqStart = -1
-	}
-
 	feeds, start, end, low, up := history.GetAllFeedsReverse()
-	log.Infof("SyncServer buildRoomJoinResp load room-timeline start:%d end:%d low:%d up:%d len(feeds):%d %s", start, end, low, up, len(feeds), opt)
 
-	index, latestEvOffset := s.getLatestValidEvIdx(*opt, feeds)
-	if latestEvOffset != 0 && !opt.lteEnd(latestEvOffset-1) {
-		opt.realEnd = latestEvOffset - 1
+	log.Infof("SyncServer buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s load room-timeline start:%d end:%d low:%d up:%d len(feeds):%d", req.TraceID, roomID, req.UserID, req.DeviceID, start, end, low, up, len(feeds))
+	//histroy timeline min offset
+	firstTimeLine := int64(-1)
+	firstTs := int64(-1)
+	limit := req.Limit
+	needState := false
+	msgEvent := []gomatrixserverlib.ClientEvent{}
+
+	if addNewUser || req.IsFullSync {
+		jr.Timeline.Limited = true
+		needState = true
+		log.Infof("SyncServer buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s update start:%d stateEvt.Offset:%d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, stateEvt.Offset)
+		reqStart = -1
 	}
 
-	msgEvent := s.getJoinRoomEvents(opt, feeds, rs, index, minStream)
+	visibilityTime := s.settings.GetMessageVisilibityTime()
+	nowTs := time.Now().Unix()
 
-	var users []string
-	if (opt.addNewUser || opt.needOldState) && req.IsHuman {
-		users = s.getJoinUsers(opt.roomID)
-	}
-
-	statesList := s.getJoinRoomStates(*opt, states, latestEvOffset)
-
-	jr.Timeline.Limited = opt.isJoinedRoomLimited(msgEvent, statesList)
-	jr.Timeline.PrevBatch = opt.calcRoomPrevBatch()
-	jr.Timeline.Events = msgEvent
-	jr.State.Events = statesList
-	log.Infof("SyncServer.buildRoomJoinResp limited:%t prevBatch:%s len(msgEvent):%d len(stateEvent):%d %s", jr.Timeline.Limited, jr.Timeline.PrevBatch, len(jr.Timeline.Events), len(jr.State.Events), opt)
-	return jr, opt.maxPos, users
-}
-
-func (s *SyncServer) reverseMsgEvent(msgEvent []gomatrixserverlib.ClientEvent) {
-	for i := 0; i < len(msgEvent)/2; i++ {
-		tmp := msgEvent[i]
-		msgEvent[i] = msgEvent[len(msgEvent)-i-1]
-		msgEvent[len(msgEvent)-i-1] = tmp
-	}
-}
-
-// getLatestValidEvIdx get the latest event index of the reversed feeds.
-// Sometime the reversed feeds contains more then one membership event of the
-// spec user. If this user has already exists this room, then the sync can't
-// response to the client. The client will sync the left events at next time.
-// FIXME: syncaggregate改成度扩散后，可能没注意到这一点
-func (s *SyncServer) getLatestValidEvIdx(opt BuildRoomRespOpt, reversed []feedstypes.Feed) (int, int64) {
+	evRecords := make(map[string]int)
 	latestValidEvIdx := -1
 	latestEvOffset := int64(0)
 	isDeleted := false
-	if opt.reqStart > 0 {
-		for i := len(reversed) - 1; i >= 0; i-- {
-			stream := reversed[i].(*feedstypes.StreamEvent)
-			if stream == nil || opt.lteStart(stream.GetOffset()) {
+	if reqStart > 0 {
+		for i := len(feeds) - 1; i >= 0; i-- {
+			stream := feeds[i].(*feedstypes.StreamEvent)
+			if stream != nil && stream.GetOffset() <= reqStart {
 				continue
 			}
-			if stream.Ev.Type == "m.room.member" && *stream.Ev.StateKey == opt.UserID {
+			if stream != nil && stream.Ev.Type == "m.room.member" && *stream.Ev.StateKey == req.UserID {
 				membership, _ := stream.GetEv().Membership()
 				if membership != "join" {
-					latestValidEvIdx = len(reversed) - i - 1
+					latestValidEvIdx = len(feeds) - i - 1
 					latestEvOffset = stream.GetOffset()
-					log.Infof("SyncServer.buildRoomJoinResp latestEvOffset:%d %s", latestEvOffset, &opt)
+					log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s latestEvOffset:%d", req.TraceID, roomID, req.UserID, latestEvOffset)
 					isDeleted = stream.IsDeleted
 					break
 				}
@@ -866,147 +718,179 @@ func (s *SyncServer) getLatestValidEvIdx(opt BuildRoomRespOpt, reversed []feedst
 	}
 	index := 0
 	if latestValidEvIdx >= 0 {
-		log.Infof("SyncServer.buildRoomJoinResp truncate feed datas because data has been updated, latestValidEvIdx:%d, latestEvOffset:%d, isDeleted:%t %s",
-			latestValidEvIdx, latestEvOffset, isDeleted, &opt)
+		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s truncate feed datas because data has been updated, latestValidEvIdx:%d, latestEvOffset:%d, isDeleted:%t",
+			req.TraceID, roomID, req.UserID, req.DeviceID, latestValidEvIdx, latestEvOffset, isDeleted)
 		index = latestValidEvIdx + 1
 	}
-	return index, latestEvOffset
-}
-
-func (s *SyncServer) getJoinRoomEvents(opt *BuildRoomRespOpt, feeds []feedstypes.Feed, rs *repos.RoomState, index int, minStream int64) []gomatrixserverlib.ClientEvent {
-	nowTs := time.Now().Unix()
-	evRecords := make(map[string]int)
-	msgEvent := []gomatrixserverlib.ClientEvent{}
-	firstTimeLine := opt.firstTimeLine
-	firstTs := opt.firstTs
-	maxPos := opt.maxPos
-	left := opt.Limit
-	minOffset := opt.minOffset
-	meetCreate := opt.meetCreate
+	minOffset := int64(-1)
 	for i := index; i < len(feeds); i++ {
 		feed := feeds[i]
-		if feed == nil {
-			log.Errorf("SyncServer.buildRoomJoinResp get state feed nil %s", opt)
-			continue
-		}
-		stream := feed.(*feedstypes.StreamEvent)
-		streamOffset := stream.GetOffset()
-		//log.Infof("only for test SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s, offset:%d reqStart:%d", req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetOffset(), reqStart)
-		if opt.lteStart(streamOffset) {
-			log.Infof("SyncServer.buildRoomJoinResp break state offset:%d %s", stream.GetOffset(), opt)
-			break
-		}
+		if feed != nil {
+			stream := feed.(*feedstypes.StreamEvent)
+			//log.Infof("only for test SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s, offset:%d reqStart:%d", req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetOffset(), reqStart)
+			if stream.GetOffset() <= reqStart {
+				log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s break offset:%d", req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetOffset())
+				break
+			}
 
-		ev := stream.GetEv()
-		if !opt.lteEnd(streamOffset) {
-			continue
-		}
-		if firstTimeLine == -1 || firstTimeLine > streamOffset {
-			firstTimeLine = streamOffset
-			firstTs = int64(stream.Ev.OriginServerTS)
-		}
-		if streamOffset > maxPos {
-			maxPos = streamOffset
-		}
+			if stream.GetOffset() <= reqEnd || reqEnd == -1 {
+				if firstTimeLine == -1 {
+					firstTimeLine = stream.GetOffset()
+					firstTs = int64(stream.Ev.OriginServerTS)
+				}
 
-		isStateEv := common.IsStateClientEv(ev)
-		if isStateEv || (!isStateEv && rs.CheckEventVisibility(opt.UserID, int64(stream.Ev.OriginServerTS))) {
-			if !s.isSkipEv(opt, stream.Ev, isStateEv, nowTs) {
-				if idx, ok := evRecords[ev.EventID]; !ok {
-					msgEvent = append(msgEvent, *ev)
-					left--
-					evRecords[ev.EventID] = i
-					if streamOffset < minOffset {
-						minOffset = streamOffset
+				if firstTimeLine > stream.GetOffset() {
+					firstTimeLine = stream.Offset
+					firstTs = int64(stream.Ev.OriginServerTS)
+				}
+
+				if stream.Offset > maxPos {
+					maxPos = stream.Offset
+				}
+
+				isStateEv := common.IsStateClientEv(stream.GetEv())
+				if isStateEv || (!isStateEv && rs.CheckEventVisibility(req.UserID, int64(stream.Ev.OriginServerTS))) {
+					skipEv := false
+					if visibilityTime > 0 {
+						ts := int64(stream.Ev.OriginServerTS) / 1000
+						if ts+visibilityTime < nowTs && !isStateEv {
+							log.Infof("traceid:%s buildJoinRoomResp skip event %s, ts: %d", req.TraceID, stream.Ev.EventID, stream.Ev.OriginServerTS)
+							skipEv = true
+						}
+					}
+					if !skipEv {
+						// dereplication
+						if idx, ok := evRecords[stream.GetEv().EventID]; !ok {
+							msgEvent = append(msgEvent, *stream.GetEv())
+							limit = limit - 1
+							evRecords[stream.GetEv().EventID] = len(msgEvent) - 1
+							if stream.GetOffset() < minOffset {
+								minOffset = stream.GetOffset()
+							}
+						} else {
+							log.Warnf("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s found replicate events, eventID:%s, eventNID: %d, index: %d",
+								req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetEv().EventID, stream.GetEv().EventNID, idx)
+						}
 					}
 				} else {
-					log.Warnf("SyncServer.buildRoomJoinResp found replicate events, eventID:%s eventNID:%d index:%d thisIndex:%d %s",
-						stream.GetEv().EventID, stream.GetEv().EventNID, idx, i, opt)
+					log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s skip event offset:%d for visibity", req.TraceID, roomID, req.UserID, req.DeviceID, stream.GetOffset())
 				}
-			} else {
-				log.Infof("SyncServer.buildRoomJoinResp skip event for setting eventID:%s %s", stream.Ev.EventID, opt)
 			}
+
+			if limit == 0 || stream.GetEv().Type == "m.room.create" {
+				if stream.GetEv().Type != "m.room.create" {
+					jr.Timeline.Limited = true
+				} else {
+					jr.Timeline.Limited = false
+				}
+				log.Infof("SyncServer.buildRoomJoinResp traceid:%s break roomID:%s user:%s device:%s limit:%s eventType:%s stream.Offset:%d minStream:%d", req.TraceID, roomID, req.UserID, req.DeviceID, limit, stream.GetEv().Type, stream.Offset, minStream)
+				break
+			}
+
 		} else {
-			log.Infof("SyncServer.buildRoomJoinResp skip event for visibity eventID:%s %s", stream.Ev.EventID, opt)
-		}
-
-		if left == 0 || ev.Type == "m.room.create" {
-			meetCreate = ev.Type == "m.room.create"
-			log.Infof("SyncServer.buildRoomJoinResp break eventType:%s stream.Offset:%d minStream:%d %s", stream.GetEv().Type, stream.Offset, minStream, opt)
-			break
+			log.Errorf("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s device:%s get feed nil offset %d", req.TraceID, roomID, req.UserID, req.DeviceID, end-i)
+			history.Console()
 		}
 	}
-
-	opt.firstTimeLine = firstTimeLine
-	opt.firstTs = firstTs
-	opt.maxPos = maxPos
-	opt.Left = left
-	opt.minOffset = minOffset
-	opt.meetCreate = meetCreate
-
-	s.reverseMsgEvent(msgEvent)
-	log.Infof("SyncServer.buildRoomJoinResp after sort get msgevent len:%d %s", len(msgEvent), opt)
-
-	return msgEvent
-}
-
-func (s *SyncServer) getJoinRoomStates(opt BuildRoomRespOpt, states *feedstypes.TimeLines, latestEvOffset int64) []gomatrixserverlib.ClientEvent {
+	log.Infof("SyncServer.buildRoomJoinResp traceid:%s before sort buildJoinRoomResp user:%s room:%s firsttimeLine:%d get msgevent len:%d firstTimeLine:%d minOffset:%d", req.TraceID, req.UserID, roomID, firstTimeLine, len(msgEvent), firstTimeLine, minOffset)
+	for i := 0; i < len(msgEvent)/2; i++ {
+		tmp := msgEvent[i]
+		msgEvent[i] = msgEvent[len(msgEvent)-i-1]
+		msgEvent[len(msgEvent)-i-1] = tmp
+	}
+	if minOffset > reqStart && len(msgEvent) >= 128 {
+		jr.Timeline.Limited = true
+		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s minOffset:%d reqStart:%d len(msgEvent):%d limited:%t", req.TraceID, roomID, req.UserID, minOffset, reqStart, len(msgEvent), jr.Timeline.Limited)
+	}
+	log.Infof("SyncServer.buildRoomJoinResp traceid:%s after sort buildJoinRoomResp user:%s room:%s firsttimeLine:%d get msgevent len:%d firstTimeLine:%d minOffset:%d", req.TraceID, req.UserID, roomID, firstTimeLine, len(msgEvent), firstTimeLine, minOffset)
 	stateEvent := []gomatrixserverlib.ClientEvent{}
-	feeds, start, end, low, up := states.GetAllFeeds()
-	log.Infof("SyncServer buildRoomJoinResp load state-timeline start:%d end:%d low:%d up:%d len(feeds):%d %s", start, end, low, up, opt.realEnd, &opt)
-	//state get from since to historytimeline min offset
-	for _, feed := range feeds { //填充state
-		if feed == nil {
-			continue
-		}
+	states := s.rsTimeline.GetStates(roomID)
 
-		stream := feed.(*feedstypes.StreamEvent)
-		// if stream.IsDeleted {
-		// 	continue
-		// }
+	if states != nil {
+		realEnd := reqEnd
+		if reqEnd != -1 && latestEvOffset != 0 && latestEvOffset-1 < reqEnd {
+			realEnd = latestEvOffset - 1
+		}
+		statesMap := make(map[string]StateEvWithPrio)
+		feeds, start, end, low, up := states.GetAllFeeds()
+		log.Infof("SyncServer buildRoomJoinResp traceid:%s user:%s device:%s load state-timeline roomID:%s start:%d end:%d low:%d up:%d, realEnd: %d", req.TraceID, req.UserID, req.DeviceID, roomID, start, end, low, up, realEnd)
+		//state get from since to historytimeline min offset
+		for i, feed := range feeds { //填充state
+			if feed == nil {
+				continue
+			}
 
-		streamOffset := stream.GetOffset()
-		if !opt.lteRealEnd(streamOffset) {
-			continue
-		}
-		// offset >= history min offset, has get new event from historytimeline, not need get event from rstimeline again
-		if !opt.ltFirst(streamOffset) {
-			log.Infof("SyncServer.buildRoomJoinResp rsTimeline.GetStates traceid:%s break because of offfset:%d >= historytimeline min offset %d", opt.TraceID, streamOffset, opt.firstTimeLine)
-			break
-		}
+			stream := feed.(*feedstypes.StreamEvent)
+			// if stream.IsDeleted {
+			// 	continue
+			// }
 
-		if opt.needOldState || !opt.lteStart(streamOffset) {
-			stateEvent = append(stateEvent, *stream.GetEv())
+			if stream.GetOffset() <= realEnd || realEnd == -1 {
+				ev := stream.GetEv()
+				// offset >= history min offset, has get new event from historytimeline, not need get event from rstimeline again
+				if stream.GetOffset() >= firstTimeLine {
+					log.Infof("SyncServer.buildRoomJoinResp rsTimeline.GetStates traceid:%s break because of offfset:%d >= historytimeline min offset:%d", req.TraceID, stream.GetOffset(), firstTimeLine)
+					break
+				}
+
+				if needState {
+					pushStateIntoMap(statesMap, ev, i)
+				} else {
+					if stream.GetOffset() > reqStart {
+						pushStateIntoMap(statesMap, ev, i)
+					}
+				}
+			}
 		}
+		stateEvent = s.aggregateStates(statesMap)
+	} else {
+		log.Errorf("SyncServer.buildRoomJoinResp rsTimeline.GetStates nil traceid:%s roomID %s user %s device %s since %d roomLatest %d", req.TraceID, roomID, req.UserID, req.DeviceID, reqStart, s.roomHistory.GetRoomLastOffset(roomID))
+		jr.Timeline.Limited = true
+		jr.Timeline.PrevBatch = common.BuildPreBatch(math.MaxInt64, math.MaxInt64)
+		jr.Timeline.Events = []gomatrixserverlib.ClientEvent{}
+		return jr, maxPos, []string{}
 	}
-	return stateEvent
-}
+	jr.State.Events = stateEvent
 
-func (s *SyncServer) getJoinUsers(roomID string) []string {
 	var users []string
-	joinMap := s.rsCurState.GetRoomState(roomID).GetJoinMap()
-	if joinMap != nil {
-		joinMap.Range(func(key, value interface{}) bool {
-			users = append(users, key.(string))
-			return true
-		})
-	}
-	return users
-}
-
-func (s *SyncServer) isSkipEv(opt *BuildRoomRespOpt, ev *gomatrixserverlib.ClientEvent, isStateEv bool, checkTs int64) bool {
-	if isStateEv {
-		return false
-	}
-	skipEv := false
-	visibilityTime := s.settings.GetMessageVisilibityTime()
-	if visibilityTime > 0 {
-		if int64(ev.OriginServerTS)/1000+visibilityTime < checkTs {
-			log.Infof("SyncServer.buildRoomJoinResp skip traceid:%s event:%s, ts:%d", opt.TraceID, ev.EventID, ev.OriginServerTS)
-			skipEv = true
+	if addNewUser || needState {
+		if req.IsHuman {
+			joinMap := s.rsCurState.GetRoomState(roomID).GetJoinMap()
+			if joinMap != nil {
+				joinMap.Range(func(key, value interface{}) bool {
+					users = append(users, key.(string))
+					return true
+				})
+			}
 		}
 	}
-	return skipEv
+	//firsttimeline == -1, syncserver historytime not has event, bat syncaggserver judge has event
+	if firstTimeLine == -1 {
+		firstTimeLine = math.MaxInt64
+		firstTs = math.MaxInt64
+		jr.Timeline.Limited = false
+		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s firstTimeLine:-1 ", req.TraceID, roomID, req.UserID)
+		msgEvent = []gomatrixserverlib.ClientEvent{}
+	} else {
+		if firstTimeLine > reqStart && reqStart > 0 && len(msgEvent) >= req.Limit {
+			jr.Timeline.Limited = true
+			log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s firstTimeLine:%d reqStart:%d len(msgEvent):%d limit:%d", req.TraceID, roomID, req.UserID, firstTimeLine, reqStart, len(msgEvent), req.Limit)
+		}
+		// when we call get_messages with param "from"=prev_batch, it will start from prev_batch,
+		// but not from (prev_batch-1), so we set (firstTimeLine-1) to avoid getting repeat message
+		firstTimeLine = firstTimeLine - 1
+		if firstTimeLine < 0 {
+			firstTimeLine = 0
+		}
+	}
+	if len(jr.State.Events) > 0 {
+		jr.Timeline.Limited = true
+		log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s set limit true because len(state event)> 0", req.TraceID, roomID, req.UserID, len(jr.State.Events))
+	}
+	jr.Timeline.PrevBatch = common.BuildPreBatch(firstTimeLine, firstTs)
+	jr.Timeline.Events = msgEvent
+	log.Infof("SyncServer.buildRoomJoinResp traceid:%s roomID:%s user:%s maxPos:%d limited:%t len(msgEvent):%d len(stateEvent):%d", req.TraceID, roomID, req.UserID, maxPos, jr.Timeline.Limited, len(jr.Timeline.Events), len(jr.State.Events))
+	return jr, maxPos, users
 }
 
 func (s *SyncServer) buildRoomInviteResp(req *syncapitypes.SyncServerRequest, roomID, user string) (*syncapitypes.InviteResponse, int64) {
@@ -1156,7 +1040,7 @@ func (s *SyncServer) buildRoomLeaveResp(req *syncapitypes.SyncServerRequest, roo
 					} else {
 						lv.Timeline.Limited = false
 					}
-					log.Infof("SyncServer.buildRoomLeaveResp traceid:%s break roomID:%s user:%s device:%s limit:%d eventType:%s stream.Offset:%d minStream:%d", req.TraceID, roomID, req.UserID, req.DeviceID, req.Limit, stream.GetEv().Type, stream.Offset, minStream)
+					log.Infof("SyncServer.buildRoomLeaveResp traceid:%s break roomID:%s user:%s device:%s limit:%d eventType:%s stream.Offset:%d minStream:%d", req.TraceID, roomID, req.UserID, req.DeviceID, stream.Offset, minStream)
 					break
 				}
 			}
@@ -1191,4 +1075,41 @@ func (s *SyncServer) buildRoomLeaveResp(req *syncapitypes.SyncServerRequest, roo
 	lv.Timeline.Events = msgEvent
 
 	return lv, maxPos
+}
+
+func pushStateIntoMap(states map[string]StateEvWithPrio, ev *gomatrixserverlib.ClientEvent, prio int) {
+	key := ev.Type
+	if ev.Type == "m.room.member" {
+		key = ev.Type + *ev.StateKey
+	}
+	states[key] = StateEvWithPrio{prio, ev}
+}
+
+type StateEvWithPrio struct {
+	prio int
+	ev   *gomatrixserverlib.ClientEvent
+}
+
+type StateEvWithPrioSorter []StateEvWithPrio
+
+func (s StateEvWithPrioSorter) Len() int           { return len(s) }
+func (s StateEvWithPrioSorter) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s StateEvWithPrioSorter) Less(i, j int) bool { return s[i].prio < s[j].prio }
+
+func (s *SyncServer) aggregateStates(states map[string]StateEvWithPrio) []gomatrixserverlib.ClientEvent {
+	sorter := make(StateEvWithPrioSorter, 0, len(states))
+	for _, v := range states {
+		sorter = append(sorter, v)
+	}
+	if len(sorter) == 0 {
+		return []gomatrixserverlib.ClientEvent{}
+	}
+
+	sort.Sort(sorter)
+	ret := make([]gomatrixserverlib.ClientEvent, 0, len(sorter))
+	for _, v := range sorter {
+		ret = append(ret, *v.ev)
+	}
+
+	return ret
 }

@@ -23,12 +23,12 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -67,7 +67,7 @@ func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *au
 	req := msg.(*external.GetUserUnread)
 
 	userID := req.UserID
-	joinMap, err := c.userTimeLine.GetJoinRoomsMap(userID)
+	joinMap, err := c.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown(err.Error())
 	}
@@ -76,8 +76,8 @@ func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *au
 	countMap := new(sync.Map)
 	requestMap := make(map[uint32]*syncapitypes.SyncUnreadRequest)
 	if joinMap != nil {
-		for roomID := range joinMap {
-			instance := common.GetSyncInstance(roomID, c.Cfg.MultiInstance.SyncServerTotal)
+		joinMap.Range(func(key, value interface{}) bool {
+			instance := common.GetSyncInstance(key.(string), c.Cfg.MultiInstance.SyncServerTotal)
 			var request *syncapitypes.SyncUnreadRequest
 			if data, ok := requestMap[instance]; ok {
 				request = data
@@ -85,9 +85,10 @@ func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *au
 				request = &syncapitypes.SyncUnreadRequest{}
 				requestMap[instance] = request
 			}
-			request.JoinRooms = append(request.JoinRooms, roomID)
+			request.JoinRooms = append(request.JoinRooms, key.(string))
 			request.UserID = userID
-		}
+			return true
+		})
 	}
 
 	var wg sync.WaitGroup

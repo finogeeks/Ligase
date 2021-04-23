@@ -21,11 +21,11 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	syncapi "github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/nats.go"
 )
 
@@ -91,8 +91,7 @@ func (s *JoinedRoomRpcConsumer) Start() error {
 
 func (s *JoinedRoomRpcConsumer) processOnJoinedRoom(userID, reply string) {
 	resp := syncapi.JoinedRoomsResp{}
-	var err error
-	resp.JoinedRooms, err = s.userTimeLine.GetJoinRoomsArr(userID)
+	joinRooms, err := s.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		resp := util.JSONResponse{
 			Code: http.StatusInternalServerError,
@@ -102,8 +101,13 @@ func (s *JoinedRoomRpcConsumer) processOnJoinedRoom(userID, reply string) {
 		return
 	}
 
-	for _, roomId := range resp.JoinedRooms {
-		log.Infof("OnIncomingJoinedRoomMessagesRequest user:%s load join room :%s", userID, roomId)
+	if joinRooms != nil {
+		joinRooms.Range(func(key, value interface{}) bool {
+			roomId := key.(string)
+			log.Infof("OnIncomingJoinedRoomMessagesRequest user:%s load join room :%s", userID, roomId)
+			resp.JoinedRooms = append(resp.JoinedRooms, roomId)
+			return true
+		})
 	}
 
 	respResult := util.JSONResponse{
