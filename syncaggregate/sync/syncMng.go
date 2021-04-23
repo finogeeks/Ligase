@@ -21,10 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
@@ -484,48 +482,42 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			syncReq.TraceID = req.traceId
 			syncReq.Slot = req.slot
 			bytes, err := json.Marshal(*syncReq)
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData marshal callSyncLoad content error,traceid:%s slot:%d device %s user %s error %v", req.traceId, req.slot, req.device.ID, req.device.UserID, err)
-				syncReq.SyncReady = false
-				return
-			}
-			//log.Infof("SyncMng.buildSyncData sync traceid:%s slot:%d user %s device %s request %s", req.traceId,req.slot, req.device.UserID, req.device.ID, string(bytes))
-			data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, int(sm.cfg.Sync.RpcTimeout))
-			//only for debug
-			if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
-				delay := utils.GetRandomSleepSecondsForDebug()
-				log.Infof("SyncMng.buildSyncData random sleep %fs", delay)
-				time.Sleep(time.Duration(delay*1000) * time.Millisecond)
-			}
+			if err == nil {
+				//log.Infof("SyncMng.buildSyncData sync traceid:%s slot:%d user %s device %s request %s", req.traceId,req.slot, req.device.UserID, req.device.ID, string(bytes))
+				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, 35000)
 
-			spend := time.Now().UnixNano()/1000000 - bs
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData call rpc for syncServer sync traceid:%s slot:%d spend:%d ms user %s device %s error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
-				syncReq.SyncReady = false
-				return
-			}
-			var result types.CompressContent
-			err = json.Unmarshal(data, &result)
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData response traceid:%s slot:%d spend:%d ms user:%s, device:%s, Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
-				syncReq.SyncReady = false
-				return
-			}
-			if result.Compressed {
-				result.Content = common.DoUnCompress(result.Content)
-			}
-			var response syncapitypes.SyncServerResponse
-			err = json.Unmarshal(result.Content, &response)
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData SyncServerResponse response traceid:%s slot:%d spend:%d ms user:%s, device:%s Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
-				syncReq.SyncReady = false
-				return
-			}
-			log.Infof("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
-			if response.AllLoaded {
-				syncReq.SyncReady = true
-				sm.addSyncData(req, res, &response)
+				spend := time.Now().UnixNano()/1000000 - bs
+				if err == nil {
+					var result types.CompressContent
+					err = json.Unmarshal(data, &result)
+					if err != nil {
+						log.Errorf("SyncMng.buildSyncData response traceid:%s slot:%d spend:%d ms user:%s, device:%s, Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
+						syncReq.SyncReady = false
+					} else {
+						if result.Compressed {
+							result.Content = common.DoUnCompress(result.Content)
+						}
+						var response syncapitypes.SyncServerResponse
+						err = json.Unmarshal(result.Content, &response)
+						if err != nil {
+							log.Errorf("SyncMng.buildSyncData SyncServerResponse response traceid:%s slot:%d spend:%d ms user:%s, device:%s Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
+							syncReq.SyncReady = false
+						} else {
+							log.Infof("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
+							if response.AllLoaded {
+								syncReq.SyncReady = true
+								sm.addSyncData(req, res, &response)
+							} else {
+								syncReq.SyncReady = false
+							}
+						}
+					}
+				} else {
+					log.Errorf("SyncMng.buildSyncData call rpc for syncServer sync traceid:%s slot:%d spend:%d ms user %s device %s error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
+					syncReq.SyncReady = false
+				}
 			} else {
+				log.Errorf("SyncMng.buildSyncData marshal callSyncLoad content error,traceid:%s slot:%d spend:%d ms device %s user %s error %v", req.traceId, req.slot, req.device.ID, req.device.UserID, err)
 				syncReq.SyncReady = false
 			}
 		}(instance, syncReq, req, maxReceiptOffset, res)
@@ -533,20 +525,21 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 	wg.Wait()
 	es := time.Now().UnixNano() / 1000000
 	log.Infof("SyncMng.buildSyncData remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
-	finished := len(requestMap) == 0
+	finished := true
 	for _, syncReq := range requestMap {
-		if syncReq.SyncReady {
-			finished = true
-			break
+		if syncReq.SyncReady == false {
+			finished = false
 		}
 	}
 	if finished {
 		if res.Rooms.Join == nil {
 			res.Rooms.Join = make(map[string]syncapitypes.JoinResponse)
 		}
+
 		if res.Rooms.Invite == nil {
 			res.Rooms.Invite = make(map[string]syncapitypes.InviteResponse)
 		}
+
 		if res.Rooms.Leave == nil {
 			res.Rooms.Leave = make(map[string]syncapitypes.LeaveResponse)
 		}

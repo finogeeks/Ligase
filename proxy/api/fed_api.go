@@ -27,11 +27,13 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
+	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
@@ -40,8 +42,6 @@ import (
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/proxy/bridge"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	dmodel "github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -373,8 +373,8 @@ func (ReqPutFedSend) Process(ud interface{}, msg core.Coder, device *authtypes.D
 	//only for debug
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 		delay := utils.GetRandomSleepSecondsForDebug()
-		log.Debugf("fed recv transationID:%s sleep %fs", req.TxnID, delay)
-		time.Sleep(time.Duration(delay*1000) * time.Millisecond)
+		log.Debugf("fed recv transationID:%s sleep %ds", req.TxnID, delay)
+		time.Sleep(time.Duration(delay) * time.Second)
 	}
 	// resp, err := bridge.SendAndRecv(gobMsg, 30000)
 	// if err != nil {

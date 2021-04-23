@@ -162,7 +162,7 @@ type Dendrite struct {
 			SettingUpdate      ProducerConf `yaml:"setting_update"`
 			UserInfoUpdate     ProducerConf `yaml:"user_info_update"`
 			DismissRoom        ProducerConf `yaml:"dismiss_room"`
-			OutputStatic       ProducerConf `yaml:"output_static_data"`
+			OutputStatic 	   ProducerConf `yaml:"output_static_data"`
 		} `yaml:"producers"`
 		Consumer struct {
 			OutputRoomEventPublicRooms   ConsumerConf `yaml:"output_room_event_publicroom"`    // OutputRoomEventPublicRooms "public-rooms",
@@ -447,9 +447,9 @@ type Dendrite struct {
 	} `yaml:"device_mng"`
 
 	StateMgr struct {
-		StateNotify  bool  `yaml:"state_notify"`
-		StateOffline int64 `yaml:"state_offline"`
-		StateReport  int64 `yaml:"state_report"`
+		StateNotify    	 	bool  `yaml:"state_notify"`
+		StateOffline    	int64 `yaml:"state_offline"`
+		StateReport   		int64 `yaml:"state_report"`
 	} `yaml:"state_mgr"`
 
 	Encryption struct {
@@ -472,19 +472,15 @@ type Dendrite struct {
 		MongoURL string `yaml:"mongo_url"`
 	} `yaml:"external_migration"`
 
-	License      string `yaml:"license"`
-	LicenseItem  LicenseConf
-	TokenExpire  int64  `yaml:"token_expire"`
-	UtlExpire    int64  `yaml:"utl_expire"`
-	LatestToken  int    `yaml:"latest_token"`
-	ReceiptDelay int64  `yaml:"receipt_delay"`
-	CheckReceipt int64  `yaml:"check_receipt"`
-	OnlineSpec   string `yaml:"online_spec"`
+	License     string `yaml:"license"`
+	LicenseItem LicenseConf
+	TokenExpire int64 `yaml:"token_expire"`
+	UtlExpire   int64 `yaml:"utl_expire"`
+	LatestToken int   `yaml:"latest_token"`
+	ReceiptDelay int64 `yaml:"receipt_delay"`
+	CheckReceipt int64 `yaml:"check_receipt"`
+	OnlineSpec 	 string	`yaml:"online_spec"`
 	OnlineDetail string `yaml:"online_detail_spec"`
-
-	Sync struct {
-		RpcTimeout int64 `yaml:"rpc_timeout"`
-	} `yaml:"sync"`
 }
 
 type LicenseConf struct {
