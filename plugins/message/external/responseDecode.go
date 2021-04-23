@@ -873,6 +873,10 @@ func (res *GetRoomVisibilityRangeResponse) Decode(input []byte) error {
 	return json.Unmarshal(input, res)
 }
 
+func (res *GetLRURoomsResponse) Decode(input []byte) error {
+	return json.Unmarshal(input, res)
+}
+
 func (res *GetPushersResponse) Decode(input []byte) error {
 	msg, err := capn.Unmarshal(input)
 	if err != nil {

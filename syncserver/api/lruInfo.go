@@ -18,30 +18,20 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 )
 
 func init() {
 	apiconsumer.SetAPIProcessor(ReqGetLRUInfo{})
-}
-
-type LRURooms struct {
-	Loaded int    `json:"loaded"`
-	Max    int    `json:"max"`
-	Server string `json:"server"`
-}
-
-func (r *LRURooms) Encode() ([]byte, error) {
-	return json.Marshal(r)
-}
-
-func (r *LRURooms) Decode(input []byte) error {
-	return json.Unmarshal(input, r)
 }
 
 type ReqGetLRUInfo struct{}
@@ -59,17 +49,23 @@ func (ReqGetLRUInfo) NewRequest() core.Coder {
 	return nil
 }
 func (ReqGetLRUInfo) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.GetLRURoomsRequest)
+	msg.Timestamp = fmt.Sprintf("%d", time.Now().Second())
 	return nil
 }
 func (ReqGetLRUInfo) NewResponse(code int) core.Coder {
-	return new(LRURooms)
+	return new(external.GetLRURoomsRequest)
 }
 func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
+	req := msg.(*external.GetLRURoomsRequest)
+	if !common.IsRelatedRequest(req.Timestamp, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
 
 	loaded, max := c.rmHsTimeline.GetLoadedRoomNumber()
 
-	return http.StatusOK, &LRURooms{
+	return http.StatusOK, &external.GetLRURoomsResponse{
 		Loaded: loaded,
 		Max:    max,
 		Server: fmt.Sprintf("%s%d", os.Getenv("SERVICE_NAME"), c.Cfg.Matrix.InstanceId),
