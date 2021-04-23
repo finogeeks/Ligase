@@ -15,6 +15,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common/apiconsumer"
@@ -29,8 +30,9 @@ func init() {
 }
 
 type LRURooms struct {
-	Loaded int `json:"loaded"`
-	Max    int `json:"max"`
+	Loaded int    `json:"loaded"`
+	Max    int    `json:"max"`
+	Server string `json:"server"`
 }
 
 func (r *LRURooms) Encode() ([]byte, error) {
@@ -69,5 +71,6 @@ func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *autht
 	return http.StatusOK, &LRURooms{
 		Loaded: loaded,
 		Max:    max,
+		Server: fmt.Sprintf("%s%d", c.Cfg.Matrix.ServerName, c.Cfg.Matrix.InstanceId),
 	}
 }
