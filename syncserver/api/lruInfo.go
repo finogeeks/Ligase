@@ -17,6 +17,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
@@ -71,6 +72,6 @@ func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *autht
 	return http.StatusOK, &LRURooms{
 		Loaded: loaded,
 		Max:    max,
-		Server: fmt.Sprintf("%s%d", c.Cfg.Matrix.ServerName, c.Cfg.Matrix.InstanceId),
+		Server: fmt.Sprintf("%s%d", os.Getenv("SERVICE_NAME"), c.Cfg.Matrix.InstanceId),
 	}
 }
