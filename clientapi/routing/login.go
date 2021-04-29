@@ -30,10 +30,10 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -99,7 +99,7 @@ func providerLogin(
 
 	token, err := common.BuildToken(cfg.Macaroon.Key, r.User, domain, r.User, r.DeviceID, false, deviceID, deviceType, human)
 	if err != nil {
-		httputil.LogThenErrorCtx(ctx, err)
+		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
 	dev, err := deviceDB.CreateDevice(
@@ -158,15 +158,15 @@ func pubLoginToken(userID string, deviceID string, rpcClient *common.RpcClient) 
 	}
 }
 
-func pubLoginInfo(userId, ip, info, source string, cfg config.Dendrite){
+func pubLoginInfo(userId, ip, info, source string, cfg config.Dendrite) {
 	data := new(types.StaticItem)
 	data.Type = types.STATIC_LOGIN
 	loginInfo := &types.StaticLoginItem{
-		UserId: userId,
-		TimeStamp: time.Now().UnixNano()/1000000,
-		IP: ip,
-		Version: info,
-		Source: source,
+		UserId:    userId,
+		TimeStamp: time.Now().UnixNano() / 1000000,
+		IP:        ip,
+		Version:   info,
+		Source:    source,
 	}
 	data.Login = loginInfo
 	common.GetTransportMultiplexer().SendWithRetry(

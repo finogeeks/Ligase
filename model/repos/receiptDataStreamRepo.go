@@ -20,10 +20,10 @@ import (
 	"sync"
 	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -100,7 +100,7 @@ func (tl *ReceiptDataStreamRepo) SetRsCurState(rsCurState *RoomCurStateRepo) {
 	tl.roomCurState = rsCurState
 }
 
-func (tl *ReceiptDataStreamRepo) SetRsTimeline(rsTimeline *RoomStateTimeLineRepo){
+func (tl *ReceiptDataStreamRepo) SetRsTimeline(rsTimeline *RoomStateTimeLineRepo) {
 	tl.rsTimeline = rsTimeline
 }
 
@@ -149,7 +149,7 @@ func (tl *ReceiptDataStreamRepo) addReceiptDataStream(dataStream *types.ReceiptS
 	tl.setRoomLatest(roomID, offset)
 }
 
-func (tl *ReceiptDataStreamRepo) setJoinUsersLatest(roomID string, offset int64){
+func (tl *ReceiptDataStreamRepo) setJoinUsersLatest(roomID string, offset int64) {
 	rs := tl.roomCurState.GetRoomState(roomID)
 	if rs != nil {
 		joined := rs.GetJoinMap()
@@ -157,13 +157,13 @@ func (tl *ReceiptDataStreamRepo) setJoinUsersLatest(roomID string, offset int64)
 			tl.setUserLatest(key.(string), offset)
 			return true
 		})
-	}else{
+	} else {
 		log.Infof("load roomID:%s stream state sync to init user latest receipt", roomID)
 		tl.rsTimeline.LoadStreamStates(roomID, true)
 		rs = tl.roomCurState.GetRoomState(roomID)
 		if rs == nil {
 			log.Errorf("after sync LoadStreamStates roomID:%s rs is still nil", roomID)
-		}else{
+		} else {
 			joined := rs.GetJoinMap()
 			joined.Range(func(key, _ interface{}) bool {
 				tl.setUserLatest(key.(string), offset)
@@ -175,8 +175,7 @@ func (tl *ReceiptDataStreamRepo) setJoinUsersLatest(roomID string, offset int64)
 
 func (tl *ReceiptDataStreamRepo) LoadHistory(roomID string, sync bool) {
 	if _, ok := tl.ready.Load(roomID); !ok {
-		if _, ok := tl.loading.Load(roomID); !ok {
-			tl.loading.Store(roomID, true)
+		if _, loaded := tl.loading.LoadOrStore(roomID, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(roomID)
 			} else {

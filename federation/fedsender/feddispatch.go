@@ -21,9 +21,9 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/config"
+	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/repos"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -85,7 +85,6 @@ func (c *FederationDispatch) onRoomEvent(
 ) error {
 	rs := c.Repo.OnEventNoCache(&ev, ev.EventNID())
 	domains := rs.GetDomainTlMap()
-	hasAddConsumer := false
 	domains.Range(func(key, value interface{}) bool {
 		domain := key.(string)
 		log.Infof("fed-dispatch onRoomEvent check domain:%s server:%s", domain, c.cfg.GetServerName())
@@ -93,7 +92,6 @@ func (c *FederationDispatch) onRoomEvent(
 			_, loaded := c.domaimMap.LoadOrStore(domain, true)
 			if !loaded {
 				c.sender.AddConsumer(domain)
-				hasAddConsumer = true
 			}
 			// c.writeFedEvents(ev.RoomID(), domain, &ev)
 		}

@@ -42,11 +42,11 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 		req.joinRooms = append(req.joinRooms, roomID)
 		if offset, ok := req.offsets[roomID]; ok {
 			if offset < latestOffset && joinOffset > 0 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, latestOffset, roomID, "join", "build"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, offset, -1, roomID, "join", "build"))
 			}
 		} else {
 			if joinOffset > 0 {
-				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, latestOffset, roomID, "join", "build"))
+				req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, -1, roomID, "join", "build"))
 			}
 		}
 	}
@@ -116,7 +116,7 @@ func (sm *SyncMng) buildFullSyncRequest(req *request) error {
 	}
 	for _, roomID := range req.joinRooms {
 		req.joinRooms = append(req.joinRooms, roomID)
-		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, sm.userTimeLine.GetRoomOffset(roomID, req.device.UserID, "join"), roomID, "join", "build"))
+		req.reqRooms.Store(roomID, sm.buildReqRoom(req.traceId, -1, -1, roomID, "join", "build"))
 	}
 	inviteRooms, err := sm.userTimeLine.GetInviteRoomsMap(req.device.UserID)
 	if err != nil {

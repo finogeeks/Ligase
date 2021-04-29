@@ -126,8 +126,7 @@ func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
 
 func (tl *RoomHistoryTimeLineRepo) LoadHistory(roomID string, sync bool) {
 	if _, ok := tl.ready.Load(roomID); !ok {
-		if _, ok := tl.loading.Load(roomID); !ok {
-			tl.loading.Store(roomID, true)
+		if _, loaded := tl.loading.LoadOrStore(roomID, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(roomID)
 			} else {

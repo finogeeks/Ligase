@@ -17,12 +17,13 @@ package repos
 import (
 	"context"
 	"fmt"
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/storage/model"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/storage/model"
 )
 
 type UserReceiptRepo struct {
@@ -80,8 +81,7 @@ func (tl *UserReceiptRepo) AddUserReceipt(receipt *types.UserReceipt) {
 func (tl *UserReceiptRepo) LoadHistory(userID, roomID string, sync bool) {
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 	if _, ok := tl.ready.Load(key); !ok {
-		if _, ok := tl.loading.Load(key); !ok {
-			tl.loading.Store(key, true)
+		if _, loaded := tl.loading.LoadOrStore(key, true); !loaded {
 			if sync == false {
 				go tl.loadHistory(userID, roomID)
 			} else {
