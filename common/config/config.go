@@ -483,7 +483,8 @@ type Dendrite struct {
 	OnlineDetail string `yaml:"online_detail_spec"`
 
 	Sync struct {
-		RpcTimeout int64 `yaml:"rpc_timeout"`
+		RpcTimeout      int64 `yaml:"rpc_timeout"`
+		FullSyncTimeout int64 `yaml:"fullsync_rpc_timeout"`
 	} `yaml:"sync"`
 }
 
