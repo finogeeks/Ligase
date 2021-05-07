@@ -483,8 +483,14 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 				syncReq.SyncReady = false
 				return
 			}
+			timeout := 0
+			if req.isFullSync {
+				timeout = int(sm.cfg.Sync.FullSyncTimeout)
+			} else {
+				timeout = int(sm.cfg.Sync.RpcTimeout)
+			}
 			//log.Infof("SyncMng.buildSyncData sync traceid:%s slot:%d user %s device %s request %s", req.traceId,req.slot, req.device.UserID, req.device.ID, string(bytes))
-			data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, int(sm.cfg.Sync.RpcTimeout))
+			data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, timeout)
 			//only for debug
 			if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 				delay := utils.GetRandomSleepSecondsForDebug()

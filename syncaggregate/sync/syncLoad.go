@@ -303,8 +303,14 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 			syncReq.Slot = req.slot
 			bytes, err := json.Marshal(*syncReq)
 			if err == nil {
+				timeout := 0
+				if req.isFullSync {
+					timeout = int(sm.cfg.Sync.FullSyncTimeout)
+				} else {
+					timeout = int(sm.cfg.Sync.RpcTimeout)
+				}
 				log.Infof("SyncMng.callSyncLoad load traceid:%s slot:%d user %s device %s instance:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, instance)
-				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, int(sm.cfg.Sync.RpcTimeout))
+				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, timeout)
 
 				spend := time.Now().UnixNano()/1000000 - bs
 				//only for debug
