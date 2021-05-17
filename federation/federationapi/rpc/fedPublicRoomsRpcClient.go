@@ -19,17 +19,17 @@ import (
 	"encoding/json"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/federation/config"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 )
 
 type FedPublicRoomsRpcClient struct {
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	rpcClient *common.RpcClient
 }
 
 func NewFedPublicRoomsRpcClient(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	rpcClient *common.RpcClient,
 ) *FedPublicRoomsRpcClient {
 	fed := &FedPublicRoomsRpcClient{

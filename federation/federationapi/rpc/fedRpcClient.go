@@ -20,16 +20,16 @@ import (
 	"errors"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/federation/config"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type FederationRpcClient struct {
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	rpcClient *common.RpcClient
 	aliase    roomserverapi.RoomserverAliasAPI
 	qry       roomserverapi.RoomserverQueryAPI
@@ -37,7 +37,7 @@ type FederationRpcClient struct {
 }
 
 func NewFederationRpcClient(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	rpcClient *common.RpcClient,
 	aliase roomserverapi.RoomserverAliasAPI,
 	qry roomserverapi.RoomserverQueryAPI,

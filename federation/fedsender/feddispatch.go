@@ -19,8 +19,8 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -31,13 +31,13 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type FederationDispatch struct {
 	channel   core.IChannel
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	sender    *FederationSender
 	Repo      *repos.RoomServerCurStateRepo
 	domaimMap sync.Map
 }
 
-func NewFederationDispatch(cfg *config.Fed) *FederationDispatch {
+func NewFederationDispatch(cfg *config.Dendrite) *FederationDispatch {
 	val, ok := common.GetTransportMultiplexer().GetChannel(
 		cfg.Kafka.Consumer.DispatchInput.Underlying,
 		cfg.Kafka.Consumer.DispatchInput.Name,

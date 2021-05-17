@@ -32,16 +32,14 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/adapter"
-
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"golang.org/x/crypto/ed25519"
-	"gopkg.in/yaml.v2"
-
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	jaegerconfig "github.com/uber/jaeger-client-go/config"
 	jaegermetrics "github.com/uber/jaeger-lib/metrics"
+	"golang.org/x/crypto/ed25519"
+	"gopkg.in/yaml.v2"
 )
 
 // Version is the current version of the config format.
@@ -163,6 +161,10 @@ type Dendrite struct {
 			UserInfoUpdate     ProducerConf `yaml:"user_info_update"`
 			DismissRoom        ProducerConf `yaml:"dismiss_room"`
 			OutputStatic       ProducerConf `yaml:"output_static_data"`
+			DispatchOutput     ProducerConf `yaml:"dispatch_output"`
+			FedAPIOutput       ProducerConf `yaml:"fedapi_output"`
+			GetMissingEvent    ProducerConf `yaml:"get_missing_event"`
+			DownloadMedia      ProducerConf `yaml:"download_media"`
 		} `yaml:"producers"`
 		Consumer struct {
 			OutputRoomEventPublicRooms   ConsumerConf `yaml:"output_room_event_publicroom"`    // OutputRoomEventPublicRooms "public-rooms",
@@ -184,8 +186,16 @@ type Dendrite struct {
 			SettingUpdateSyncAggregate ConsumerConf `yaml:"setting_update_syncaggregate"`
 			SetttngUpdateProxy         ConsumerConf `yaml:"setting_update_proxy"`
 			SettingUpdateContent       ConsumerConf `yaml:"setting_update_content"`
+			SettingUpdateFed           ConsumerConf `yaml:"setting_update_fed"`
 			DownloadMedia              ConsumerConf `yaml:"download_media"`
 			DismissRoom                ConsumerConf `yaml:"dismiss_room"`
+
+			DispatchInput   ConsumerConf `yaml:"dispatch_input"`
+			SenderInput     ConsumerConf `yaml:"fedsenser_input"`
+			FedAPIInput     ConsumerConf `yaml:"fedapi_input"`
+			FedBackFill     ConsumerConf `yaml:"fed_backfill"`
+			EduSenderInput  ConsumerConf `yaml:"edusender_input"`
+			GetMissingEvent ConsumerConf `yaml:"get_missing_event"`
 		} `yaml:"consumers"`
 	} `yaml:"kafka"`
 
@@ -194,6 +204,7 @@ type Dendrite struct {
 		PrQryTopic                 string `yaml:"pr_qry_topic"`
 		AliasTopic                 string `yaml:"alias_topic"`
 		RoomInputTopic             string `yaml:"room_input_topic"`
+		FedTopic                   string `yaml:"fed_topic"`
 		FedAliasTopic              string `yaml:"fed_alias_topic"`
 		FedProfileTopic            string `yaml:"fed_profile_topic"`
 		FedAvatarTopic             string `yaml:"fed_avatar_topic"`
@@ -260,6 +271,8 @@ type Dendrite struct {
 		Content DataBaseConf `yaml:"content"`
 
 		RCSServer DataBaseConf `yaml:"rcs_server"`
+
+		Federation DataBaseConf `yaml:"federation"`
 
 		UseSync bool `yaml:"use_sync"`
 	} `yaml:"database"`
@@ -642,32 +655,6 @@ func loadConfig(
 		return err
 	}
 
-	/*
-		privateKeyPath := absPath(basePath, config.Matrix.PrivateKeyPath)
-		privateKeyData, err := readFile(privateKeyPath)
-		if err != nil {
-			return err
-		}
-
-		if config.Matrix.KeyID, config.Matrix.PrivateKey, err = readKeyPEM(privateKeyPath, privateKeyData); err != nil {
-			return err
-		}
-
-		for _, certPath := range config.Matrix.FederationCertificatePaths {
-			absCertPath := absPath(basePath, certPath)
-			var pemData []byte
-			pemData, err = readFile(absCertPath)
-			if err != nil {
-				return err
-			}
-			fingerprint := fingerprintPEM(pemData)
-			if fingerprint == nil {
-				return fmt.Errorf("no certificate PEM data in %q", absCertPath)
-			}
-			config.Matrix.TLSFingerPrints = append(config.Matrix.TLSFingerPrints, *fingerprint)
-		}
-	*/
-
 	// Generate data from config options
 	err = config.derive()
 	if err != nil {
@@ -693,6 +680,10 @@ func loadConfig(
 	adapter.SetDebugLevel(config.DebugLevel)
 	adapter.SetCacheCfg(config.TokenExpire, config.UtlExpire, config.LatestToken)
 	return nil
+}
+
+func (config *Dendrite) GetServerName() []string {
+	return config.Matrix.ServerName
 }
 
 func (config *Dendrite) GetDBConfig(name string) (driver string, createAddr string, addr string, persistUnderlying string, persistName string, async bool) {
@@ -723,6 +714,8 @@ func (config *Dendrite) GetDBConfig(name string) (driver string, createAddr stri
 		return config.Database.Content.Driver, config.Database.CreateDB.Addresses, config.Database.Content.Addresses, config.Kafka.Producer.DBUpdates.Underlying, config.Kafka.Producer.DBUpdates.Name, !config.Database.UseSync
 	case "rcsserver":
 		return config.Database.Content.Driver, config.Database.CreateDB.Addresses, config.Database.RCSServer.Addresses, config.Kafka.Producer.DBUpdates.Underlying, config.Kafka.Producer.DBUpdates.Name, !config.Database.UseSync
+	case "federation":
+		return config.Database.Federation.Driver, config.Database.CreateDB.Addresses, config.Database.Federation.Addresses, config.Kafka.Producer.DBUpdates.Underlying, config.Kafka.Producer.DBUpdates.Name, !config.Database.UseSync
 	default:
 		return "", "", "", "", "", false
 	}

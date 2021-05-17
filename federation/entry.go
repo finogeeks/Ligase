@@ -23,16 +23,15 @@ import (
 	"strconv"
 	"syscall"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/fedbackfill"
 	"github.com/finogeeks/ligase/federation/federationapi"
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
@@ -45,6 +44,7 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	_ "github.com/finogeeks/ligase/plugins"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	_ "github.com/finogeeks/ligase/storage/implements"
 	"github.com/finogeeks/ligase/storage/model"
 )
@@ -109,12 +109,12 @@ func addConsumer(mult core.IMultiplexer, conf config.ConsumerConf) {
 		tran := val.(core.ITransport)
 		tran.AddChannel(core.CHANNEL_SUB, conf.Name, conf.Topic, conf.Group, &conf)
 	} else {
-		log.Errorf("addConsumer can't find transport %s", conf.Underlying)
+		log.Errorf("addConsumer can't find transport %s %s", conf.Underlying, conf.Topic)
 	}
 }
 
 func startFedMonolith() {
-	cfg := config.GetFedConfig()
+	cfg := config.GetConfig()
 
 	transportMultiplexer, _ := core.GetMultiplexer("transport", nil)
 	for _, v := range cfg.TransportConfs {
@@ -139,12 +139,12 @@ func startFedMonolith() {
 	addConsumer(transportMultiplexer, kafka.Consumer.FedAPIInput)
 	addConsumer(transportMultiplexer, kafka.Consumer.FedBackFill)
 	addConsumer(transportMultiplexer, kafka.Consumer.EduSenderInput)
-	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdate)
+	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdateFed)
 	addConsumer(transportMultiplexer, kafka.Consumer.GetMissingEvent)
 	transportMultiplexer.PreStart()
 
 	// check cert
-	kdb, err := common.GetDBInstance("serverkey", &cfg)
+	kdb, err := common.GetDBInstance("serverkey", cfg)
 	if err != nil {
 		log.Panicw("failed to connect to serverkey db", log.KeysAndValues{"error", err})
 	}
@@ -171,14 +171,14 @@ func startFedMonolith() {
 	settings := common.NewSettings(cache)
 
 	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcClient := common.NewRpcClient(cfg.GetMsgBusAddress(), idg)
+	rpcClient := common.NewRpcClient(cfg.Nats.Uri, idg)
 	rpcClient.Start(true)
 
-	fedRpcCli := rpc.NewFederationRpcClient(&cfg, rpcClient, nil, nil, nil)
+	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, nil, nil, nil)
 
 	settingConsumer := common.NewSettingConsumer(
-		cfg.Kafka.Consumer.SettingUpdate.Underlying,
-		cfg.Kafka.Consumer.SettingUpdate.Name,
+		cfg.Kafka.Consumer.SettingUpdateFed.Underlying,
+		cfg.Kafka.Consumer.SettingUpdateFed.Name,
 		settings)
 	if err := settingConsumer.Start(); err != nil {
 		log.Panicf("failed to start settings consumer err:%v", err)
@@ -191,9 +191,9 @@ func startFedMonolith() {
 	if err != nil {
 		log.Panicf(err.Error())
 	}
-	fedSync := fedsync.NewFederationSync(&cfg, fedClient, feddomains)
+	fedSync := fedsync.NewFederationSync(cfg, fedClient, feddomains)
 
-	fdb, err := common.GetDBInstance("federation", &cfg)
+	fdb, err := common.GetDBInstance("federation", cfg)
 	if err != nil {
 		log.Panicw("failed to connect to federation db", log.KeysAndValues{"error", err})
 	}
@@ -202,14 +202,14 @@ func startFedMonolith() {
 	backfillRepo := fedrepos.NewBackfillRepo(fedDB)
 	joinRoomsRepo := fedrepos.NewJoinRoomsRepo(fedDB)
 
-	rdb, err := common.GetDBInstance("roomserver", &cfg)
+	rdb, err := common.GetDBInstance("roomserver", cfg)
 	if err != nil {
 		log.Panicw("failed to connect to room server db", log.KeysAndValues{"error", err})
 	}
 
 	roomserverDB := rdb.(model.RoomServerDatabase)
 
-	backfill := fedbackfill.NewFederationBackFill(&cfg, fedDB, fedClient, feddomains, backfillRepo)
+	backfill := fedbackfill.NewFederationBackFill(cfg, fedDB, fedClient, feddomains, backfillRepo)
 	val, ok := common.GetTransportMultiplexer().GetChannel(
 		kafka.Consumer.FedBackFill.Underlying,
 		kafka.Consumer.FedBackFill.Name,
@@ -220,22 +220,22 @@ func startFedMonolith() {
 		channel.Start()
 	}
 
-	adb, err := common.GetDBInstance("accounts", &cfg)
+	adb, err := common.GetDBInstance("accounts", cfg)
 	if err != nil {
 		log.Panicw("failed to connect to room account db", log.KeysAndValues{"error", err})
 	}
 	accountDB := adb.(model.AccountsDatabase)
 	complexCache := common.NewComplexCache(accountDB, cache)
 
-	edb, err := common.GetDBInstance("encryptoapi", &cfg)
+	edb, err := common.GetDBInstance("encryptoapi", cfg)
 	if err != nil {
 		log.Panicw("failed to connect to encryptoapi db", log.KeysAndValues{"error", err})
 	}
 	encrytionDB := edb.(model.EncryptorAPIDatabase)
 
-	publicroomsAPI := rpc.NewFedPublicRoomsRpcClient(&cfg, rpcClient)
+	publicroomsAPI := rpc.NewFedPublicRoomsRpcClient(cfg, rpcClient)
 
-	fedAPIEntry := federationapi.NewFederationAPIComponent(&cfg, cache, fedClient, fedDB, keyDB,
+	fedAPIEntry := federationapi.NewFederationAPIComponent(cfg, cache, fedClient, fedDB, keyDB,
 		feddomains, fedRpcCli, backfillRepo, joinRoomsRepo, backfill, publicroomsAPI,
 		rpcClient, encrytionDB, certInfo, idg, complexCache)
 
@@ -266,32 +266,32 @@ func startFedMonolith() {
 	repo.SetCache(cache)
 	repo.SetMonitor(queryHitCounter)
 
-	cdb, err := common.GetDBInstance("server_conf", &cfg)
+	cdb, err := common.GetDBInstance("server_conf", cfg)
 	if err != nil {
 		log.Panicw("failed to connect to serverconf db", log.KeysAndValues{"error", err})
 	}
 	serverConfDB := cdb.(model.ConfigDatabase)
-	domain.GetDomainMngInstance(cache, serverConfDB, cfg.GetServerName(), cfg.GetServerFromDB(), idg)
-	checkDomainCfg(cfg)
+	domain.GetDomainMngInstance(cache, serverConfDB, cfg.GetServerName(), cfg.Matrix.ServerFromDB, idg)
+	checkDomainCfg(*cfg)
 
 	fedAPIEntry.SetRepo(repo)
 
-	sender := fedsender.NewFederationSender(&cfg, rpcClient, feddomains, fedDB)
+	sender := fedsender.NewFederationSender(cfg, rpcClient, feddomains, fedDB)
 	sender.SetRepo(repo)
 	sender.Init()
 	sender.Start()
 
-	dispatch := fedsender.NewFederationDispatch(&cfg)
+	dispatch := fedsender.NewFederationDispatch(cfg)
 	dispatch.SetRepo(repo)
 	dispatch.SetSender(sender)
 	dispatch.Start()
 
-	eduSender := fedsender.NewEduSender(&cfg, rpcClient)
+	eduSender := fedsender.NewEduSender(cfg, rpcClient)
 	eduSender.SetSender(sender)
 	eduSender.Start()
 
 	getMissingEventProcessor := fedmissing.NewGetMissingEventsProcessor(
-		fedClient, fedRpcCli, fedDB, feddomains, &cfg,
+		fedClient, fedRpcCli, fedDB, feddomains, cfg,
 	)
 	err = getMissingEventProcessor.Start()
 	if err != nil {
@@ -299,12 +299,12 @@ func startFedMonolith() {
 	}
 }
 
-func checkDomainCfg(cfg config.Fed) {
-	if !cfg.GetServerFromDB() {
+func checkDomainCfg(cfg config.Dendrite) {
+	if !cfg.Matrix.ServerFromDB {
 		if len(cfg.GetServerName()) <= 0 {
 			log.Panicf("len cfg matrix serverName <= 0 err")
 		}
-		domain.FirstDomain = cfg.Homeserver.ServerName[0]
+		domain.FirstDomain = cfg.Matrix.ServerName[0]
 	} else {
 		serverNames := domain.DomainMngInsance.GetDomain()
 		if len(serverNames) <= 0 {

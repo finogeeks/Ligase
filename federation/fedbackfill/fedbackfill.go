@@ -20,15 +20,15 @@ import (
 	"errors"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/model/repos"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model"
 )
 
 type senderItem struct {
@@ -51,7 +51,7 @@ type BackFillRecord struct {
 
 type FederationBackFill struct {
 	processor    BackfillProcessor
-	cfg          *config.Fed
+	cfg          *config.Dendrite
 	fedRpcCli    *rpc.FederationRpcClient
 	msgChan      chan *BackFillJob
 	db           fedmodel.FederationDatabase
@@ -60,14 +60,14 @@ type FederationBackFill struct {
 }
 
 func NewFederationBackFill(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	db fedmodel.FederationDatabase,
 	fedClient *client.FedClientWrap,
 	feddomains *common.FedDomains,
 	repo *repos.BackfillRepo,
 ) *FederationBackFill {
 	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcClient := common.NewRpcClient(cfg.GetMsgBusAddress(), idg)
+	rpcClient := common.NewRpcClient(cfg.Nats.Uri, idg)
 	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, nil, nil, nil)
 
 	sender := &FederationBackFill{

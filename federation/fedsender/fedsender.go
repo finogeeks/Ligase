@@ -22,19 +22,19 @@ import (
 	"sync/atomic"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/fedsender/queue"
 	"github.com/finogeeks/ligase/federation/storage/model"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type ServerName = gomatrixserverlib.ServerName
@@ -47,7 +47,7 @@ type FedSendMsg struct {
 }
 
 type FederationSender struct {
-	cfg         *config.Fed
+	cfg         *config.Dendrite
 	Repo        *repos.RoomServerCurStateRepo
 	queuesMap   sync.Map
 	domainMap   sync.Map
@@ -62,7 +62,7 @@ type FederationSender struct {
 	sentCounter int64
 }
 
-func NewFederationSender(cfg *config.Fed, rpcClient *common.RpcClient, feddomains *common.FedDomains, db model.FederationDatabase) *FederationSender {
+func NewFederationSender(cfg *config.Dendrite, rpcClient *common.RpcClient, feddomains *common.FedDomains, db model.FederationDatabase) *FederationSender {
 	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, nil, nil, nil)
 	sender := &FederationSender{
 		cfg:        cfg,
@@ -78,7 +78,7 @@ func NewFederationSender(cfg *config.Fed, rpcClient *common.RpcClient, feddomain
 		sender.msgChan[i] = make(chan FedSendMsg, 32)
 		go sender.startWorker(sender.msgChan[i])
 	}
-	for _, domain := range cfg.Homeserver.ServerName {
+	for _, domain := range cfg.Matrix.ServerName {
 		fedClient, _ := client.GetFedClient(domain)
 		queues := queue.NewOutgoingQueues(ServerName(domain), &sender.sentCounter, fedClient, fedRpcCli, db, cfg, feddomains)
 		sender.queuesMap.Store(domain, queues)

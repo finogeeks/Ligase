@@ -18,20 +18,19 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 	"github.com/finogeeks/ligase/federation/model/repos"
-
-	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	modelRepos "github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
 )
 
@@ -41,7 +40,7 @@ var (
 	regMtx         sync.RWMutex
 	FedApiFunc     = make(map[model.Command]FedApiEntryCB)
 	feddomains     *common.FedDomains
-	cfg            *config.Fed
+	cfg            *config.Dendrite
 	keyDB          dbmodel.KeyDatabase
 	certInfo       *cert.Cert
 	localCache     service.LocalCache
@@ -75,7 +74,7 @@ func SetFedDomains(v *common.FedDomains) {
 	feddomains = v
 }
 
-func SetCfg(v *config.Fed) {
+func SetCfg(v *config.Dendrite) {
 	cfg = v
 }
 

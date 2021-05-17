@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	log "github.com/finogeeks/ligase/skunkworks/log"
@@ -34,7 +34,7 @@ type FedEventExtra struct {
 }
 
 type SyncConsumer struct {
-	cfg        *config.Fed
+	cfg        *config.Dendrite
 	fedClient  *client.FedClientWrap
 	rpcClient  *common.RpcClient
 	feddomains *common.FedDomains
@@ -44,7 +44,7 @@ type SyncConsumer struct {
 }
 
 func NewSyncConsumer(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	fedClient *client.FedClientWrap,
 	rpcClient *common.RpcClient,
 	feddomains *common.FedDomains,
@@ -124,19 +124,19 @@ func (s *SyncConsumer) processRequest(request *FedEventExtra) {
 		response = GetDisplayName(s.fedClient, &request.FedEvent, destination)
 	} else if request.Subject == s.cfg.Rpc.FedRsQryTopic {
 		response = GetRoomState(s.fedClient, &request.FedEvent, destination, s.backfill)
-	} else if request.Subject == s.cfg.Rpc.FedRsDownloadTopic {
+	} else if request.Subject == s.cfg.Rpc.FedDownloadTopic {
 		response = Download(s.fedClient, &request.FedEvent, destination, request.FedEvent.Destination, s.rpcClient)
 	} else if request.Subject == s.cfg.Rpc.FedUserInfoTopic {
 		response = GetUserInfo(s.fedClient, &request.FedEvent, destination)
-	} else if request.Subject == s.cfg.Rpc.FedRsMakeJoinTopic {
+	} else if request.Subject == s.cfg.Rpc.FedMakeJoinTopic {
 		response = MakeJoin(s.fedClient, &request.FedEvent, destination)
-	} else if request.Subject == s.cfg.Rpc.FedRsSendJoinTopic {
+	} else if request.Subject == s.cfg.Rpc.FedSendJoinTopic {
 		response = SendJoin(s.fedClient, &request.FedEvent, destination, s.backfill)
-	} else if request.Subject == s.cfg.Rpc.FedRsMakeLeaveTopic {
+	} else if request.Subject == s.cfg.Rpc.FedMakeLeaveTopic {
 		response = MakeLeave(s.fedClient, &request.FedEvent, destination)
-	} else if request.Subject == s.cfg.Rpc.FedRsSendLeaveTopic {
+	} else if request.Subject == s.cfg.Rpc.FedSendLeaveTopic {
 		response = SendLeave(s.fedClient, &request.FedEvent, destination, s.backfill)
-	} else if request.Subject == s.cfg.Rpc.FedRsInviteTopic {
+	} else if request.Subject == s.cfg.Rpc.FedInviteTopic {
 		response = SendInvite(s.fedClient, &request.FedEvent, destination)
 	}
 
