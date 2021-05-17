@@ -18,15 +18,17 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/rcsserver/api"
 	"github.com/finogeeks/ligase/rcsserver/processors"
 	"github.com/finogeeks/ligase/rcsserver/rpc"
+	rrpc "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/rpc/consul"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
 func SetupRCSServerComponent(
-	base *basecomponent.BaseDendrite, rpcClient *common.RpcClient,
+	base *basecomponent.BaseDendrite, rpcClient *common.RpcClient, rpcCli rrpc.RpcClient,
 ) {
 	dbIface, err := common.GetDBInstance("rcsserver", base.Cfg)
 	if err != nil {
@@ -46,11 +48,27 @@ func SetupRCSServerComponent(
 		repo.SetMonitor(counter)
 	*/
 	proc := processors.NewEventProcessor(base.Cfg, idg, db)
-	consumer := rpc.NewEventConsumer(base.Cfg, rpcClient, proc)
-	if err := consumer.Start(); err != nil {
-		log.Panicw("Failed to start rcs event consumer", log.KeysAndValues{"error", err})
+	if base.Cfg.Rpc.Driver == "nats" {
+		consumer := rpc.NewEventConsumer(base.Cfg, rpcClient, proc)
+		if err := consumer.Start(); err != nil {
+			log.Panicw("Failed to start rcs event consumer", log.KeysAndValues{"error", err})
+		}
+	} else {
+		grpcServer := rpc.NewServer(base.Cfg, proc)
+		if err := grpcServer.Start(); err != nil {
+			log.Panicf("failed to start rcs rpc server err:%v", err)
+		}
 	}
 
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, idg, db)
+	if base.Cfg.Rpc.Driver == "grpc_with_consul" {
+		if base.Cfg.Rpc.ConsulURL == "" {
+			log.Panicf("grpc_with_consul consul url is null")
+		}
+		consulTag := base.Cfg.Rpc.Rcs.ConsulTagPrefix + "0"
+		c := consul.NewConsul(base.Cfg.Rpc.ConsulURL, consulTag, base.Cfg.Rpc.Rcs.ServerName, base.Cfg.Rpc.Rcs.Port)
+		c.Init()
+	}
+
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, rpcCli, idg, db)
 	apiConsumer.Start()
 }

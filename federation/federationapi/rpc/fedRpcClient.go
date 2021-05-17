@@ -20,25 +20,28 @@ import (
 	"errors"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/federation/config"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type FederationRpcClient struct {
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	rpcClient *common.RpcClient
+	rpcCli    rpc.RpcClient
 	aliase    roomserverapi.RoomserverAliasAPI
 	qry       roomserverapi.RoomserverQueryAPI
 	input     roomserverapi.RoomserverInputAPI
 }
 
 func NewFederationRpcClient(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	aliase roomserverapi.RoomserverAliasAPI,
 	qry roomserverapi.RoomserverQueryAPI,
 	input roomserverapi.RoomserverInputAPI,
@@ -46,6 +49,7 @@ func NewFederationRpcClient(
 	fed := &FederationRpcClient{
 		cfg:       cfg,
 		rpcClient: rpcClient,
+		rpcCli:    rpcCli,
 		aliase:    aliase,
 		qry:       qry,
 		input:     input,
@@ -68,15 +72,14 @@ func (fed *FederationRpcClient) GetAliasRoomID(
 	bytes, err := json.Marshal(content)
 
 	log.Infof("-------GetRoomAlias send data:%v", string(bytes))
-	data, err := fed.rpcClient.Request(fed.cfg.Rpc.AliasTopic, bytes, 30000)
+	resp, err := fed.rpcCli.GetAliasRoomID(ctx, req)
 
-	log.Infof("-------GetRoomAlias resp data:%v, err:%v", string(data), err)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	if err != nil {
+		return err
 	}
+	*response = *resp
 
-	return err
+	return nil
 }
 
 func (fed *FederationRpcClient) InputRoomEvents(
@@ -153,17 +156,12 @@ func (fed *FederationRpcClient) QueryEventsByID( //fed&pub
 		return fed.qry.QueryEventsByID(ctx, request, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryEventsByID: request,
+	resp, err := fed.rpcCli.QueryEventsByID(ctx, request)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-	data, err := fed.rpcClient.Request(fed.cfg.Rpc.RsQryTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
+	*response = *resp
+	return nil
 }
 
 func (fed *FederationRpcClient) QueryRoomEventByID( //cli
@@ -197,22 +195,16 @@ func (fed *FederationRpcClient) QueryRoomState( //cli & mig
 		return fed.qry.QueryRoomState(ctx, request, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryRoomState: request,
+	resp, err := fed.rpcCli.QueryRoomState(ctx, request)
+
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-
-	data, err := fed.rpcClient.Request(fed.cfg.Rpc.RsQryTopic, bytes, 30000)
-
-	if err == nil {
-		json.Unmarshal(data, response)
-		if response.RoomExists == false {
-			return errors.New("room not exits")
-		}
-		return nil
+	*response = *resp
+	if resp.RoomExists == false {
+		return errors.New("room not exits")
 	}
-
-	return err
+	return nil
 }
 
 func (fed *FederationRpcClient) QueryBackFillEvents( //fed
@@ -225,19 +217,13 @@ func (fed *FederationRpcClient) QueryBackFillEvents( //fed
 		return fed.qry.QueryBackFillEvents(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryBackFillEvents: req,
+	resp, err := fed.rpcCli.QueryBackFillEvents(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
+	*response = *resp
 
-	data, err := fed.rpcClient.Request(fed.cfg.Rpc.RsQryTopic, bytes, 30000)
-
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
+	return nil
 }
 
 func (fed *FederationRpcClient) QueryEventAuth( //fed
@@ -250,29 +236,29 @@ func (fed *FederationRpcClient) QueryEventAuth( //fed
 		return fed.qry.QueryEventAuth(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryEventAuth: req,
+	resp, err := fed.rpcCli.QueryEventAuth(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
+	*response = *resp
 
-	data, err := fed.rpcClient.Request(fed.cfg.Rpc.RsQryTopic, bytes, 30000)
-
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
+	return nil
 }
 
 func (fed *FederationRpcClient) ProcessReceipt(edu *gomatrixserverlib.EDU) {
-	fed.rpcClient.Pub(types.ReceiptTopicDef, edu.Content)
+	var req types.ReceiptContent
+	json.Unmarshal(edu.Content, &req)
+	fed.rpcCli.OnReceipt(context.Background(), &req)
 }
 
 func (fed *FederationRpcClient) ProcessTyping(edu *gomatrixserverlib.EDU) {
-	fed.rpcClient.Pub(types.TypingTopicDef, edu.Content)
+	var req types.TypingContent
+	json.Unmarshal(edu.Content, &req)
+	fed.rpcCli.OnTyping(context.Background(), &req)
 }
 
 func (fed *FederationRpcClient) ProcessProfile(edu *gomatrixserverlib.EDU) {
-	fed.rpcClient.Pub(types.ProfileUpdateTopicDef, edu.Content)
+	var req types.ProfileContent
+	json.Unmarshal(edu.Content, &req)
+	fed.rpcCli.UpdateProfile(context.Background(), &req)
 }

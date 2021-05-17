@@ -17,6 +17,7 @@ package pushapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
@@ -96,10 +97,10 @@ func (s *pushersStatements) prepare(d *DataBase) (err error) {
 	return
 }
 
-func (s *pushersStatements) loadPusher(ctx context.Context) ([]pushapitypes.Pusher, error){
+func (s *pushersStatements) loadPusher(ctx context.Context) ([]pushapitypes.Pusher, error) {
 	offset := 0
 	limit := 1000
-	result :=[]pushapitypes.Pusher{}
+	result := []pushapitypes.Pusher{}
 	for {
 		pushers := []pushapitypes.Pusher{}
 		rows, err := s.recoverPusherStmt.QueryContext(ctx, limit, offset)
@@ -113,14 +114,14 @@ func (s *pushersStatements) loadPusher(ctx context.Context) ([]pushapitypes.Push
 				&pusher.PushKey, &pusher.PushKeyTs, &pusher.Lang, &pusher.Data, &pusher.DeviceID); err != nil {
 				log.Errorf("load pusher scan rows error:%v", err)
 				return nil, err
-			}else{
-				pushers = append(pushers,pusher)
+			} else {
+				pushers = append(pushers, pusher)
 			}
 		}
 		result = append(result, pushers...)
 		if len(pushers) < limit {
 			break
-		}else{
+		} else {
 			offset = offset + limit
 		}
 	}

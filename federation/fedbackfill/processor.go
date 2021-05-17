@@ -22,16 +22,16 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/fedutil"
 	"github.com/finogeeks/ligase/federation/model/repos"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 )
 
 type BackFillJob struct {
@@ -49,7 +49,7 @@ type BackfillItem struct {
 }
 
 type BackfillProcessor struct {
-	cfg          *config.Fed
+	cfg          *config.Dendrite
 	db           fedmodel.FederationDatabase
 	fedClient    *client.FedClientWrap
 	fedRpcCli    *rpc.FederationRpcClient

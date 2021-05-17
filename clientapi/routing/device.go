@@ -19,7 +19,6 @@ package routing
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/model/authtypes"
 	"net/http"
 	"strings"
 
@@ -29,12 +28,14 @@ import (
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/rpc"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -133,6 +134,7 @@ func DeleteDeviceByID(
 	syncDB model.SyncAPIDatabase,
 	deviceDB model.DeviceDatabase,
 	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	// var delReq external.DelDeviceRequest
 	// if reqErr := httputil.UnmarshalJSONRequest(req, &delReq); reqErr != nil {
@@ -161,7 +163,7 @@ func DeleteDeviceByID(
 		}
 	}
 
-	LogoutDevice(delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "del_device")
+	LogoutDevice(delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "del_device")
 
 	return http.StatusOK, nil
 }
@@ -175,6 +177,7 @@ func DeleteDevices(
 	syncDB model.SyncAPIDatabase,
 	deviceDB model.DeviceDatabase,
 	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	if req.Devices == nil || len(req.Devices) == 0 {
 		deviceList := cache.GetDevicesByUserID(device.UserID)
@@ -189,7 +192,7 @@ func DeleteDevices(
 					cache.SetPwdChangeDevcie(dev.ID, device.UserID)
 					hasPwdDevice = true
 				}
-				LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "del_devices")
+				LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "del_devices")
 			}
 		}
 		if hasPwdDevice {
@@ -197,7 +200,7 @@ func DeleteDevices(
 		}
 	} else {
 		for _, deviceId := range req.Devices {
-			LogoutDevice(device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "del_devices")
+			LogoutDevice(device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "del_devices")
 		}
 	}
 

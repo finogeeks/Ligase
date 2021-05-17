@@ -15,20 +15,22 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common/jsonerror"
+	"context"
 	"net/http"
+
+	"github.com/finogeeks/ligase/common/jsonerror"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -97,11 +99,14 @@ func (ReqPutTyping) Process(consumer interface{}, msg core.Coder, device *authty
 			}
 			return true
 		})
-
-		bytes, err := json.Marshal(update)
-		if err == nil {
-			c.RpcCli.Pub(types.TypingUpdateTopicDef, bytes)
+		ctx := context.Background()
+		var err error
+		if req.Typing {
+			err = c.RpcClient.AddTyping(ctx, &update)
 		} else {
+			err = c.RpcClient.RemoveTyping(ctx, &update)
+		}
+		if err != nil {
 			log.Errorf("TypingRpcConsumer pub typing update error %v", err)
 		}
 

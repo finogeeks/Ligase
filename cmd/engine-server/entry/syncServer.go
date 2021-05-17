@@ -19,6 +19,8 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/uid"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncserver"
 )
 
@@ -39,12 +41,17 @@ func StartSyncServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
 	base.CheckDomainCfg()
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
 	rpcClient.Start(false)
+
+	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
+	}
 
 	accountDB := base.CreateAccountsDB()
 
-	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, idg)
+	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, rpcCli, idg)
 }
 
 func StartFixSyncDBServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {

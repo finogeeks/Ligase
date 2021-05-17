@@ -127,6 +127,22 @@ kafka:
             topic: outputStatic
             underlying: kafka
             name: outputStaticProd
+        dispatch_output:
+            topic: dispatch-out
+            underlying: kafka
+            name: dispatchOutProd
+        fedapi_output:
+            topic: fedapi-out
+            underlying: kafka
+            name: fedapiOutProd
+        get_missing_event:
+            topic: getmissingevent
+            underlying: kafka
+            name: fedGetMissingEventProd
+        download_media:
+            topic: downloadmedia
+            underlying: kafka
+            name: fedDownloadMediaProd
     consumers:
         output_room_event_publicroom:
             topic: roomserverOutput
@@ -218,6 +234,11 @@ kafka:
             group: settingUpdate-content
             underlying: kafka
             name: settingupdatecontentCons
+        setting_update_fed:
+            topic: settingUpdate
+            group: settingUpdate-fed
+            underlying: kafka
+            name: fedsettingupdateCons
         download_media:
             topic: downloadmedia
             group: downloadmedia-fed
@@ -228,6 +249,37 @@ kafka:
             group: dismissRoom-fed
             underlying: kafka
             name: dismissRoomProd
+        dispatch_input:
+            topic: fed
+            group: dispatch
+            underlying: kafka
+            name: dispatchInCons
+        fedsenser_input:
+            topic: dispatch-out
+            group: dispatch
+            underlying: kafka
+            name: fedsenderInCons
+            topic_auto_offset_reset: earliest
+        fedapi_input:
+            topic: fedapi-in
+            group: dispatch
+            underlying: kafka
+            name: fedapiOutCons
+        fed_backfill:
+            topic: fedapi-in
+            group: backfill
+            underlying: kafka
+            name: fedbackfillCons
+        edusender_input:
+            topic: fedEduOut
+            group: dispatch
+            underlying: kafka
+            name: edusenderInCons
+        get_missing_event:
+            topic: getmissingevent
+            group: getmissingevent-fed
+            underlying: kafka
+            name: fedGetMissingEventCons
 rpc:
     rs_qry_topic: roomserver_query
     alias_topic: roomserver_alias
@@ -255,6 +307,50 @@ rpc:
     proxy_bgmgr_api_topic: proxyBgmgrApi
     proxy_rcsserver_api_topic: proxyRCSServerApi
 
+    driver: grpc
+    consul_url: 
+    sync_server:
+        server_name: syncserver
+        port: 8070
+        consul_tag_prefix: syncserver
+        addresses: 127.0.0.1:8070
+    sync_aggregate:
+        server_name: syncaggregate
+        port: 8071
+        consul_tag_prefix: syncaggregate
+        addresses: syncaggregate:8071
+    front:
+        server_name: front
+        port: 8072
+        consul_tag_prefix: front
+        addresses: front:8072
+    proxy:
+        server_name: proxy
+        port: 8073
+        consul_tag_prefix: proxy
+        addresses: proxy:8073
+    rcs:
+        server_name: rcs
+        port: 8074
+        consul_tag_prefix: rcs
+        addresses: front:8074
+    token_writer:
+        server_name: tokenwriter
+        port: 8075
+        consul_tag_prefix: tokenwriter
+        addresses: tokenwriter:8075
+    public_room:
+        server_name: publicroom
+        port: 8076
+        consul_tag_prefix: publicroom
+        addresses: front:8076
+    room_server:
+        server_name: roomserver
+        port: 8077
+        consul_tag_prefix: roomserver
+        addresses: front:8077
+
+
 # Specify your host, port, username and password for redis, nats and database connection.
 # If you run by steps in INSTALL.md, just change the ip below to your own host.
 redis:
@@ -280,6 +376,9 @@ database:
     room_server:
         driver: postgres
         addresses: postgres://postgres:postgres@pg-master:5432/dendrite_roomserver?sslmode=disable
+    federation:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:5432/dendrite_federation?sslmode=disable
     server_key:
         driver: postgres
         addresses: postgres://postgres:postgres@pg-master:5432/dendrite_serverkey?sslmode=disable

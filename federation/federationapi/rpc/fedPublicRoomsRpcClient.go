@@ -16,25 +16,28 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/federation/config"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
+	"github.com/finogeeks/ligase/rpc"
 )
 
 type FedPublicRoomsRpcClient struct {
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	rpcClient *common.RpcClient
+	rpcCli    rpc.RpcClient
 }
 
 func NewFedPublicRoomsRpcClient(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 ) *FedPublicRoomsRpcClient {
 	fed := &FedPublicRoomsRpcClient{
 		cfg:       cfg,
 		rpcClient: rpcClient,
+		rpcCli:    rpcCli,
 	}
 
 	return fed
@@ -44,17 +47,10 @@ func (fed *FedPublicRoomsRpcClient) Start() {
 }
 
 func (fed *FedPublicRoomsRpcClient) QueryPublicRooms(ctx context.Context, request *publicroomsapi.QueryPublicRoomsRequest, response *publicroomsapi.QueryPublicRoomsResponse) error {
-	content := publicroomsapi.PublicRoomsRpcRequest{
-		QueryPublicRooms: request,
+	data, err := fed.rpcCli.QueryPublicRoomState(ctx, request)
+	if err != nil {
+		return err
 	}
-	bytes, _ := json.Marshal(content)
-	data, err := fed.rpcClient.Request(fed.cfg.Rpc.PrQryTopic, bytes, 30000)
-	if err == nil {
-		err = json.Unmarshal(data, response)
-		if err != nil {
-			return err
-		}
-	}
-
+	*response = *data
 	return err
 }

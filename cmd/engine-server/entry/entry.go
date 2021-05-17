@@ -45,6 +45,8 @@ import (
 	"github.com/finogeeks/ligase/core"
 	_ "github.com/finogeeks/ligase/plugins"
 	"github.com/finogeeks/ligase/proxy"
+	_ "github.com/finogeeks/ligase/rpc/grpc"
+	_ "github.com/finogeeks/ligase/rpc/nats"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"

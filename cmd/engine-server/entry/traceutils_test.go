@@ -22,7 +22,6 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/nats.go"
@@ -97,8 +96,7 @@ func TestRequestWithSpan(t *testing.T) {
 		log.Errorf("failed to start opentracing err:%v", err)
 	}
 
-	idg, _ := uid.NewDefaultIdGenerator(0)
-	rpcClient := common.NewRpcClient("nats://127.0.0.1:4222", idg)
+	rpcClient := common.NewRpcClient("nats://127.0.0.1:4222")
 	rpcClient.Start(true)
 
 	topic := "test_topic_001"
