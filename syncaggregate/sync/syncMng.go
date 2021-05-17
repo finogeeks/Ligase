@@ -263,10 +263,10 @@ func (sm *SyncMng) GetPushkeyByUserDeviceID(userID, deviceID string) []types.Pus
 		if pusher.DeviceID != deviceID {
 			continue
 		}
-		// ios and not set push_channel not notify
-		if v, ok := (pusher.Data).(map[string]interface{}); ok {
-			var data map[string]interface{}
-			data = v
+		var data map[string]interface{}
+		err = json.Unmarshal([]byte(pusher.Data), &data)
+		if err == nil {
+			// ios and not set push_channel not notify
 			if v, ok := data["push_channel"]; ok {
 				if v.(string) == "ios" {
 					continue

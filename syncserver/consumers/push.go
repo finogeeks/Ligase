@@ -26,6 +26,7 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/feedstypes"
+	"github.com/finogeeks/ligase/model/pushapitypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
@@ -626,7 +627,11 @@ func (s *PushConsumer) processPush(
 				if s.rpcClient != nil && len(pushers.Pushers) > 0 {
 					var pubContent push.PushPubContent
 					pubContent.UserID = *userID
-					pubContent.Pushers = pushers
+					pubContent.Pushers = new(pushapitypes.PushersWitchInterfaceData)
+					for _, v := range pushers.Pushers {
+						pubContent.Pushers.Pushers = append(pubContent.Pushers.Pushers, v.ToPusherWitchInterfaceData())
+					}
+
 					pubContent.Action = &action
 					pubContent.NotifyCount = count
 
