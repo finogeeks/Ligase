@@ -26,6 +26,7 @@ import (
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/uid"
@@ -53,23 +54,21 @@ import (
 )
 
 var (
-	configPath    = flag.String("config", "config/dendrite.yaml", "The path to the config file. For more information, see the config file in this repository.")
+	//configPath    = flag.String("config", "config/dendrite.yaml", "The path to the config file. For more information, see the config file in this repository.")
 	procName      = flag.String("name", "monolith", "Name for the server")
 	httpBindAddr  = flag.String("http-address", "", "The HTTP listening port for the server")
 	httpsBindAddr = flag.String("https-address", "", "The HTTPS listening port for the server")
 )
 
 func Entry() {
-	flag.Parse()
-	if *configPath == "" {
-		log.Fatal("config must be supplied")
-	}
-	handleSignal()
+	procName := "fed"
 
-	if err := config.Load(*configPath); err != nil {
-		log.Fatalf("load config failed: %v, exit!", err)
-		return
-	}
+	basecomponent.ParseMonolithFlags()
+	cfg := config.GetConfig()
+	base := basecomponent.NewBaseDendrite(cfg, procName)
+	defer base.Close() // nolint: errcheck
+
+	handleSignal()
 
 	log.Infof("-------------------------------------")
 	log.Infof("Server build:%s", BUILD)
