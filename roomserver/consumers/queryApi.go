@@ -27,6 +27,7 @@ import (
 type QueryConsumer struct {
 	aliasConsumer *rpc.RoomAliasRpcConsumer
 	rsConsumer    *rpc.RoomserverRpcConsumer
+	grpcServer    *rpc.Server
 }
 
 func NewQueryConsumer(
@@ -37,16 +38,28 @@ func NewQueryConsumer(
 	rpcClient *common.RpcClient,
 	alias *processors.AliasProcessor,
 	rs *processors.RoomQryProcessor,
+	input *processors.EventsProcessor,
 ) *QueryConsumer {
 	consumer := new(QueryConsumer)
-	consumer.aliasConsumer = rpc.NewRoomAliasRpcConsumer(cfg, rpcClient, db, repo, umsRepo, alias)
-	consumer.rsConsumer = rpc.NewRoomserverRpcConsumer(cfg, rpcClient, db, repo, umsRepo, rs)
+	if cfg.Rpc.Driver == "nats" {
+		consumer.aliasConsumer = rpc.NewRoomAliasRpcConsumer(cfg, rpcClient, db, repo, umsRepo, alias)
+		consumer.rsConsumer = rpc.NewRoomserverRpcConsumer(cfg, rpcClient, db, repo, umsRepo, rs)
+	} else {
+		consumer.grpcServer = rpc.NewServer(cfg, rs, alias, input)
+	}
 
 	return consumer
 }
 
-func (s *QueryConsumer) Start() error {
-	s.aliasConsumer.Start()
-	s.rsConsumer.Start()
-	return nil
+func (s *QueryConsumer) Start() (err error) {
+	if s.aliasConsumer != nil {
+		s.aliasConsumer.Start()
+	}
+	if s.rsConsumer != nil {
+		s.rsConsumer.Start()
+	}
+	if s.grpcServer != nil {
+		err = s.grpcServer.Start()
+	}
+	return
 }

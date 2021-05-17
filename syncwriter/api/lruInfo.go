@@ -31,6 +31,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_writer_api")
 	apiconsumer.SetAPIProcessor(ReqGetLRURooms{})
 	apiconsumer.SetAPIProcessor(ReqPutLRURoom{})
 }

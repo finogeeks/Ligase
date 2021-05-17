@@ -14,86 +14,86 @@
 
 package api
 
-import (
-	"sync"
+// import (
+// 	"sync"
 
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/plugins/message/internals"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/nats-io/nats.go"
+// 	"github.com/finogeeks/ligase/common"
+// 	"github.com/finogeeks/ligase/common/config"
+// 	"github.com/finogeeks/ligase/plugins/message/internals"
+// 	jsoniter "github.com/json-iterator/go"
+// 	"github.com/nats-io/nats.go"
 
-	log "github.com/finogeeks/ligase/skunkworks/log"
-)
+// 	log "github.com/finogeeks/ligase/skunkworks/log"
+// )
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
+// var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-type InputRpcCB struct {
-	topic   string
-	handler nats.MsgHandler
-}
+// type InputRpcCB struct {
+// 	topic   string
+// 	handler nats.MsgHandler
+// }
 
-func (i *InputRpcCB) GetTopic() string {
-	return i.topic
-}
+// func (i *InputRpcCB) GetTopic() string {
+// 	return i.topic
+// }
 
-func (i *InputRpcCB) GetCB() nats.MsgHandler {
-	return i.handler
-}
+// func (i *InputRpcCB) GetCB() nats.MsgHandler {
+// 	return i.handler
+// }
 
-func (i *InputRpcCB) Clean() {
-	//do nothing
-}
+// func (i *InputRpcCB) Clean() {
+// 	//do nothing
+// }
 
-// consumes events that originated in the client api server.
-type InputConsumer struct {
-	cfg       *config.Dendrite
-	rpcClient *common.RpcClient
-	cbs       map[string]*InputRpcCB
-	handlers  sync.Map
-}
+// // consumes events that originated in the client api server.
+// type InputConsumer struct {
+// 	cfg       *config.Dendrite
+// 	rpcClient *common.RpcClient
+// 	cbs       map[string]*InputRpcCB
+// 	handlers  sync.Map
+// }
 
-func NewInputConsumer(
-	cfg *config.Dendrite,
-	client *common.RpcClient,
-) *InputConsumer {
-	s := &InputConsumer{
-		cfg:       cfg,
-		rpcClient: client,
-	}
+// func NewInputConsumer(
+// 	cfg *config.Dendrite,
+// 	client *common.RpcClient,
+// ) *InputConsumer {
+// 	s := &InputConsumer{
+// 		cfg:       cfg,
+// 		rpcClient: client,
+// 	}
 
-	input := new(InputRpcCB)
-	input.topic = ""
-	input.handler = s.cb
-	s.cbs[input.topic] = input
-	client.SubRaw(input)
-	return s
-}
+// 	input := new(InputRpcCB)
+// 	input.topic = ""
+// 	input.handler = s.cb
+// 	s.cbs[input.topic] = input
+// 	client.SubRaw(input)
+// 	return s
+// }
 
-type IMshHandler interface {
-	ProcessInputMsg(*internals.InputMsg)
-}
+// type IMshHandler interface {
+// 	ProcessInputMsg(*internals.InputMsg)
+// }
 
-func (s *InputConsumer) RegisterHandler(key int32, handler IMshHandler) {
-	s.handlers.Store(key, handler)
-}
+// func (s *InputConsumer) RegisterHandler(key int32, handler IMshHandler) {
+// 	s.handlers.Store(key, handler)
+// }
 
-//when nats, write data to chan, when process done need to replay, called by nats transport
-func (s *InputConsumer) cb(msg *nats.Msg) {
-	var input internals.InputMsg
+// //when nats, write data to chan, when process done need to replay, called by nats transport
+// func (s *InputConsumer) cb(msg *nats.Msg) {
+// 	var input internals.InputMsg
 
-	if err := input.Decode(msg.Data); err != nil {
-		log.Errorf("cb: parse failure %v, input:%s", err, string(msg.Data))
-		return
-	}
+// 	if err := input.Decode(msg.Data); err != nil {
+// 		log.Errorf("cb: parse failure %v, input:%s", err, string(msg.Data))
+// 		return
+// 	}
 
-	val, ok := s.handlers.Load(input.GetCategory())
-	if ok {
-		handler := val.(IMshHandler)
-		handler.ProcessInputMsg(&input)
-		if msg.Reply != "" {
-			s.rpcClient.PubObj(msg.Reply, nil)
-		}
-	}
-	return
-}
+// 	val, ok := s.handlers.Load(input.GetCategory())
+// 	if ok {
+// 		handler := val.(IMshHandler)
+// 		handler.ProcessInputMsg(&input)
+// 		if msg.Reply != "" {
+// 			s.rpcClient.PubObj(msg.Reply, nil)
+// 		}
+// 	}
+// 	return
+// }

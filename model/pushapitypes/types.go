@@ -24,6 +24,40 @@ import (
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type Pusher struct {
+	UserName          string `json:"user_name,omitempty"`
+	DeviceID          string `json:"device_id,omitempty"`
+	PushKey           string `json:"pushkey,omitempty"`
+	PushKeyTs         int64  `json:"pushkey_ts,omitempty"`
+	Kind              string `json:"kind,omitempty"`
+	AppId             string `json:"app_id,omitempty"`
+	AppDisplayName    string `json:"app_display_name,omitempty"`
+	DeviceDisplayName string `json:"device_display_name,omitempty"`
+	ProfileTag        string `json:"profile_tag,omitempty"`
+	Lang              string `json:"lang,omitempty"`
+	Append            bool   `json:"append,omitempty"`
+	Data              string `json:"data,omitempty"`
+}
+
+func (p *Pusher) ToPusherWitchInterfaceData() PusherWitchInterfaceData {
+	var data interface{}
+	json.Unmarshal([]byte(p.Data), &data)
+	return PusherWitchInterfaceData{
+		UserName:          p.UserName,
+		DeviceID:          p.DeviceID,
+		PushKey:           p.PushKey,
+		PushKeyTs:         p.PushKeyTs,
+		Kind:              p.Kind,
+		AppId:             p.AppId,
+		AppDisplayName:    p.AppDisplayName,
+		DeviceDisplayName: p.DeviceDisplayName,
+		ProfileTag:        p.ProfileTag,
+		Lang:              p.Lang,
+		Append:            p.Append,
+		Data:              data,
+	}
+}
+
+type PusherWitchInterfaceData struct {
 	UserName          string      `json:"user_name,omitempty"`
 	DeviceID          string      `json:"device_id,omitempty"`
 	PushKey           string      `json:"pushkey,omitempty"`
@@ -49,6 +83,18 @@ func (p *Pushers) Encode() ([]byte, error) {
 }
 
 func (p *Pushers) Decode(input []byte) error {
+	return json.Unmarshal(input, p)
+}
+
+type PushersWitchInterfaceData struct {
+	Pushers []PusherWitchInterfaceData `json:"pushers"`
+}
+
+func (p *PushersWitchInterfaceData) Encode() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p *PushersWitchInterfaceData) Decode(input []byte) error {
 	return json.Unmarshal(input, p)
 }
 
@@ -143,7 +189,7 @@ type PushRule struct {
 	Default    bool            `json:"default"`
 	Enabled    bool            `json:"enabled"`
 	RuleId     string          `json:"rule_id,omitempty"`
-	Conditions []PushCondition `json:"conditions,omitempty"`
+	Conditions []PushCondition `json:"conditions"`
 	Pattern    string          `json:"pattern,omitempty"`
 }
 
@@ -152,23 +198,6 @@ func (p *PushRule) Encode() ([]byte, error) {
 }
 
 func (p *PushRule) Decode(input []byte) error {
-	return json.Unmarshal(input, p)
-}
-
-type PushRuleWithConditions struct {
-	Actions    []interface{}   `json:"actions,omitempty"`
-	Default    bool            `json:"default"`
-	Enabled    bool            `json:"enabled"`
-	RuleId     string          `json:"rule_id,omitempty"`
-	Conditions []PushCondition `json:"conditions"`
-	Pattern    string          `json:"pattern,omitempty"`
-}
-
-func (p *PushRuleWithConditions) Encode() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *PushRuleWithConditions) Decode(input []byte) error {
 	return json.Unmarshal(input, p)
 }
 
@@ -231,22 +260,6 @@ func (p *EnabledType) Decode(input []byte) error {
 	return json.Unmarshal(input, p)
 }
 
-type RuleSet struct {
-	Content   []interface{} `json:"content"`
-	Override  []interface{} `json:"override"`
-	Room      []interface{} `json:"room"`
-	Sender    []interface{} `json:"sender"`
-	UnderRide []interface{} `json:"underride"`
-}
-
-func (p *RuleSet) Encode() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *RuleSet) Decode(input []byte) error {
-	return json.Unmarshal(input, p)
-}
-
 type Rules struct {
 	Default          bool       `json:"default"`
 	ContentDefault   bool       `json:"content_default"`
@@ -261,9 +274,17 @@ type Rules struct {
 	UnderRide        []PushRule `json:"underride"`
 }
 
+func (p *Rules) Encode() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p *Rules) Decode(input []byte) error {
+	return json.Unmarshal(input, p)
+}
+
 type GlobalRule struct {
 	Device map[string]interface{} `json:"device"`
-	Global RuleSet                `json:"global"`
+	Global Rules                  `json:"global"`
 }
 
 func (p *GlobalRule) Encode() ([]byte, error) {
@@ -357,10 +378,10 @@ type PushPubContents struct {
 }
 
 type PushPubContent struct {
-	Pushers     *Pushers     `json:"pushers,omitempty"`
-	UserID      string       `json:"userID,omitempty"`
-	Action      *TweakAction `json:"action,omitempty"`
-	NotifyCount int64        `json:"notify_count"`
+	Pushers     *PushersWitchInterfaceData `json:"pushers,omitempty"`
+	UserID      string                     `json:"userID,omitempty"`
+	Action      *TweakAction               `json:"action,omitempty"`
+	NotifyCount int64                      `json:"notify_count"`
 }
 
 var PushTopicDef = "pushdata-topic"

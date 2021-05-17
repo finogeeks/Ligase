@@ -18,19 +18,21 @@
 package routing
 
 import (
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"net/http"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/rpc"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/gorilla/mux"
-	"github.com/json-iterator/go"
-	"net/http"
+	jsoniter "github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -42,6 +44,7 @@ func Setup(
 	cfg config.Dendrite,
 	cacheIn service.Cache,
 	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI,
 	tokenFilter *filter.SimpleFilter,
 	feddomains *common.FedDomains,
@@ -91,7 +94,7 @@ func Setup(
 	for k, v := range prefixMap {
 		m := apiMux.PathPrefix(v).Subrouter()
 		muxs[k] = m
-		proc := NewHttpProcessor(m, cfg, cacheIn, rpcCli, rsRpcCli, tokenFilter, idg, histogram, feddomains, keyDB /*, counter*/)
+		proc := NewHttpProcessor(m, cfg, cacheIn, rpcCli, rpcClient, rsRpcCli, tokenFilter, idg, histogram, feddomains, keyDB /*, counter*/)
 		procs[k] = proc
 	}
 

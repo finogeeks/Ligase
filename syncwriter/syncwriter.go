@@ -18,6 +18,7 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/model/repos"
+	rpcService "github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/syncwriter/api"
@@ -27,6 +28,7 @@ import (
 func SetupSyncWriterComponent(
 	base *basecomponent.BaseDendrite,
 	rpcClient *common.RpcClient,
+	rpcCli rpcService.RpcClient,
 ) {
 	syncDB := base.CreateSyncDB()
 	maxEntries := base.Cfg.Lru.MaxEntries
@@ -60,6 +62,6 @@ func SetupSyncWriterComponent(
 		log.Panicf("failed to start sync room server consumer err:%v", err)
 	}
 
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, rsCurState, rsTimeline, roomHistory)
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, rpcCli, rsCurState, rsTimeline, roomHistory)
 	apiConsumer.Start()
 }

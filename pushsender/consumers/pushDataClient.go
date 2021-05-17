@@ -17,18 +17,18 @@ package consumers
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common/filter"
-	"github.com/finogeeks/ligase/common/uid"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/filter"
+	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/nats-io/nats.go"
 )
 
@@ -42,7 +42,7 @@ type PushDataConsumer struct {
 	pushCount  *sync.Map
 	chanSize   uint32
 	msgChan    []chan *pushapitypes.PushPubContents
-	idg 	   *uid.UidGenerator
+	idg        *uid.UidGenerator
 	lock       *sync.Mutex
 	httpClient *common.HttpClient
 }
@@ -53,11 +53,11 @@ func NewPushDataConsumer(
 	client *common.RpcClient,
 ) *PushDataConsumer {
 	s := &PushDataConsumer{
-		cfg:       cfg,
-		pushDB:    pushDB,
-		rpcClient: client,
-		chanSize:  16,
-		lock: new(sync.Mutex),
+		cfg:        cfg,
+		pushDB:     pushDB,
+		rpcClient:  client,
+		chanSize:   16,
+		lock:       new(sync.Mutex),
 		httpClient: common.NewHttpClient(),
 	}
 	s.pushCount = new(sync.Map)
@@ -89,7 +89,7 @@ func (s *PushDataConsumer) cb(msg *nats.Msg) {
 	result.Slot = idx
 	traceId, _ := s.idg.Next()
 	result.TraceId = fmt.Sprintf("%d", traceId)
-	log.Infof("traceid:%s PushDataConsumer cb slot:%d roomID:%s eventID:%s len(chan):%d", result.TraceId, idx, result.Input.RoomID,result.Input.EventID, len(s.msgChan[idx]))
+	log.Infof("traceid:%s PushDataConsumer cb slot:%d roomID:%s eventID:%s len(chan):%d", result.TraceId, idx, result.Input.RoomID, result.Input.EventID, len(s.msgChan[idx]))
 	s.msgChan[idx] <- &result
 }
 
@@ -99,9 +99,9 @@ func (s *PushDataConsumer) startWorker(msgChan chan *pushapitypes.PushPubContent
 	}
 }
 
-func (s *PushDataConsumer) doPushData(data *pushapitypes.PushPubContents){
-	bs := time.Now().UnixNano()/1000000
-	defer func(bs int64){
+func (s *PushDataConsumer) doPushData(data *pushapitypes.PushPubContents) {
+	bs := time.Now().UnixNano() / 1000000
+	defer func(bs int64) {
 		spend := time.Now().UnixNano()/1000000 - bs
 		log.Infof("traceid:%s doPushData slot:%d roomID:%s eventID:%s len(contents):%d spend:%d", data.TraceId, data.Slot, data.Input.RoomID, data.Input.EventID, len(data.Contents), spend)
 	}(bs)
@@ -127,7 +127,7 @@ func (s *PushDataConsumer) Start() error {
 	return nil
 }
 
-func (s *PushDataConsumer) SetPushFailTimes(pusher pushapitypes.Pusher , pusherKey string, success bool, traceId string) int {
+func (s *PushDataConsumer) SetPushFailTimes(pusher pushapitypes.PusherWitchInterfaceData, pusherKey string, success bool, traceId string) int {
 	log.Infof("traceid:%s SetPushFailTimes userId:%s deviceId:%s pusherKey:%s success:%t", traceId, pusher.UserName, pusher.DeviceID, pusherKey, success)
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -190,7 +190,7 @@ func (s *PushDataConsumer) pushData(
 	}
 }
 
-func (s *PushDataConsumer) createNotify(data *pushapitypes.PushPubContents, pushContent *pushapitypes.PushPubContent, pusher pushapitypes.Pusher, pusherData interface{}) *pushapitypes.Notify {
+func (s *PushDataConsumer) createNotify(data *pushapitypes.PushPubContents, pushContent *pushapitypes.PushPubContent, pusher pushapitypes.PusherWitchInterfaceData, pusherData interface{}) *pushapitypes.Notify {
 	userIsTarget := false
 	if (data.Input.StateKey != nil) && (pushContent.UserID == *data.Input.StateKey) {
 		userIsTarget = true
@@ -240,7 +240,7 @@ func (s *PushDataConsumer) createNotify(data *pushapitypes.PushPubContents, push
 	return notify
 }
 
-func (s *PushDataConsumer) doPush(url string, request []byte, pusher pushapitypes.Pusher, traceId string){
+func (s *PushDataConsumer) doPush(url string, request []byte, pusher pushapitypes.PusherWitchInterfaceData, traceId string) {
 	code, body, err := s.HttpRequest(url, request, traceId)
 	if err != nil {
 		log.Errorw("http request error", log.KeysAndValues{"traceid", traceId, "userId", pusher.UserName, "deviceId", pusher.DeviceID, "content", string(request), "error", err})
@@ -248,7 +248,7 @@ func (s *PushDataConsumer) doPush(url string, request []byte, pusher pushapitype
 	}
 	pusherKey := fmt.Sprintf("%s:%s", pusher.AppId, pusher.PushKey)
 	if code != http.StatusOK {
-		log.Errorw("http request error", log.KeysAndValues{"traceid", traceId, "status_code", code, "response", string(body), "userId", pusher.UserName, "deviceId", pusher.DeviceID,  "appId", pusher.AppId, "pushkey", pusher.PushKey, "content", string(request)})
+		log.Errorw("http request error", log.KeysAndValues{"traceid", traceId, "status_code", code, "response", string(body), "userId", pusher.UserName, "deviceId", pusher.DeviceID, "appId", pusher.AppId, "pushkey", pusher.PushKey, "content", string(request)})
 		failCount := s.SetPushFailTimes(pusher, pusherKey, false, traceId)
 		if failCount > s.cfg.PushService.RemoveFailTimes {
 			log.Warnf("traceid:%s for failed too many del userId:%s, deviceId:%s, appId:%s, pushKey:%s, display:%s", traceId, pusher.UserName, pusher.DeviceID, pusher.AppId, pusher.PushKey, pusher.DeviceDisplayName)
@@ -266,7 +266,7 @@ func (s *PushDataConsumer) doPush(url string, request []byte, pusher pushapitype
 			for _, v := range ack.Rejected {
 				log.Warnf("traceid:%s for reject del userId:%s deviceId:%s pushKey:%s", traceId, pusher.UserName, pusher.DeviceID, v)
 				if err := s.pushDB.DeletePushersByKeyOnly(context.TODO(), v); err != nil {
-					log.Errorw("traceid:%s delete pusher userId:%s deviceId:%s pushKey:%s error", log.KeysAndValues{ "traceid", traceId, "userId", pusher.UserName, "deviceId", pusher.DeviceID, "PushKey", pusher.PushKey, "err", err})
+					log.Errorw("traceid:%s delete pusher userId:%s deviceId:%s pushKey:%s error", log.KeysAndValues{"traceid", traceId, "userId", pusher.UserName, "deviceId", pusher.DeviceID, "PushKey", pusher.PushKey, "err", err})
 				}
 			}
 		}
@@ -279,8 +279,8 @@ func (s *PushDataConsumer) HttpRequest(
 	traceId string,
 ) (int, []byte, error) {
 	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64){
-		spend := time.Now().UnixNano() / 1000000 - bs
+	defer func(bs int64) {
+		spend := time.Now().UnixNano()/1000000 - bs
 		log.Infof("traceid:%s post req to %s spend:%d", traceId, url, spend)
 	}(bs)
 	resp, err := s.httpClient.Post(url, content)

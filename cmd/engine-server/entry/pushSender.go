@@ -17,7 +17,6 @@ package entry
 import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
-	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/pushsender"
 )
 
@@ -28,8 +27,7 @@ func StartPushSender(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 	transportMultiplexer.PreStart()
 
-	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
 	rpcClient.Start(false)
 
 	pushsender.SetupPushSenderComponent(base, rpcClient)

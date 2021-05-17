@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "./;pb";
+
+import "common.proto";
+
+service Proxy {
+  rpc AddFilterToken (AddFilterTokenReq) returns (Empty) {}
+  rpc DelFilterToken (DelFilterTokenReq) returns (Empty) {}
+  rpc VerifyToken (VerifyTokenReq) returns (VerifyTokenRsp) {}
+}
+
+message AddFilterTokenReq {
+    string userID = 1;
+    string deviceID = 2;
+}
+
+message DelFilterTokenReq {
+    string userID = 1;
+    string deviceID = 2;
+}
+
+message VerifyTokenReq {
+    string token = 1;
+    string requestURI = 2;
+}
+
+message VerifyTokenRsp {
+    string error = 1;
+    Device device = 2;
+}

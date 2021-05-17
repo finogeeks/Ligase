@@ -15,11 +15,11 @@
 package routing
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
@@ -29,17 +29,22 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/mediatypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/proxy/api"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/rpc/grpc"
+	"github.com/finogeeks/ligase/rpc/grpc/pb"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/gorilla/mux"
+	"golang.org/x/net/context"
 )
 
 type MsgProcessor interface {
@@ -51,6 +56,7 @@ type HttpProcessor struct {
 	cfg         config.Dendrite
 	cacheIn     service.Cache
 	rpcCli      *common.RpcClient
+	rpcClient   rpc.RpcClient
 	tokenFilter *filter.SimpleFilter
 	idg         *uid.UidGenerator
 	keys        gomatrixserverlib.KeyRing
@@ -66,7 +72,7 @@ type HttpProcessor struct {
 
 func NewHttpProcessor(
 	r *mux.Router, cfg config.Dendrite,
-	cacheIn service.Cache, rpcCli *common.RpcClient,
+	cacheIn service.Cache, rpcCli *common.RpcClient, rpcClient rpc.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI, tokenFilter *filter.SimpleFilter,
 	idg *uid.UidGenerator,
 	histogram mon.LabeledHistogram,
@@ -83,6 +89,7 @@ func NewHttpProcessor(
 		tokenFilter: tokenFilter,
 		idg:         idg,
 		rpcCli:      rpcCli,
+		rpcClient:   rpcClient,
 		rsRpcCli:    rsRpcCli,
 		histogram:   histogram,
 		feddomains:  feddomains,
@@ -183,7 +190,7 @@ func (w *HttpProcessor) Route(path, metricsName, topic string, msgType int32, ap
 					mediatypes.MediaID(vars["mediaId"]),
 					fileType,
 					&w.cfg,
-					w.rpcCli,
+					w.rpcClient,
 					w.idg,
 					true,
 				)
@@ -251,7 +258,7 @@ func (w *HttpProcessor) Route(path, metricsName, topic string, msgType int32, ap
 	}
 }
 
-func (w *HttpProcessor) genInput(coder core.Coder, processor apiconsumer.APIProcessor, device *authtypes.Device) (*internals.InputMsg, error) {
+func (w *HttpProcessor) genInput(coder core.Coder, processor apiconsumer.APIProcessor, device *authtypes.Device) (*internals.InputMsg, []uint32, error) {
 	input := new(internals.InputMsg)
 	if device != nil {
 		input.Device = (*internals.Device)(device)
@@ -260,15 +267,19 @@ func (w *HttpProcessor) genInput(coder core.Coder, processor apiconsumer.APIProc
 	if coder != nil {
 		payload, err := coder.Encode()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		input.Payload = payload
 	}
-	return input, nil
+	instance := []uint32{}
+	if calctor, ok := processor.(apiconsumer.CalcInstance); ok {
+		instance = calctor.CalcInstance(coder, device, &w.cfg)
+	}
+	return input, instance, nil
 }
 
 func (w *HttpProcessor) ProcessInput(req *http.Request, coder core.Coder, processor apiconsumer.APIProcessor, device *authtypes.Device, topic string) util.JSONResponse {
-	input, err := w.genInput(coder, processor, device)
+	input, instance, err := w.genInput(coder, processor, device)
 	if err != nil {
 		return util.JSONResponse{
 			Code: http.StatusInternalServerError,
@@ -276,7 +287,7 @@ func (w *HttpProcessor) ProcessInput(req *http.Request, coder core.Coder, proces
 		}
 	}
 
-	outputMsg, err := w.send(topic, input)
+	outputMsg, err := w.send(req.Context(), topic, input, processor.GetMsgType(), instance)
 	if err != nil {
 		return util.JSONResponse{
 			Code: http.StatusInternalServerError,
@@ -326,16 +337,49 @@ func (w *HttpProcessor) handleRecv(processor apiconsumer.APIProcessor, outputMsg
 	return resp
 }
 
-func (w *HttpProcessor) send(topic string, input *internals.InputMsg) (*internals.OutputMsg, error) {
+func (w *HttpProcessor) send(ctx context.Context, topic string, input *internals.InputMsg, msgType int32, instance []uint32) (*internals.OutputMsg, error) {
 	bytes, err := input.Encode()
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := w.rpcCli.Request(topic, bytes, 60000000)
-	if err != nil {
-		log.Errorf("OutputMsg decode error %s", err.Error())
-		return nil, err
+	var resp []byte
+	if w.cfg.Rpc.Driver == "nats" {
+		resp, err = w.rpcCli.Request(topic, bytes, 60000000)
+		if err != nil {
+			log.Errorf("OutputMsg decode error %s", err.Error())
+			return nil, err
+		}
+	} else {
+		service := apiconsumer.GetAPIService(msgType)
+		rpcConf, ok := w.cfg.GetRpcConfig(service)
+		if !ok {
+			return nil, fmt.Errorf("rpc config %s not found %d", service, msgType)
+		}
+
+		if len(instance) == 0 {
+			instance = []uint32{0}
+		}
+		var resps [][]byte
+		var errs []error
+		for i := 0; i < len(instance); i++ {
+			conn, err := w.rpcClient.(*grpc.Client).GetConn(rpcConf, instance[i])
+			if err != nil {
+				return nil, err
+			}
+			c := pb.NewApiServerClient(conn)
+			rsp, err := c.ApiRequest(ctx, &pb.ApiRequestReq{Topic: topic, Data: bytes})
+			if err != nil {
+				errs = append(errs, err)
+			} else {
+				resps = append(resps, rsp.Data)
+			}
+		}
+		if len(errs) > 0 {
+			log.Errorf("rpc request %s err %v", service, errs)
+			return nil, errs[0]
+		}
+		resp = resps[0]
 	}
 	outputMsg := new(internals.OutputMsg)
 	err = outputMsg.Decode(resp)

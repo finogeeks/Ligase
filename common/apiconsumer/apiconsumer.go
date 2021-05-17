@@ -15,8 +15,10 @@
 package apiconsumer
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 
@@ -24,11 +26,16 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/json-iterator/go"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/rpc/consul"
+	"github.com/finogeeks/ligase/rpc/grpc/pb"
+	log "github.com/finogeeks/ligase/skunkworks/log"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/nats-io/nats.go"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -47,9 +54,20 @@ const (
 	APITypeMax
 )
 
+type CalcInstance interface {
+	CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32
+}
+
 var (
 	processorsMap sync.Map
+	servicesMap   sync.Map
+	curService    string
+	consumers     sync.Map
 )
+
+func SetServices(service string) {
+	curService = service
+}
 
 func SetAPIProcessor(p APIProcessor) {
 	apiType := p.GetAPIType()
@@ -70,15 +88,17 @@ func SetAPIProcessor(p APIProcessor) {
 		return
 	}
 	processorsMap.Store(msgType, p)
+	servicesMap.Store(msgType, curService)
 }
 
 func GetAPIProcessor(msgType int32) APIProcessor {
 	v, _ := processorsMap.Load(msgType)
 	return v.(APIProcessor)
-	// if ok {
-	// 	return v.(APIProcessor)
-	// }
-	// return nil
+}
+
+func GetAPIService(msgType int32) string {
+	v, _ := servicesMap.Load(msgType)
+	return v.(string)
 }
 
 func ForeachAPIProcessor(h func(p APIProcessor) bool) {
@@ -103,20 +123,34 @@ type APIProcessor interface {
 	Process(ud interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder)
 }
 
+type ConsumerData struct {
+	ud    interface{}
+	c     *APIConsumer
+	topic string
+}
+
+type Result struct {
+	resp *pb.ApiRequestRsp
+	err  error
+}
+
 type APIEvent struct {
 	reply     string
 	topic     string
 	partition int32
 	data      []byte
+	result    chan Result
 }
 
 type APIConsumer struct {
-	name     string
-	userData interface{}
-	handlers sync.Map
-	msgChan  chan APIEvent
-	Cfg      config.Dendrite
-	RpcCli   *common.RpcClient
+	name       string
+	userData   interface{}
+	handlers   sync.Map
+	msgChan    chan APIEvent
+	Cfg        config.Dendrite
+	RpcCli     *common.RpcClient
+	RpcClient  rpc.RpcClient
+	grpcServer *grpc.Server
 }
 
 func (c *APIConsumer) GetCfg() config.Dendrite {
@@ -127,11 +161,12 @@ func (c *APIConsumer) GetRpcCli() *common.RpcClient {
 	return c.RpcCli
 }
 
-func (c *APIConsumer) Init(name string, ud interface{}, topic string) {
+func (c *APIConsumer) Init(name string, ud interface{}, topic string, rcpConf *config.RpcConf) {
 	c.name = name
 	c.userData = ud
 	c.msgChan = make(chan APIEvent, 4096)
-	c.setupReply(topic)
+	c.setupReply(topic, rcpConf)
+	consumers.Store(topic, ConsumerData{ud, c, topic})
 
 	ForeachAPIProcessor(func(p APIProcessor) bool {
 		if p.GetTopic(&c.Cfg) == topic {
@@ -190,8 +225,37 @@ func (c *APIConsumer) RegisterHandler(msgType int32, p APIProcessor) {
 	c.handlers.Store(msgType, p)
 }
 
-func (c *APIConsumer) setupReply(topic string) {
-	c.RpcCli.Reply(topic, c.onRpcMsg)
+func (c *APIConsumer) setupReply(topic string, rpcConf *config.RpcConf) {
+	if c.Cfg.Rpc.Driver == "nats" {
+		c.RpcCli.Reply(topic, c.onRpcMsg)
+	} else {
+		if c.grpcServer != nil || rpcConf == nil {
+			return
+		}
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", rpcConf.Port))
+		if err != nil {
+			return
+		}
+		log.Infof("start api grpc %s %d", rpcConf.ServerName, rpcConf.Port)
+		c.grpcServer = grpc.NewServer()
+		pb.RegisterApiServerServer(c.grpcServer, c)
+		reflection.Register(c.grpcServer)
+		go func() {
+			if err := c.grpcServer.Serve(lis); err != nil {
+				log.Errorf("apiconsumer grpc server Serve err: " + err.Error())
+				panic(err)
+			}
+		}()
+
+		if c.Cfg.Rpc.Driver == "grpc_with_consul" {
+			if c.Cfg.Rpc.ConsulURL == "" {
+				log.Panicf("grpc_with_consul consul url is null")
+			}
+			consulTag := rpcConf.ConsulTagPrefix + "_" + topic // TODO: cjw 这里不能用topic区分
+			c := consul.NewConsul(c.Cfg.Rpc.ConsulURL, consulTag, rpcConf.ServerName, rpcConf.Port)
+			c.Init()
+		}
+	}
 }
 
 func (c *APIConsumer) setupGroupReply(topic, grp string) {
@@ -205,6 +269,25 @@ func (c *APIConsumer) onRpcMsg(msg *nats.Msg) {
 		data:      msg.Data,
 		reply:     msg.Reply,
 	}
+}
+
+func (c *APIConsumer) ApiRequest(ctx context.Context, req *pb.ApiRequestReq) (*pb.ApiRequestRsp, error) {
+	v, ok := consumers.Load(req.Topic)
+	if !ok {
+		log.Errorf("invalid toipc %s in api request", req.Topic)
+		return nil, fmt.Errorf("invalid toipc %s in api request", req.Topic)
+	}
+
+	cd := v.(ConsumerData)
+	ch := make(chan Result, 1)
+	cd.c.msgChan <- APIEvent{
+		topic:     req.Topic,
+		partition: -1,
+		data:      req.Data,
+		result:    ch,
+	}
+	result := <-ch
+	return result.resp, result.err
 }
 
 func (c *APIConsumer) startWorkder(msgChan chan APIEvent) {
@@ -222,13 +305,21 @@ func (c *APIConsumer) startWorkder(msgChan chan APIEvent) {
 					}
 					output.Body, _ = jsonerror.Unknown("output msg decode err").Encode()
 					data, _ := output.Encode()
-					c.RpcCli.Pub(ev.reply, data)
-				} else {
+					if c.Cfg.Rpc.Driver == "nats" {
+						c.RpcCli.Pub(ev.reply, data)
+					} else {
+						ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
+					}
+					return
+				}
+				if c.Cfg.Rpc.Driver == "nats" {
 					if output.Code != internals.HTTP_RESP_DISCARD {
 						c.RpcCli.Pub(ev.reply, data)
 					} else {
 						//do not response to nats
 					}
+				} else {
+					ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
 				}
 			}(ev)
 		}

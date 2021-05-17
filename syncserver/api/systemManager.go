@@ -22,13 +22,14 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
+	apiconsumer.SetServices("sync_server_api")
 	apiconsumer.SetAPIProcessor(ReqPostSystemManager{})
 }
 
@@ -55,6 +56,13 @@ func (ReqPostSystemManager) FillRequest(coder core.Coder, req *http.Request, var
 }
 func (ReqPostSystemManager) NewResponse(code int) core.Coder {
 	return nil
+}
+func (ReqPostSystemManager) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	resp := []uint32{}
+	for i := uint32(0); i < cfg.MultiInstance.SyncServerTotal; i++ {
+		resp = append(resp, i)
+	}
+	return resp
 }
 func (r ReqPostSystemManager) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	req := msg.(*external.PostSystemManagerRequest)

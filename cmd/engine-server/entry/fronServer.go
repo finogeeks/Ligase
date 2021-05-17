@@ -21,18 +21,16 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/filter"
-	"github.com/finogeeks/ligase/rcsserver"
-	"github.com/finogeeks/ligase/roomserver/consumers"
-	"github.com/finogeeks/ligase/skunkworks/log"
-
-	//"github.com/finogeeks/ligase/common/keydb"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/encryptoapi"
-	"github.com/finogeeks/ligase/publicroomsapi"
-	"github.com/finogeeks/ligase/roomserver"
-	"github.com/finogeeks/ligase/storage/implements/keydb"
-
 	fed "github.com/finogeeks/ligase/federation/fedreq"
+	"github.com/finogeeks/ligase/publicroomsapi"
+	"github.com/finogeeks/ligase/rcsserver"
+	"github.com/finogeeks/ligase/roomserver"
+	"github.com/finogeeks/ligase/roomserver/consumers"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/storage/implements/keydb"
 )
 
 func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
@@ -57,7 +55,7 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	transportMultiplexer.PreStart()
 	cache := base.PrepareCache()
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
 	rpcClient.Start(true)
 	serverConfDB := base.CreateServerConfDB()
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
@@ -70,9 +68,14 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	syncDB := base.CreateSyncDB()
 	presenceDB := base.CreatePresenceDB()
 
-	newFederation := fed.NewFederation(base.Cfg, rpcClient)
+	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
+	}
 
-	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcClient, cache, newFederation)
+	newFederation := fed.NewFederation(base.Cfg, rpcCli)
+
+	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcClient, rpcCli, cache, newFederation)
 
 	tokenFilter := filter.GetFilterMng().Register("device", deviceDB)
 	tokenFilter.Load()
@@ -104,10 +107,10 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	if err := consumer.Start(); err != nil {
 		log.Panicf("failed to start settings consumer err:%v", err)
 	}
-	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, federation, idg)
-	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, tokenFilter, idg, settings, feddomains, complexCache)
+	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, rpcCli, federation, idg)
+	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, rpcCli, tokenFilter, idg, settings, feddomains, complexCache)
 	publicRoomsDB := base.CreatePublicRoomApiDB()
-	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcClient, rsRpcCli, publicRoomsDB)
-	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
-	rcsserver.SetupRCSServerComponent(base, rpcClient)
+	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcClient, rpcCli, rsRpcCli, publicRoomsDB)
+	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
+	rcsserver.SetupRCSServerComponent(base, rpcClient, rpcCli)
 }

@@ -42,6 +42,7 @@ func (r *ClientEvent) Decode(input []byte) error {
 }
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetEventWithID{})
 }
 
@@ -68,6 +69,9 @@ func (ReqGetEventWithID) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqGetEventWithID) NewResponse(code int) core.Coder {
 	return new(ClientEvent)
+}
+func (ReqGetEventWithID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetEventWithID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

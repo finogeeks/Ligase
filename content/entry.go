@@ -44,6 +44,9 @@ import (
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
 	_ "github.com/finogeeks/ligase/plugins"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	_ "github.com/finogeeks/ligase/rpc/grpc"
+	_ "github.com/finogeeks/ligase/rpc/nats"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -274,8 +277,13 @@ func startContentService(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	downloadStateRepo := repos.NewDownloadStateRepo()
 
 	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcCli := common.NewRpcClient(cfg.Nats.Uri, idg)
+	rpcCli := common.NewRpcClient(cfg.Nats.Uri)
 	rpcCli.Start(true)
+
+	rpcClient, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
+	}
 
 	fedClient, err := client.GetFedClient(cfg.Matrix.ServerName[0])
 	if err != nil {
@@ -320,6 +328,7 @@ func startContentService(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 		feddomains,
 		downloadStateRepo,
 		rpcCli,
+		rpcClient,
 		downloadConsumer,
 		idg,
 	)

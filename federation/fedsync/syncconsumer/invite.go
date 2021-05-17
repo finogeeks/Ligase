@@ -19,22 +19,15 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func SendInvite(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	event *gomatrixserverlib.Event,
 	destination string,
 ) gomatrixserverlib.RespInvite {
-	var event gomatrixserverlib.Event
-	if err := json.Unmarshal(request.Extra, &event); err != nil {
-		log.Errorf("federation Download unmarshal error: %v", err)
-		return gomatrixserverlib.RespInvite{Code: 400}
-	}
-
-	fedResp, err := fedClient.SendInvite(context.Background(), destination, event)
+	fedResp, err := fedClient.SendInvite(context.Background(), destination, *event)
 	if err != nil {
 		log.Errorf("federation SendInvite error %v", err)
 	}

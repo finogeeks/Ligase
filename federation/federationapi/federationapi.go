@@ -19,30 +19,31 @@ import (
 
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/federationapi/entry"
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 	fedrepos "github.com/finogeeks/ligase/federation/model/repos"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
-	dbmodel "github.com/finogeeks/ligase/storage/model"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/skunkworks/util/id"
+	dbmodel "github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type FederationAPIComponent struct {
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	cache     service.Cache
 	fedRpcCli *rpc.FederationRpcClient
 	Repo      *repos.RoomServerCurStateRepo
@@ -51,7 +52,7 @@ type FederationAPIComponent struct {
 }
 
 func NewFederationAPIComponent(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	_cache service.Cache,
 	fedClient *client.FedClientWrap,
 	fedDB fedmodel.FederationDatabase,
@@ -63,6 +64,7 @@ func NewFederationAPIComponent(
 	backfillProc backfilltypes.BackFillProcessor,
 	publicroomsAPI publicroomsapi.PublicRoomsQueryAPI,
 	rpcClient *common.RpcClient,
+	rpcCli rpcService.RpcClient,
 	encryptionDB dbmodel.EncryptorAPIDatabase,
 	c *cert.Cert,
 	idg *uid.UidGenerator,
@@ -77,6 +79,7 @@ func NewFederationAPIComponent(
 	entry.SetJoinRoomsRepo(joinRoomsRepo)
 	entry.SetPublicRoomsAPI(publicroomsAPI)
 	entry.SetRpcClient(rpcClient)
+	entry.SetRpcCli(rpcCli)
 	entry.SetEncryptionDB(encryptionDB)
 	entry.SetComplexCache(complexCache)
 	lc := new(cache.LocalCacheRepo)

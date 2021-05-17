@@ -15,6 +15,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/finogeeks/ligase/bgmng/routing"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
@@ -23,10 +25,10 @@ import (
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"net/http"
 )
 
 func init() {
+	apiconsumer.SetServices("front_bgmng_api")
 	apiconsumer.SetAPIProcessor(ReqPostUpdateDomain{})
 	apiconsumer.SetAPIProcessor(ReqGetDomain{})
 }

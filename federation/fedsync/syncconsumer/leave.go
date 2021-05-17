@@ -19,23 +19,16 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func MakeLeave(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	req *external.GetMakeLeaveRequest,
 	destination string,
 ) gomatrixserverlib.RespMakeLeave {
-	var req external.GetMakeLeaveRequest
-	if err := json.Unmarshal(request.Extra, &req); err != nil {
-		log.Errorf("federation make leave unmarshal error: %v", err)
-		return gomatrixserverlib.RespMakeLeave{}
-	}
-
 	redResp, err := fedClient.MakeLeave(context.Background(), gomatrixserverlib.ServerName(destination), req.RoomID, req.UserID)
 	if err != nil {
 		log.Errorf("federation make leave error response: %v", err)
@@ -45,16 +38,10 @@ func MakeLeave(
 
 func SendLeave(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	req *external.PutSendLeaveRequest,
 	destination string,
 	proc backfilltypes.BackFillProcessor,
 ) gomatrixserverlib.RespSendLeave {
-	var req external.PutSendLeaveRequest
-	if err := json.Unmarshal(request.Extra, &req); err != nil {
-		log.Errorf("federation send leave unmarshal error: %v", err)
-		return gomatrixserverlib.RespSendLeave{}
-	}
-
 	redResp, err := fedClient.SendLeave(context.Background(), gomatrixserverlib.ServerName(destination), req.RoomID, req.EventID, req.Event)
 	if err != nil {
 		log.Errorf("federation send leave error response: %v", err)

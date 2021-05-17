@@ -14,53 +14,53 @@
 
 package rpc
 
-import (
-	// "github.com/finogeeks/ligase/skunkworks/log"
-	"errors"
+// import (
+// 	// "github.com/finogeeks/ligase/skunkworks/log"
+// 	"errors"
 
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	jsoniter "github.com/json-iterator/go"
-)
+// 	"github.com/finogeeks/ligase/common"
+// 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+// 	log "github.com/finogeeks/ligase/skunkworks/log"
+// 	jsoniter "github.com/json-iterator/go"
+// )
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
+// var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-type RpcResponse struct {
-	Error   string
-	Payload jsoniter.RawMessage
-}
+// type RpcResponse struct {
+// 	Error   string
+// 	Payload jsoniter.RawMessage
+// }
 
-func RpcRequest(
-	rpcClient *common.RpcClient,
-	destination, topic string,
-	request interface{},
-) ([]byte, error) {
-	content := roomserverapi.FederationEvent{
-		Destination: string(destination),
-	}
+// func RpcRequest(
+// 	rpcClient *common.RpcClient,
+// 	destination, topic string,
+// 	request interface{},
+// ) ([]byte, error) {
+// 	content := roomserverapi.FederationEvent{
+// 		Destination: string(destination),
+// 	}
 
-	reqContent, err := json.Marshal(&request)
-	content.Extra = reqContent
+// 	reqContent, err := json.Marshal(&request)
+// 	content.Extra = reqContent
 
-	bytes, err := json.Marshal(content)
-	// log.Infof("-------------------- fed rpc request, topic: %s, bytes: %s", topic, string(bytes))
-	data, err := rpcClient.Request(topic, bytes, 30000)
-	if err != nil {
-		return nil, err
-	}
-	log.Infof("-------------------- fed rpc response, topic: %s, bytes: %s", topic, data)
+// 	bytes, err := json.Marshal(content)
+// 	// log.Infof("-------------------- fed rpc request, topic: %s, bytes: %s", topic, string(bytes))
+// 	data, err := rpcClient.Request(topic, bytes, 30000)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	log.Infof("-------------------- fed rpc response, topic: %s, bytes: %s", topic, data)
 
-	resp := RpcResponse{}
-	err = json.Unmarshal(data, &resp)
-	if err != nil {
-		log.Errorf("-------------------- fed rpc response, topic: %s, err: %#v", topic, err)
-		return nil, err
-	}
-	log.Infof("-------------------- fed rpc response, topic: %s, data: %s %s", topic, resp.Error, resp.Payload)
-	if resp.Error != "" {
-		return nil, errors.New(resp.Error)
-	}
+// 	resp := RpcResponse{}
+// 	err = json.Unmarshal(data, &resp)
+// 	if err != nil {
+// 		log.Errorf("-------------------- fed rpc response, topic: %s, err: %#v", topic, err)
+// 		return nil, err
+// 	}
+// 	log.Infof("-------------------- fed rpc response, topic: %s, data: %s %s", topic, resp.Error, resp.Payload)
+// 	if resp.Error != "" {
+// 		return nil, errors.New(resp.Error)
+// 	}
 
-	return resp.Payload, err
-}
+// 	return resp.Payload, err
+// }

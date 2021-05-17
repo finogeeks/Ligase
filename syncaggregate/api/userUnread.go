@@ -15,6 +15,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"sync"
 
@@ -25,13 +26,13 @@ import (
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetUserUnread{})
 }
 
@@ -40,7 +41,7 @@ type ReqGetUserUnread struct{}
 func (ReqGetUserUnread) GetRoute() string       { return "/unread/{userID}" }
 func (ReqGetUserUnread) GetMetricsName() string { return "unread" }
 func (ReqGetUserUnread) GetMsgType() int32      { return internals.MSG_GET_UNREAD }
-func (ReqGetUserUnread) GetAPIType() int8       { return apiconsumer.APITypeExternal }
+func (ReqGetUserUnread) GetAPIType() int8       { return apiconsumer.APITypeAuth }
 func (ReqGetUserUnread) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }
@@ -58,6 +59,9 @@ func (ReqGetUserUnread) FillRequest(coder core.Coder, req *http.Request, vars ma
 }
 func (ReqGetUserUnread) NewResponse(code int) core.Coder {
 	return new(GetUserUnreadResponse)
+}
+func (ReqGetUserUnread) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -99,23 +103,13 @@ func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *au
 			countMap *sync.Map,
 		) {
 			syncReq.SyncInstance = instance
-			bytes, err := json.Marshal(*syncReq)
-			if err == nil {
-				data, err := c.RpcCli.Request(types.SyncUnreadTopicDef, bytes, 30000)
-				if err == nil {
-					var result syncapitypes.SyncUnreadResponse
-					err = json.Unmarshal(data, &result)
-					if err != nil {
-						log.Errorf("sync unread response Unmarshal error %v", err)
-					} else {
-						countMap.Store(syncReq.SyncInstance, result.Count)
-					}
-				} else {
-					log.Errorf("call rpc for syncServer unread user %s error %v", syncReq.UserID, err)
-				}
-			} else {
-				log.Errorf("marshal call sync unread content error, user %s error %v", syncReq.UserID, err)
+			result, err := c.RpcClient.OnUnRead(context.Background(), syncReq)
+			if err != nil {
+				log.Errorf("call rpc for syncServer unread user %s error %v", syncReq.UserID, err)
+				wg.Done()
+				return
 			}
+			countMap.Store(syncReq.SyncInstance, result.Count)
 			wg.Done()
 		}(instance, syncReq, countMap)
 	}

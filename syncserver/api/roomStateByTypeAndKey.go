@@ -15,9 +15,9 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"net/http"
 
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
@@ -28,6 +28,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_server_api")
 	apiconsumer.SetAPIProcessor(ReqGetRoomStateByTypeAndKey{})
 }
 
@@ -63,10 +64,14 @@ func (ReqGetRoomStateByTypeAndKey) FillRequest(coder core.Coder, req *http.Reque
 func (ReqGetRoomStateByTypeAndKey) NewResponse(code int) core.Coder {
 	return make(internals.JSONMap)
 }
+func (ReqGetRoomStateByTypeAndKey) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.GetRoomStateByTypeAndStateKeyRequest)
+	return []uint32{common.CalcStringHashCode(req.RoomID) % cfg.MultiInstance.SyncServerTotal}
+}
 func (ReqGetRoomStateByTypeAndKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomStateByTypeAndStateKeyRequest)
-	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.SyncServerTotal, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 

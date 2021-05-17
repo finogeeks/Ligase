@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "./;pb";
+
+import "common.proto";
+
+service RcsServer {
+  rpc HandleEventByRcs (Event) returns (HandleEventByRcsRsp) {}
+}
+
+message HandleEventByRcsRsp {
+    repeated Event events = 1;
+    bool succeed = 2;
+}

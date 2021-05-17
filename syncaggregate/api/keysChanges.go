@@ -35,6 +35,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetKeysChanges{})
 }
 
@@ -62,6 +63,9 @@ func (ReqGetKeysChanges) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqGetKeysChanges) NewResponse(code int) core.Coder {
 	return new(syncapitypes.KeyChanged)
+}
+func (ReqGetKeysChanges) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (r ReqGetKeysChanges) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

@@ -19,21 +19,19 @@ import (
 	"errors"
 	"time"
 
-	"github.com/finogeeks/ligase/common/uid"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/storage/model"
-
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/storage/model"
 )
 
 type InputResult struct {
@@ -55,6 +53,7 @@ type EventsProcessor struct {
 	Cfg        *config.Dendrite
 	Idg        *uid.UidGenerator
 	RpcClient  *common.RpcClient
+	RpcCli     rpc.RpcClient
 	Federation *fed.Federation
 
 	slot      uint32
@@ -280,23 +279,9 @@ func (r *EventsProcessor) processDirectRoomCreateOrMemberEvent(
 	ctx context.Context,
 	event gomatrixserverlib.Event,
 ) ([]gomatrixserverlib.Event, bool, error) {
-	inCont := types.RCSInputEventContent{
-		Event: event,
-	}
-	bytes, err := json.Marshal(inCont)
-	if err != nil {
-		log.Errorf("Failed to marshal RCSInputEventContent: %v\n", err)
-		return nil, false, err
-	}
-	data, err := r.RpcClient.Request(types.RCSEventTopicDef, bytes, 35000)
+	cont, err := r.RpcCli.HandleEventByRcs(ctx, &event)
 	if err != nil {
 		log.Errorf("Failed to call rcs server: %v\n", err)
-		return nil, false, err
-	}
-	var cont types.RCSOutputEventContent
-	err = json.Unmarshal(data, &cont)
-	if err != nil {
-		log.Errorf("Failed to unmarshal RCSOutputEventContent: %v\n", err)
 		return nil, false, err
 	}
 	if !cont.Succeed {

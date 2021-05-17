@@ -38,6 +38,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_server_api")
 	apiconsumer.SetAPIProcessor(ReqGetEventContext{})
 }
 
@@ -74,6 +75,10 @@ func (ReqGetEventContext) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqGetEventContext) NewResponse(code int) core.Coder {
 	return make(internals.JSONMap)
 }
+func (ReqGetEventContext) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.GetRoomEventContextRequest)
+	return []uint32{common.CalcStringHashCode(req.RoomID) % cfg.MultiInstance.SyncServerTotal}
+}
 
 type GetMessagesSource struct {
 	c             *InternalMsgConsumer
@@ -86,7 +91,7 @@ type GetMessagesSource struct {
 func (ReqGetEventContext) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetRoomEventContextRequest)
-	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.SyncServerTotal, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 

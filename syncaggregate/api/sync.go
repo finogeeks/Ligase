@@ -32,6 +32,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetSync{})
 }
 
@@ -59,6 +60,9 @@ func (ReqGetSync) FillRequest(coder core.Coder, req *http.Request, vars map[stri
 	msg.From = query.Get("from")
 	msg.Since = query.Get("since")
 	return nil
+}
+func (ReqGetSync) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetSync) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

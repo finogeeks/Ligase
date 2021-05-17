@@ -16,43 +16,36 @@ package fedsync
 
 import (
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/fedsync/syncconsumer"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 )
 
 type FederationSync struct {
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	rpcClient *common.RpcClient
 	consumer  *syncconsumer.SyncConsumer
 	// roomAliasRpcCli *syncconsumer.RoomAliasRpcConsumer
 	// profileRpcCli *syncconsumer.ProfileRpcConsumer
 }
 
-func NewFederationSync(cfg *config.Fed, fedClient *client.FedClientWrap, feddomains *common.FedDomains) *FederationSync {
-	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcClient := common.NewRpcClient(cfg.GetMsgBusAddress(), idg)
+func NewFederationSync(
+	cfg *config.Dendrite,
+	fedClient *client.FedClientWrap,
+	feddomains *common.FedDomains,
+	backfill backfilltypes.BackFillProcessor,
+) *FederationSync {
+	rpcClient := common.NewRpcClient(cfg.Nats.Uri)
+	rpcClient.Start(true)
 
-	consumer := syncconsumer.NewSyncConsumer(cfg, fedClient, rpcClient, feddomains)
-	// roomAliasRpcConsumer := syncconsumer.NewRoomAliasRpcConsumer(cfg, fedClient, rpcClient)
-	// profileRpcConsumer := syncconsumer.NewProfileRpcConsumer(cfg, fedClient, rpcClient)
+	consumer := syncconsumer.NewSyncConsumer(cfg, fedClient, rpcClient, feddomains, backfill)
+	consumer.Start()
 
 	fedSync := &FederationSync{
 		cfg:       cfg,
 		rpcClient: rpcClient,
 		consumer:  consumer,
-		// roomAliasRpcCli: roomAliasRpcConsumer,
-		// profileRpcCli: profileRpcConsumer,
 	}
 	return fedSync
-}
-
-func (fedSync *FederationSync) Setup(backfill backfilltypes.BackFillProcessor) {
-	fedSync.consumer.SetBackfill(backfill)
-	fedSync.rpcClient.Start(true)
-	fedSync.consumer.Start()
-	// fedSync.roomAliasRpcCli.Start()
-	// fedSync.profileRpcCli.Start()
 }

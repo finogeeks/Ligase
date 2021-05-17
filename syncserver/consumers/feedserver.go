@@ -19,31 +19,27 @@ package consumers
 
 import (
 	"context"
+	jsonRaw "encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/finogeeks/ligase/model/pushapitypes"
-
-	"github.com/finogeeks/ligase/syncserver/extra"
-
-	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/model/roomservertypes"
-	"github.com/finogeeks/ligase/model/types"
-	jsoniter "github.com/json-iterator/go"
-
-	jsonRaw "encoding/json"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
+	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/storage/model"
-
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/storage/model"
+	"github.com/finogeeks/ligase/syncserver/extra"
+	jsoniter "github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -60,6 +56,7 @@ type RoomEventFeedConsumer struct {
 	pushConsumer          *PushConsumer
 	cfg                   *config.Dendrite
 	rpcClient             *common.RpcClient
+	rpcCli                rpc.RpcClient
 	chanSize              uint32
 	msgChan               []chan roomserverapi.OutputEvent
 	idg                   *uid.UidGenerator
@@ -71,6 +68,7 @@ func NewRoomEventFeedConsumer(
 	store model.SyncAPIDatabase,
 	pushConsumer *PushConsumer,
 	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	idg *uid.UidGenerator,
 ) *RoomEventFeedConsumer {
 	val, ok := common.GetTransportMultiplexer().GetChannel(
@@ -85,6 +83,7 @@ func NewRoomEventFeedConsumer(
 			pushConsumer: pushConsumer,
 			cfg:          cfg,
 			rpcClient:    rpcClient,
+			rpcCli:       rpcCli,
 			chanSize:     64,
 			idg:          idg,
 		}
@@ -755,10 +754,9 @@ func (s *RoomEventFeedConsumer) pubKeyUpdate(changes *[]types.DeviceKeyChanges, 
 			DeviceKeyChanges: *changes,
 			EventNID:         evtNid,
 		}
-		bytes, err := json.Marshal(content)
-		if err == nil {
-			s.rpcClient.Pub(types.KeyUpdateTopicDef, bytes)
-		} else {
+		ctx := context.Background()
+		err := s.rpcCli.UpdateDeviceKey(ctx, &content)
+		if err != nil {
 			log.Errorf("RoomEventConsumer pub key change error %v", err)
 		}
 	}

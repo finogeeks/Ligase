@@ -27,6 +27,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("proxy")
 	apiconsumer.SetAPIProcessor(ReqPostMediaUpload{})
 	apiconsumer.SetAPIProcessor(ReqGetMediaDownload{})
 	apiconsumer.SetAPIProcessor(ReqGetMediaThumbnail{})

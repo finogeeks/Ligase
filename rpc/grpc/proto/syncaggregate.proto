@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "./;pb";
+
+import "common.proto";
+//import "sync.proto";
+
+service SyncAggregate {
+  rpc UpdateOneTimeKey (UpdateOneTimeKeyReq) returns (Empty) {}
+  rpc UpdateDeviceKey (UpdateDeviceKeyReq) returns (Empty) {}
+  rpc GetOnlinePresence (GetOnlinePresenceReq) returns (GetOnlinePresenceRsp) {}
+  rpc SetReceiptLatest (SetReceiptLatestReq) returns (Empty) {}
+  rpc AddTyping (UpdateTypingReq) returns (Empty) {}
+  rpc RemoveTyping (UpdateTypingReq) returns (Empty) {}
+}
+
+message UpdateOneTimeKeyReq {
+    string userID = 1;
+    string deviceID = 2;
+}
+
+message DeviceKeyChanges {
+    int64 offset = 1;
+    string changedUserID = 2;
+}
+
+message UpdateDeviceKeyReq {
+    repeated DeviceKeyChanges deviceKeyChanges = 1;
+    int64 eventNID = 2;
+}
+
+message GetOnlinePresenceReq {
+    string userID = 1;
+}
+
+message GetOnlinePresenceRsp {
+    bool found = 1;
+    string presence = 2;
+    string statusMsg = 3;
+    string extStatusMsg = 4;
+}
+
+message SetReceiptLatestReq {
+    repeated string users = 1;
+    int64 offset = 2;
+    string roomID = 3;
+}
+
+message UpdateTypingReq {
+    string roomID = 1;
+    string userID = 2;
+    string deviceID = 3;
+    repeated string roomUsers = 4;
+}

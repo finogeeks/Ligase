@@ -43,8 +43,8 @@ then
     ./bin/engine-server --name=api-gw --config=./config/config.yaml --http-address=$BIND_HTTP_ADDR --log-porf=true
 elif [ "$SERVICE_NAME" = "fed" ]
 then
-    cat /opt/ligase/config/fed.yaml
-    ./bin/federation --name=fed --config=./config/fed.yaml
+    cat /opt/ligase/config/config.yaml
+    ./bin/federation --name=fed --config=./config/config.yaml
 elif [ "$SERVICE_NAME" = "content" ]
 then
     cat /opt/ligase/config/config.yaml

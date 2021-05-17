@@ -145,44 +145,42 @@ func ConvertPushRule(data pushapitypes.PushRuleData, defaultRule bool) (pushapit
 	return pushRule, nil
 }
 
-func FormatRuleResponse(rules pushapitypes.Rules) pushapitypes.RuleSet {
-	ruleSet := pushapitypes.RuleSet{}
+func FormatRuleResponse(rules pushapitypes.Rules) pushapitypes.Rules {
+	ruleSet := pushapitypes.Rules{}
 
 	for _, v := range rules.Sender {
 		ruleSet.Sender = append(ruleSet.Sender, v)
 	}
 	if len(ruleSet.Sender) == 0 {
-		ruleSet.Sender = []interface{}{}
+		ruleSet.Sender = []pushapitypes.PushRule{}
 	}
 
 	for _, v := range rules.Room {
 		ruleSet.Room = append(ruleSet.Room, v)
 	}
 	if len(ruleSet.Room) == 0 {
-		ruleSet.Room = []interface{}{}
+		ruleSet.Room = []pushapitypes.PushRule{}
 	}
 
 	for _, v := range rules.Content {
 		ruleSet.Content = append(ruleSet.Content, v)
 	}
 	if len(ruleSet.Content) == 0 {
-		ruleSet.Content = []interface{}{}
+		ruleSet.Content = []pushapitypes.PushRule{}
 	}
 
 	for _, v := range rules.Override {
-		newRule := pushapitypes.PushRuleWithConditions(v)
-		ruleSet.Override = append(ruleSet.Override, newRule)
+		ruleSet.Override = append(ruleSet.Override, v)
 	}
 	if len(ruleSet.Override) == 0 {
-		ruleSet.Override = []interface{}{}
+		ruleSet.Override = []pushapitypes.PushRule{}
 	}
 
 	for _, v := range rules.UnderRide {
-		newRule := pushapitypes.PushRuleWithConditions(v)
-		ruleSet.UnderRide = append(ruleSet.UnderRide, newRule)
+		ruleSet.UnderRide = append(ruleSet.UnderRide, v)
 	}
 	if len(ruleSet.UnderRide) == 0 {
-		ruleSet.UnderRide = []interface{}{}
+		ruleSet.UnderRide = []pushapitypes.PushRule{}
 	}
 
 	return ruleSet
@@ -650,7 +648,7 @@ func GetPushRule(
 	pushRule.RuleId = ruleID
 
 	if kind == "override" || kind == "underride" {
-		newRule := pushapitypes.PushRuleWithConditions{
+		newRule := pushapitypes.PushRule{
 			Actions:    pushRule.Actions,
 			Default:    pushRule.Default,
 			Enabled:    pushRule.Enabled,

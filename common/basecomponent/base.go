@@ -18,7 +18,6 @@
 package basecomponent
 
 import (
-	"github.com/finogeeks/ligase/common/domain"
 	"io"
 	"net/http"
 	"os"
@@ -28,16 +27,17 @@ import (
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/roomserver/rpc"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
+	_ "github.com/finogeeks/ligase/storage/implements"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/gorilla/mux"
-
-	_ "github.com/finogeeks/ligase/storage/implements"
 )
 
 // BaseDendrite is a base for creating new instances of dendrite. It parses
@@ -111,8 +111,8 @@ func (b *BaseDendrite) Close() error {
 
 // CreateRsRPCCli returns the AliasAPI and QueryAPI to hit
 // the roomserver over tcp.
-func (b *BaseDendrite) CreateRsRPCCli(rpcCli *common.RpcClient) roomserverapi.RoomserverRPCAPI {
-	return rpc.NewRoomserverRpcClient(b.Cfg, rpcCli, nil, nil, nil)
+func (b *BaseDendrite) CreateRsRPCCli(rpcCli *common.RpcClient, rpcClient rpcService.RpcClient) roomserverapi.RoomserverRPCAPI {
+	return rpc.NewRoomserverRpcClient(b.Cfg, rpcCli, rpcClient, nil, nil, nil)
 }
 
 // CreateDeviceDB creates a new instance of the device database. Should only be

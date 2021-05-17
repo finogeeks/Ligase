@@ -30,6 +30,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetJoinedRooms{})
 }
 
@@ -52,6 +53,9 @@ func (ReqGetJoinedRooms) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqGetJoinedRooms) NewResponse(code int) core.Coder {
 	return new(syncapitypes.JoinedRoomsResp)
+}
+func (ReqGetJoinedRooms) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetJoinedRooms) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

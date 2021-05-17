@@ -20,22 +20,22 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/proxy/bridge"
 	"github.com/finogeeks/ligase/proxy/consumers"
 	"github.com/finogeeks/ligase/proxy/handler"
 	"github.com/finogeeks/ligase/proxy/routing"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/rpc/consul"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-
-	// "io/ioutil"
-	"sync"
 )
 
 var (
@@ -48,16 +48,33 @@ func SetupProxy(
 	base *basecomponent.BaseDendrite,
 	cache service.Cache,
 	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI,
 	tokenFilter *filter.SimpleFilter,
 ) {
 	bridge.SetupBridge(base.Cfg)
 
-	tokenFilterConsumer := consumers.NewFilterTokenConsumer(rpcCli, tokenFilter)
-	tokenFilterConsumer.Start()
+	if base.Cfg.Rpc.Driver == "nats" {
+		tokenFilterConsumer := consumers.NewFilterTokenConsumer(rpcCli, tokenFilter)
+		tokenFilterConsumer.Start()
 
-	verifyTokenConsumer := consumers.NewVerifyTokenConsumer(rpcCli, tokenFilter, cache, base.Cfg)
-	verifyTokenConsumer.Start()
+		verifyTokenConsumer := consumers.NewVerifyTokenConsumer(rpcCli, tokenFilter, cache, base.Cfg)
+		verifyTokenConsumer.Start()
+	} else {
+		grpcServer := consumers.NewServer(base.Cfg, tokenFilter, cache)
+		if err := grpcServer.Start(); err != nil {
+			log.Panicf("failed to start proxy rpc server err:%v", err)
+		}
+	}
+
+	if base.Cfg.Rpc.Driver == "grpc_with_consul" {
+		if base.Cfg.Rpc.ConsulURL == "" {
+			log.Panicf("grpc_with_consul consul url is null")
+		}
+		consulTag := base.Cfg.Rpc.Proxy.ConsulTagPrefix + "0"
+		c := consul.NewConsul(base.Cfg.Rpc.ConsulURL, consulTag, base.Cfg.Rpc.Proxy.ServerName, base.Cfg.Rpc.Proxy.Port)
+		c.Init()
+	}
 
 	settings := common.NewSettings(cache)
 	settingConsumer := common.NewSettingConsumer(
@@ -77,7 +94,7 @@ func SetupProxy(
 	//}
 
 	routing.Setup(
-		base.APIMux, *base.Cfg, cache, rpcCli, rsRpcCli, tokenFilter, feddomains, keyDB,
+		base.APIMux, *base.Cfg, cache, rpcCli, rpcClient, rsRpcCli, tokenFilter, feddomains, keyDB,
 	)
 }
 

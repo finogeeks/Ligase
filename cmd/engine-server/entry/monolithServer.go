@@ -23,19 +23,17 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/filter"
-	"github.com/finogeeks/ligase/rcsserver"
-	"github.com/finogeeks/ligase/roomserver/consumers"
-	"github.com/finogeeks/ligase/skunkworks/log"
-
-	// "github.com/finogeeks/ligase/common/keydb"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/dbwriter"
 	"github.com/finogeeks/ligase/encryptoapi"
 	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/proxy"
 	"github.com/finogeeks/ligase/publicroomsapi"
-	"github.com/finogeeks/ligase/pushsender"
+	"github.com/finogeeks/ligase/rcsserver"
 	"github.com/finogeeks/ligase/roomserver"
+	"github.com/finogeeks/ligase/roomserver/consumers"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/implements/keydb"
 	"github.com/finogeeks/ligase/syncaggregate"
 	"github.com/finogeeks/ligase/syncserver"
@@ -47,8 +45,13 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	kafka := base.Cfg.Kafka
 
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
 	rpcClient.Start(true)
+
+	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
+	}
 
 	addProducer(transportMultiplexer, kafka.Producer.OutputRoomEvent)
 	addProducer(transportMultiplexer, kafka.Producer.InputRoomEvent)
@@ -108,14 +111,15 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	newTokenFilter := filter.NewSimpleFilter(deviceDB)
 	newTokenFilter.Load()
 
-	newFederation := fed.NewFederation(base.Cfg, rpcClient)
+	newFederation := fed.NewFederation(base.Cfg, rpcCli)
 
-	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcClient, cache, newFederation)
+	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcClient, rpcCli, cache, newFederation)
 	dbwriter.SetupDBWriterComponent(base)
 
-	pushsender.SetupPushSenderComponent(base, rpcClient)
+	// 看代码，应该已经不需要了
+	// pushsender.SetupPushSenderComponent(base, rpcClient)
 
-	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, federation, idg)
+	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, rpcCli, federation, idg)
 
 	settings := common.NewSettings(cache)
 	settingConsumer := common.NewSettingConsumer(
@@ -131,25 +135,25 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 
-	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, tokenFilter, idg, settings, feddomains, complexCache)
+	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, rpcCli, tokenFilter, idg, settings, feddomains, complexCache)
 
-	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, idg)
+	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, rpcCli, idg)
 	//federationapi.SetupFederationAPIComponent(base, accountDB, federation, &keyRing, alias, input, query, cache)
 	//federationsender.SetupFederationSenderComponent(base, federation, query)
 
 	publicRoomsDB := base.CreatePublicRoomApiDB()
-	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcClient, rsRpcCli, publicRoomsDB)
+	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcClient, rpcCli, rsRpcCli, publicRoomsDB)
 	appservice.SetupApplicationServiceComponent(base)
 	StartCacheLoader(base, cmd)
 	//pushDB := base.CreatePushApiDB()
 	//roomServerDB := base.CreateRoomDB()
 	//migration.SetupMigrationComponent(base, accountDB, deviceDB, pushDB, roomServerDB, idg, syncDB)
 	//tokenrewrite.SetupTokenRewrite(rpcClient, base.Cfg)
-	syncwriter.SetupSyncWriterComponent(base, rpcClient)
-	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, idg, complexCache)
-	proxy.SetupProxy(base, cache, rpcClient, rsRpcCli, newTokenFilter)
-	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
-	rcsserver.SetupRCSServerComponent(base, rpcClient)
+	syncwriter.SetupSyncWriterComponent(base, rpcClient, rpcCli)
+	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, rpcCli, idg, complexCache)
+	proxy.SetupProxy(base, cache, rpcClient, rpcCli, rsRpcCli, newTokenFilter)
+	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
+	rcsserver.SetupRCSServerComponent(base, rpcClient, rpcCli)
 	consumer := consumers.NewDismissRoomConsumer(
 		kafka.Consumer.DismissRoom.Underlying,
 		kafka.Consumer.DismissRoom.Name,

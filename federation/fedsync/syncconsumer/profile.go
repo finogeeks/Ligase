@@ -16,20 +16,21 @@ package syncconsumer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/federation/client"
-	"github.com/finogeeks/ligase/federation/config"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/nats.go"
 )
 
 type ProfileRpcConsumer struct {
-	cfg       *config.Fed
+	cfg       *config.Dendrite
 	fedClient *client.FedClientWrap
 	rpcClient *common.RpcClient
 	feddomain *common.FedDomains
@@ -37,7 +38,7 @@ type ProfileRpcConsumer struct {
 }
 
 func NewProfileRpcConsumer(
-	cfg *config.Fed,
+	cfg *config.Dendrite,
 	fedClient *client.FedClientWrap,
 	rpcClient *common.RpcClient,
 	feddomain *common.FedDomains,
@@ -109,16 +110,9 @@ func (s *ProfileRpcConsumer) processGetProfile(
 
 func GetProfile(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	profileReq *external.GetProfileRequest,
 	destination string,
 ) external.GetProfileResponse {
-	var profileReq external.GetProfileRequest
-	if err := json.Unmarshal(request.Extra, &profileReq); err != nil {
-		log.Errorf("federation GetProfile unmarshal error: %v", err)
-		return external.GetProfileResponse{}
-	}
-
-	// destination := fmt.Sprintf("%s:%s", request.Destination, s.cfg.GetConnectorPort())
 	response, err := fedClient.LookupProfile(context.Background(), destination, profileReq.UserID)
 	if err != nil {
 		log.Errorf("federation LookupProfile error: %v", err)
@@ -135,15 +129,9 @@ func GetProfile(
 
 func GetAvatar(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	profileReq *external.GetProfileRequest,
 	destination string,
 ) external.GetAvatarURLResponse {
-	var profileReq external.GetProfileRequest
-	if err := json.Unmarshal(request.Extra, &profileReq); err != nil {
-		log.Errorf("federation GetProfile unmarshal error: %v", err)
-		return external.GetAvatarURLResponse{}
-	}
-
 	response, err := fedClient.LookupAvatarURL(context.Background(), destination, profileReq.UserID)
 	if err != nil {
 		log.Errorf("federation avatar error: %v", err)
@@ -159,15 +147,9 @@ func GetAvatar(
 
 func GetDisplayName(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	profileReq *external.GetProfileRequest,
 	destination string,
 ) external.GetDisplayNameResponse {
-	var profileReq external.GetProfileRequest
-	if err := json.Unmarshal(request.Extra, &profileReq); err != nil {
-		log.Errorf("federation GetProfile unmarshal error: %v", err)
-		return external.GetDisplayNameResponse{}
-	}
-
 	response, err := fedClient.LookupDisplayName(context.Background(), destination, profileReq.UserID)
 	if err != nil {
 		log.Errorf("federation display name error: %v", err)
@@ -183,15 +165,9 @@ func GetDisplayName(
 
 func GetUserInfo(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	userInfoReq *external.GetUserInfoRequest,
 	destination string,
 ) external.GetUserInfoResponse {
-	var userInfoReq external.GetUserInfoRequest
-	if err := json.Unmarshal(request.Extra, &userInfoReq); err != nil {
-		log.Errorf("federation GetUserInfo unmarshal error: %v", err)
-		return external.GetUserInfoResponse{}
-	}
-
 	response, err := fedClient.LookupUserInfo(context.Background(), destination, userInfoReq.UserID)
 	if err != nil {
 		log.Errorf("federation LookupUserInfo error: %v", err)
