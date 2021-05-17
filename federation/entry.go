@@ -43,6 +43,9 @@ import (
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
 	"github.com/finogeeks/ligase/model/repos"
 	_ "github.com/finogeeks/ligase/plugins"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	_ "github.com/finogeeks/ligase/rpc/grpc"
+	_ "github.com/finogeeks/ligase/rpc/nats"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	_ "github.com/finogeeks/ligase/storage/implements"
@@ -50,7 +53,7 @@ import (
 )
 
 var (
-	configPath    = flag.String("config", "config/fed.yaml", "The path to the config file. For more information, see the config file in this repository.")
+	configPath    = flag.String("config", "config/dendrite.yaml", "The path to the config file. For more information, see the config file in this repository.")
 	procName      = flag.String("name", "monolith", "Name for the server")
 	httpBindAddr  = flag.String("http-address", "", "The HTTP listening port for the server")
 	httpsBindAddr = flag.String("https-address", "", "The HTTPS listening port for the server")
@@ -171,10 +174,15 @@ func startFedMonolith() {
 	settings := common.NewSettings(cache)
 
 	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcClient := common.NewRpcClient(cfg.Nats.Uri, idg)
+	rpcClient := common.NewRpcClient(cfg.Nats.Uri)
 	rpcClient.Start(true)
 
-	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, nil, nil, nil)
+	rpcCli, err := rpcService.NewRpcClient(cfg.Rpc.Driver, cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", cfg.Rpc.Driver, err)
+	}
+
+	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, rpcCli, nil, nil, nil)
 
 	settingConsumer := common.NewSettingConsumer(
 		cfg.Kafka.Consumer.SettingUpdateFed.Underlying,
@@ -233,11 +241,11 @@ func startFedMonolith() {
 	}
 	encrytionDB := edb.(model.EncryptorAPIDatabase)
 
-	publicroomsAPI := rpc.NewFedPublicRoomsRpcClient(cfg, rpcClient)
+	publicroomsAPI := rpc.NewFedPublicRoomsRpcClient(cfg, rpcClient, rpcCli)
 
 	fedAPIEntry := federationapi.NewFederationAPIComponent(cfg, cache, fedClient, fedDB, keyDB,
 		feddomains, fedRpcCli, backfillRepo, joinRoomsRepo, backfill, publicroomsAPI,
-		rpcClient, encrytionDB, certInfo, idg, complexCache)
+		rpcClient, rpcCli, encrytionDB, certInfo, idg, complexCache)
 
 	//subject := fmt.Sprintf("%s.%s", fed.cfg.GetMsgBusReqTopic(), ">")
 	//fed.NatsBus.SubRegister(subject, "federation-msgbus")
@@ -276,7 +284,7 @@ func startFedMonolith() {
 
 	fedAPIEntry.SetRepo(repo)
 
-	sender := fedsender.NewFederationSender(cfg, rpcClient, feddomains, fedDB)
+	sender := fedsender.NewFederationSender(cfg, rpcClient, rpcCli, feddomains, fedDB)
 	sender.SetRepo(repo)
 	sender.Init()
 	sender.Start()

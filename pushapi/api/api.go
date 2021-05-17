@@ -31,6 +31,7 @@ import (
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/pushapi/routing"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -50,11 +51,13 @@ func NewInternalMsgConsumer(
 	pushDB model.PushAPIDatabase,
 	redisCache service.Cache,
 	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	pushDataRepo *repos.PushDataRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
 	c.RpcCli = rpcCli
+	c.RpcClient = rpcClient
 	c.pushDB = pushDB
 	c.redisCache = redisCache
 
@@ -533,7 +536,7 @@ func (ReqPostUsersPushKey) Process(consumer interface{}, msg core.Coder, device 
 			return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 		} else {
 			return routing.GetUsersPushers(
-				context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcCli,
+				context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcClient,
 			)
 		}
 	} else {

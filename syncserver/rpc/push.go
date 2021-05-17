@@ -3,6 +3,9 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/pushapitypes"
@@ -11,16 +14,14 @@ import (
 	"github.com/finogeeks/ligase/pushapi/routing"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/nats.go"
-	"strconv"
-	"time"
 )
 
 type PushDataCB struct {
-	rpcClient   *common.RpcClient
-	chanSize    uint32
-	msgChan     []chan *pushapitypes.PushDataRequest
-	repos       *repos.PushDataRepo
-	cfg 		*config.Dendrite
+	rpcClient *common.RpcClient
+	chanSize  uint32
+	msgChan   []chan *pushapitypes.PushDataRequest
+	repos     *repos.PushDataRepo
+	cfg       *config.Dendrite
 }
 
 func (pd *PushDataCB) GetTopic() string {
@@ -41,10 +42,10 @@ func NewPushDataConsumer(
 	cfg *config.Dendrite,
 ) *PushDataCB {
 	pd := &PushDataCB{
-		rpcClient:   client,
-		chanSize:    16,
-		repos: 		 repos,
-		cfg: 		 cfg,
+		rpcClient: client,
+		chanSize:  16,
+		repos:     repos,
+		cfg:       cfg,
 	}
 	return pd
 }
@@ -57,7 +58,7 @@ func (pd *PushDataCB) cb(msg *nats.Msg) {
 	}
 	result.Reply = msg.Reply
 	if result.Slot == pd.cfg.MultiInstance.Instance {
-		idx := common.CalcStringHashCode(strconv.FormatInt(time.Now().UnixNano(),10)) % pd.chanSize
+		idx := common.CalcStringHashCode(strconv.FormatInt(time.Now().UnixNano(), 10)) % pd.chanSize
 		pd.msgChan[idx] <- &result
 	}
 }
@@ -93,7 +94,7 @@ func (pd *PushDataCB) process(req *pushapitypes.PushDataRequest) {
 	}
 }
 
-func (pd *PushDataCB) getPusherByDevice(req *pushapitypes.PushDataRequest){
+func (pd *PushDataCB) getPusherByDevice(req *pushapitypes.PushDataRequest) {
 	var data pushapitypes.ReqPushUser
 	if err := json.Unmarshal(req.Payload, &data); err != nil {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
@@ -107,14 +108,14 @@ func (pd *PushDataCB) getPusherByDevice(req *pushapitypes.PushDataRequest){
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Error: fmt.Sprintf("json.Marshal result error %v", err),
 		})
-	}else{
+	} else {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Payload: byte,
 		})
 	}
 }
 
-func (pd *PushDataCB) getPushRuleByUser(req *pushapitypes.PushDataRequest){
+func (pd *PushDataCB) getPushRuleByUser(req *pushapitypes.PushDataRequest) {
 	var data pushapitypes.ReqPushUser
 	if err := json.Unmarshal(req.Payload, &data); err != nil {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
@@ -128,14 +129,14 @@ func (pd *PushDataCB) getPushRuleByUser(req *pushapitypes.PushDataRequest){
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Error: fmt.Sprintf("json.Marshal result error %v", err),
 		})
-	}else{
+	} else {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Payload: byte,
 		})
 	}
 }
 
-func (pd *PushDataCB) getPushDataBatch(req *pushapitypes.PushDataRequest){
+func (pd *PushDataCB) getPushDataBatch(req *pushapitypes.PushDataRequest) {
 	var data pushapitypes.ReqPushUsers
 	if err := json.Unmarshal(req.Payload, &data); err != nil {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
@@ -149,7 +150,7 @@ func (pd *PushDataCB) getPushDataBatch(req *pushapitypes.PushDataRequest){
 	for _, user := range data.Users {
 		r := pushapitypes.RespPushData{
 			Pushers: routing.GetPushersByName(user, pd.repos, false, nil),
-			Rules: routing.GetUserPushRules(user, pd.repos, false, nil),
+			Rules:   routing.GetUserPushRules(user, pd.repos, false, nil),
 		}
 		resp.Data[user] = r
 	}
@@ -159,14 +160,14 @@ func (pd *PushDataCB) getPushDataBatch(req *pushapitypes.PushDataRequest){
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Error: fmt.Sprintf("json.Marshal result error %v", err),
 		})
-	}else{
+	} else {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Payload: byte,
 		})
 	}
 }
 
-func (pd *PushDataCB) getPusherBatch(req *pushapitypes.PushDataRequest){
+func (pd *PushDataCB) getPusherBatch(req *pushapitypes.PushDataRequest) {
 	var data pushapitypes.ReqPushUsers
 	if err := json.Unmarshal(req.Payload, &data); err != nil {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
@@ -190,7 +191,7 @@ func (pd *PushDataCB) getPusherBatch(req *pushapitypes.PushDataRequest){
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Error: fmt.Sprintf("json.Marshal result error %v", err),
 		})
-	}else{
+	} else {
 		pd.rpcClient.PubObj(req.Reply, pushapitypes.RpcResponse{
 			Payload: byte,
 		})

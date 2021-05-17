@@ -84,7 +84,7 @@ func checkDomain(cfg config.Dendrite, fedDomians *common.FedDomains, domain stri
 	// fed check
 	fds := fedDomians.GetAllFedDomains()
 	if len(fds) == 0 || !common.CheckValidDomain(domain, fds) {
-		log.Errorf("get profile error, invalid domain: %s", domain)
+		log.Warnf("get profile error, invalid domain: %s", domain)
 		return false
 	}
 	return true

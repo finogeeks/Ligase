@@ -30,6 +30,7 @@ import (
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/rpc"
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
 )
@@ -50,6 +51,7 @@ var (
 	backfillProc   backfilltypes.BackFillProcessor
 	publicroomsAPI publicroomsapi.PublicRoomsQueryAPI
 	rpcClient      *common.RpcClient
+	rpcCli         rpc.RpcClient
 	encryptionDB   dbmodel.EncryptorAPIDatabase
 	complexCache   *common.ComplexCache
 	rsRepo         *modelRepos.RoomServerCurStateRepo
@@ -112,6 +114,10 @@ func SetPublicRoomsAPI(api publicroomsapi.PublicRoomsQueryAPI) {
 
 func SetRpcClient(rpcCli *common.RpcClient) {
 	rpcClient = rpcCli
+}
+
+func SetRpcCli(rpcClient rpc.RpcClient) {
+	rpcCli = rpcClient
 }
 
 func SetEncryptionDB(db dbmodel.EncryptorAPIDatabase) {

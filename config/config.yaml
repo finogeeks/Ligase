@@ -307,6 +307,50 @@ rpc:
     proxy_bgmgr_api_topic: proxyBgmgrApi
     proxy_rcsserver_api_topic: proxyRCSServerApi
 
+    driver: grpc
+    consul_url: 
+    sync_server:
+        server_name: syncserver
+        port: 8070
+        consul_tag_prefix: syncserver
+        addresses: 127.0.0.1:8070
+    sync_aggregate:
+        server_name: syncaggregate
+        port: 8071
+        consul_tag_prefix: syncaggregate
+        addresses: syncaggregate:8071
+    front:
+        server_name: front
+        port: 8072
+        consul_tag_prefix: front
+        addresses: front:8072
+    proxy:
+        server_name: proxy
+        port: 8073
+        consul_tag_prefix: proxy
+        addresses: proxy:8073
+    rcs:
+        server_name: rcs
+        port: 8074
+        consul_tag_prefix: rcs
+        addresses: front:8074
+    token_writer:
+        server_name: tokenwriter
+        port: 8075
+        consul_tag_prefix: tokenwriter
+        addresses: tokenwriter:8075
+    public_room:
+        server_name: publicroom
+        port: 8076
+        consul_tag_prefix: publicroom
+        addresses: front:8076
+    room_server:
+        server_name: roomserver
+        port: 8077
+        consul_tag_prefix: roomserver
+        addresses: front:8077
+
+
 # Specify your host, port, username and password for redis, nats and database connection.
 # If you run by steps in INSTALL.md, just change the ip below to your own host.
 redis:

@@ -21,12 +21,12 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/model/repos"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
 	"github.com/finogeeks/ligase/model"
+	rpcService "github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -66,9 +66,12 @@ func NewFederationBackFill(
 	feddomains *common.FedDomains,
 	repo *repos.BackfillRepo,
 ) *FederationBackFill {
-	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcClient := common.NewRpcClient(cfg.Nats.Uri, idg)
-	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, nil, nil, nil)
+	rpcClient := common.NewRpcClient(cfg.Nats.Uri)
+	rpcCli, err := rpcService.NewRpcClient(cfg.Rpc.Driver, cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", cfg.Rpc.Driver, err)
+	}
+	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, rpcCli, nil, nil, nil)
 
 	sender := &FederationBackFill{
 		cfg:          cfg,

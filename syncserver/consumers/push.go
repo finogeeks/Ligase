@@ -15,6 +15,7 @@
 package consumers
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -32,6 +33,7 @@ import (
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/pushapi/routing"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/tidwall/gjson"
@@ -39,6 +41,7 @@ import (
 
 type PushConsumer struct {
 	rpcClient    *common.RpcClient
+	rpcCli       rpc.RpcClient
 	cache        service.Cache
 	eventRepo    *repos.EventReadStreamRepo
 	countRepo    *repos.ReadCountRepo
@@ -63,6 +66,7 @@ type PushEvent struct {
 func NewPushConsumer(
 	cache service.Cache,
 	client *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	complexCache *common.ComplexCache,
 	pushDataRepo *repos.PushDataRepo,
 	cfg *config.Dendrite,
@@ -70,6 +74,7 @@ func NewPushConsumer(
 	s := &PushConsumer{
 		cache:        cache,
 		rpcClient:    client,
+		rpcCli:       rpcCli,
 		complexCache: complexCache,
 		chanSize:     20480,
 		slotSize:     64,
@@ -333,40 +338,15 @@ func (s *PushConsumer) getUserPushDataFromLocal(req *push.ReqPushUsers) *push.Re
 }
 
 func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.RespPushUsersData {
-	data := &push.RespPushUsersData{
-		Data: make(map[string]push.RespPushData),
-	}
-	payload, err := json.Marshal(req)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Marshal payload:%+v err:%v", req, err)
-		return data
-	}
-	request := push.PushDataRequest{
-		Payload: payload,
-		ReqType: types.GET_PUSHDATA_BATCH,
-		Slot:    req.Slot,
-	}
-	bt, err := json.Marshal(request)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Marshal request:%+v err:%v", req, err)
-		return data
-	}
-	r, err := s.rpcClient.Request(types.PushDataTopicDef, bt, 15000)
+	ctx := context.Background()
+	data, err := s.rpcCli.GetPushDataBatch(ctx, req)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote rpc req:%+v err:%v", req, err)
-		return data
+		return &push.RespPushUsersData{
+			Data: make(map[string]push.RespPushData),
+		}
 	}
-	resp := push.RpcResponse{}
-	err = json.Unmarshal(r, &resp)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
-		return data
-	}
-	err = json.Unmarshal(resp.Payload, &data)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
-		return data
-	}
+
 	return data
 }
 

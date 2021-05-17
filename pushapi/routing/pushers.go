@@ -29,8 +29,8 @@ import (
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
@@ -178,11 +178,11 @@ func CheckPusherBody(pushers *external.PostSetPushersRequest) string {
 	return ""
 }
 
-func rpcGetUserPushData(req *pushapitypes.ReqPushUsers, cfg config.Dendrite, pushDataRepo *repos.PushDataRepo, rpcClient *common.RpcClient) *pushapitypes.RespUsersPusher {
+func rpcGetUserPushData(req *pushapitypes.ReqPushUsers, cfg config.Dendrite, pushDataRepo *repos.PushDataRepo, rpcCli rpc.RpcClient) *pushapitypes.RespUsersPusher {
 	if req.Slot == cfg.MultiInstance.Instance {
 		return getUserPushDataFromLocal(req, pushDataRepo)
 	} else {
-		return getUserPushDataFromRemote(req, rpcClient)
+		return getUserPushDataFromRemote(req, rpcCli)
 	}
 }
 
@@ -201,40 +201,14 @@ func getUserPushDataFromLocal(req *pushapitypes.ReqPushUsers, pushDataRepo *repo
 	return data
 }
 
-func getUserPushDataFromRemote(req *pushapitypes.ReqPushUsers, rpcClient *common.RpcClient) *pushapitypes.RespUsersPusher {
-	data := &pushapitypes.RespUsersPusher{
-		Data: make(map[string][]pushapitypes.Pusher),
-	}
-	payload, err := json.Marshal(req)
+func getUserPushDataFromRemote(req *pushapitypes.ReqPushUsers, rpcCli rpc.RpcClient) *pushapitypes.RespUsersPusher {
+	ctx := context.Background()
+	data, err := rpcCli.GetPusherBatch(ctx, req)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote json.Marshal payload:%+v err:%v", req, err)
-		return data
-	}
-	request := pushapitypes.PushDataRequest{
-		Payload: payload,
-		ReqType: types.GET_PUSHER_BATCH,
-		Slot:    req.Slot,
-	}
-	bt, err := json.Marshal(request)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Marshal request:%+v err:%v", req, err)
-		return data
-	}
-	r, err := rpcClient.Request(types.PushDataTopicDef, bt, 15000)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote rpc req:%+v err:%v", req, err)
-		return data
-	}
-	resp := pushapitypes.RpcResponse{}
-	err = json.Unmarshal(r, &resp)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
-		return data
-	}
-	err = json.Unmarshal(resp.Payload, &data)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
-		return data
+		return &pushapitypes.RespUsersPusher{
+			Data: make(map[string][]pushapitypes.Pusher),
+		}
 	}
 	return data
 }
@@ -245,7 +219,7 @@ func GetUsersPushers(
 	users *external.PostUsersPushKeyRequest,
 	pushDataRepo *repos.PushDataRepo,
 	cfg config.Dendrite,
-	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	pushersRes := pushapitypes.PushersRes{}
 	pushers := []pushapitypes.PusherRes{}
@@ -267,7 +241,7 @@ func GetUsersPushers(
 		if len(req.Users) <= 0 {
 			continue
 		}
-		r := rpcGetUserPushData(req, cfg, pushDataRepo, rpcClient)
+		r := rpcGetUserPushData(req, cfg, pushDataRepo, rpcCli)
 		if r != nil {
 			for key, pushers := range r.Data {
 				result[key] = pushers

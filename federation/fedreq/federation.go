@@ -15,26 +15,30 @@
 package federation
 
 import (
-	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/federation/fedreq/rpc"
+	"github.com/finogeeks/ligase/plugins/message/external"
+	rrpc "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type Federation struct {
 	cfg       *config.Dendrite
 	rpcClient *common.RpcClient
+	rpcCli    rrpc.RpcClient
 }
 
 func NewFederation(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient) *Federation {
+	rpcClient *common.RpcClient,
+	rpcCli rrpc.RpcClient,
+) *Federation {
 	fed := &Federation{
 		cfg:       cfg,
 		rpcClient: rpcClient,
+		rpcCli:    rpcCli,
 	}
 	return fed
 }

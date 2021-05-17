@@ -15,6 +15,7 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -34,6 +35,7 @@ import (
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/pushapi/routing"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
@@ -50,6 +52,7 @@ type SyncMng struct {
 	msgChan      []chan *request
 	cfg          *config.Dendrite
 	rpcClient    *common.RpcClient
+	rpcCli       rpc.RpcClient
 	cache        service.Cache
 	complexCache *common.ComplexCache
 	syncOffset   sync.Map //traceId, UserRoomOffset
@@ -70,6 +73,7 @@ func NewSyncMng(
 	chanSize int,
 	cfg *config.Dendrite,
 	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 ) *SyncMng {
 	mng := new(SyncMng)
 	mng.db = db
@@ -77,6 +81,7 @@ func NewSyncMng(
 	mng.chanSize = chanSize
 	mng.cfg = cfg
 	mng.rpcClient = rpcClient
+	mng.rpcCli = rpcCli
 	return mng
 }
 
@@ -248,17 +253,14 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 
 func (sm *SyncMng) GetPushkeyByUserDeviceID(userID, deviceID string) []types.PushKeyContent {
 	pushkeys := []types.PushKeyContent{}
-	resp := sm.rpcGetPushData(userID, deviceID, types.GET_PUSHER_BY_DEVICE)
-	if resp.Error != "" {
-		log.Error("GetPushkeyByUserDeviceID user:%s device:%s error:%s", userID, deviceID, resp.Error)
-		return pushkeys
-	}
-	pushers := push.Pushers{}
-	err := json.Unmarshal(resp.Payload, &pushers)
+
+	ctx := context.Background()
+	pushers, err := sm.rpcCli.GetPusherByDevice(ctx, &push.ReqPushUser{UserID: userID, DeviceID: deviceID})
 	if err != nil {
-		log.Error("GetPushkeyByUserDeviceID user:%s device:%s json.Unmarshal error:%v", userID, deviceID, err)
+		log.Errorf("GetPushkeyByUserDeviceID user:%s device:%s error:%v", userID, deviceID, err)
 		return pushkeys
 	}
+
 	for _, pusher := range pushers.Pushers {
 		if pusher.DeviceID != deviceID {
 			continue
@@ -456,9 +458,11 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 	bs := time.Now().UnixNano() / 1000000
 	log.Infof("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms), maxReceiptOffset)
 	var wg sync.WaitGroup
+	ctx := context.TODO()
 	for instance, syncReq := range requestMap {
 		wg.Add(1)
 		go func(
+			ctx context.Context,
 			instance uint32,
 			syncReq *syncapitypes.SyncServerRequest,
 			req *request,
@@ -477,58 +481,34 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			syncReq.IsFullSync = req.isFullSync
 			syncReq.TraceID = req.traceId
 			syncReq.Slot = req.slot
-			bytes, err := json.Marshal(*syncReq)
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData marshal callSyncLoad content error,traceid:%s slot:%d device %s user %s error %v", req.traceId, req.slot, req.device.ID, req.device.UserID, err)
-				syncReq.SyncReady = false
-				return
-			}
+			syncReq.SyncReady = false
+
 			timeout := 0
 			if req.isFullSync {
 				timeout = int(sm.cfg.Sync.FullSyncTimeout)
 			} else {
 				timeout = int(sm.cfg.Sync.RpcTimeout)
 			}
-			//log.Infof("SyncMng.buildSyncData sync traceid:%s slot:%d user %s device %s request %s", req.traceId,req.slot, req.device.UserID, req.device.ID, string(bytes))
-			data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, timeout)
-			//only for debug
+			timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*1000000)
+			defer cancel()
+			response, err := sm.rpcCli.SyncProcess(timeoutCtx, syncReq) //only for debug
 			if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 				delay := utils.GetRandomSleepSecondsForDebug()
 				log.Infof("SyncMng.buildSyncData random sleep %fs", delay)
 				time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 			}
-
+			if err != nil {
+				log.Errorf("SyncMng.buildSyncData rpc error,traceid:%s slot:%d device %s user %s error %v", req.traceId, req.slot, req.device.ID, req.device.UserID, err)
+				return
+			}
 			spend := time.Now().UnixNano()/1000000 - bs
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData call rpc for syncServer sync traceid:%s slot:%d spend:%d ms user %s device %s error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
-				syncReq.SyncReady = false
-				return
-			}
-			var result types.CompressContent
-			err = json.Unmarshal(data, &result)
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData response traceid:%s slot:%d spend:%d ms user:%s, device:%s, Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
-				syncReq.SyncReady = false
-				return
-			}
-			if result.Compressed {
-				result.Content = common.DoUnCompress(result.Content)
-			}
-			var response syncapitypes.SyncServerResponse
-			err = json.Unmarshal(result.Content, &response)
-			if err != nil {
-				log.Errorf("SyncMng.buildSyncData SyncServerResponse response traceid:%s slot:%d spend:%d ms user:%s, device:%s Unmarshal error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, err)
-				syncReq.SyncReady = false
-				return
-			}
+
 			log.Infof("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
 			if response.AllLoaded {
 				syncReq.SyncReady = true
-				sm.addSyncData(req, res, &response)
-			} else {
-				syncReq.SyncReady = false
+				sm.addSyncData(req, res, response)
 			}
-		}(instance, syncReq, req, maxReceiptOffset, res)
+		}(ctx, instance, syncReq, req, maxReceiptOffset, res)
 	}
 	wg.Wait()
 	es := time.Now().UnixNano() / 1000000
@@ -811,39 +791,6 @@ func (sm *SyncMng) addRoomAccountData(req *request, response *syncapitypes.Respo
 	return response
 }
 
-func (sm *SyncMng) rpcGetPushData(userID, deviceID string, reqType string) push.RpcResponse {
-	resp := push.RpcResponse{}
-	payload, err := json.Marshal(push.ReqPushUser{
-		UserID:   userID,
-		DeviceID: deviceID,
-	})
-	if err != nil {
-		resp.Error = fmt.Sprintf("reqType:%s json.Marshal payload err:%v", reqType, err)
-		return resp
-	}
-	byte, err := json.Marshal(push.PushDataRequest{
-		Payload: payload,
-		ReqType: reqType,
-		Slot:    common.CalcStringHashCode(userID) % sm.cfg.MultiInstance.SyncServerTotal,
-	})
-	if err != nil {
-		resp.Error = fmt.Sprintf("reqType:%s json.Marshal request err:%v", reqType, err)
-		return resp
-	}
-	data, err := sm.rpcClient.Request(types.PushDataTopicDef, byte, 15000)
-	if err != nil {
-		resp.Error = fmt.Sprintf("reqType:%s rpc request err:%v", reqType, err)
-		return resp
-	}
-	err = json.Unmarshal(data, &resp)
-	if err != nil {
-		resp.Error = fmt.Sprintf("reqType:%s rpc response json.Unmarshal err:%v", reqType, err)
-		return resp
-	} else {
-		return resp
-	}
-}
-
 func (sm *SyncMng) addPushRules(req *request, response *syncapitypes.Response) *syncapitypes.Response {
 	if req.filter != nil {
 		if len(req.filter.AccountData.NotSenders) > 0 {
@@ -861,20 +808,15 @@ func (sm *SyncMng) addPushRules(req *request, response *syncapitypes.Response) *
 			}
 		}
 	}
-	resp := sm.rpcGetPushData(req.device.UserID, req.device.ID, types.GET_PUSHRULE_BY_USER)
-	if resp.Error != "" {
-		log.Errorf("traceid:%s user:%s device:%s error:%s", req.traceId, req.device.UserID, req.device.ID, resp.Error)
-		return response
-	}
-	rules := push.Rules{}
-	err := json.Unmarshal(resp.Payload, &rules)
+
+	rules, err := sm.rpcCli.GetPushRuleByUser(req.ctx, &push.ReqPushUser{UserID: req.device.UserID, DeviceID: req.device.ID})
 	if err != nil {
-		log.Errorf("traceid:%s user:%s device:%s json.Unmarshal error:%v", req.traceId, req.device.UserID, req.device.ID, err)
+		log.Errorf("traceid:%s user:%s device:%s error:%s", req.traceId, req.device.UserID, req.device.ID, err)
 		return response
 	}
+
 	global := push.GlobalRule{}
-	//rules := routing.GetUserPushRules(req.device.UserID, sm.cache, true, nil)
-	formatted := routing.FormatRuleResponse(rules)
+	formatted := routing.FormatRuleResponse(*rules)
 	global.Global = formatted
 	global.Device = map[string]interface{}{}
 

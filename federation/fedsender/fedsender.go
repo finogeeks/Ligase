@@ -33,6 +33,7 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
+	rrpc "github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -62,8 +63,8 @@ type FederationSender struct {
 	sentCounter int64
 }
 
-func NewFederationSender(cfg *config.Dendrite, rpcClient *common.RpcClient, feddomains *common.FedDomains, db model.FederationDatabase) *FederationSender {
-	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, nil, nil, nil)
+func NewFederationSender(cfg *config.Dendrite, rpcClient *common.RpcClient, rpcCli rrpc.RpcClient, feddomains *common.FedDomains, db model.FederationDatabase) *FederationSender {
+	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, rpcCli, nil, nil, nil)
 	sender := &FederationSender{
 		cfg:        cfg,
 		offset:     0,

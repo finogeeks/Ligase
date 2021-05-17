@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -226,6 +227,17 @@ type Dendrite struct {
 		ProxyFedApiTopic           string `yaml:"proxy_fed_api_topic"`
 		ProxyBgmgrApiTopic         string `yaml:"proxy_bgmgr_api_topic"`
 		ProxyRCSServerApiTopic     string `yaml:"proxy_rcsserver_api_topic"`
+
+		Driver        string  `yaml:"driver"`
+		ConsulURL     string  `yaml:"consul_url"`
+		SyncServer    RpcConf `yaml:"sync_server"`
+		SyncAggregate RpcConf `yaml:"sync_aggregate"`
+		Front         RpcConf `yaml:"front"`
+		Proxy         RpcConf `yaml:"proxy"`
+		Rcs           RpcConf `yaml:"rcs"`
+		TokenWriter   RpcConf `yaml:"token_writer"`
+		PublicRoom    RpcConf `yaml:"public_room"`
+		RoomServer    RpcConf `yaml:"room_server"`
 	} `yaml:"rpc"`
 
 	Redis struct {
@@ -568,6 +580,14 @@ type ProducerConf struct {
 	Inst       int    `yaml:"inst"` //producer instance number, default one instance
 }
 
+type RpcConf struct {
+	Port            int      `yaml:"port"`
+	ServerName      string   `yaml:"server_name"`
+	ConsulTagPrefix string   `yaml:"consul_tag_prefix"`
+	AddressesStr    string   `yaml:"addresses"`
+	Addresses       []string `yaml:"-"`
+}
+
 type DataBaseConf struct {
 	Driver    string `yaml:"driver"`
 	Addresses string `yaml:"addresses"`
@@ -738,6 +758,27 @@ func (config *Dendrite) derive() error {
 	} else {
 		config.Derived.Registration.Flows = append(config.Derived.Registration.Flows,
 			external.AuthFlow{Stages: []string{authtypes.LoginTypeDummy}})
+	}
+
+	if config.Rpc.Driver == "grpc" {
+		rpcConfs := []*RpcConf{&config.Rpc.SyncServer, &config.Rpc.SyncAggregate, &config.Rpc.Front, &config.Rpc.Proxy, &config.Rpc.Rcs, &config.Rpc.TokenWriter}
+		for _, v := range rpcConfs {
+			if v.AddressesStr == "" {
+				return errors.New("yaml rpc.sync_server.addresses is empty in grpc mode")
+			}
+			v.Addresses = strings.Split(v.AddressesStr, ",")
+		}
+		if config.MultiInstance.SyncServerTotal != 0 {
+			log.Warnf("yaml multi_instance.sync_server_total not 0 in grpc mode")
+		}
+		if config.MultiInstance.Total != 0 {
+			log.Warnf("yaml multi_instance.total not 0 in grpc mode")
+		}
+		config.MultiInstance.SyncServerTotal = uint32(len(config.Rpc.SyncServer.Addresses))
+		config.MultiInstance.Total = uint32(len(config.Rpc.SyncAggregate.Addresses))
+	}
+	if config.Rpc.Driver == "grpc_with_consul" && config.Rpc.ConsulURL == "" {
+		return errors.New("yaml rpc.consul_url is empty in grpc_with_consul mode")
 	}
 
 	// Load application service configuration files

@@ -33,6 +33,7 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
+	rrpc "github.com/finogeeks/ligase/rpc"
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/skunkworks/util/id"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
@@ -63,6 +64,7 @@ func NewFederationAPIComponent(
 	backfillProc backfilltypes.BackFillProcessor,
 	publicroomsAPI publicroomsapi.PublicRoomsQueryAPI,
 	rpcClient *common.RpcClient,
+	rpcCli rrpc.RpcClient,
 	encryptionDB dbmodel.EncryptorAPIDatabase,
 	c *cert.Cert,
 	idg *uid.UidGenerator,
@@ -77,6 +79,7 @@ func NewFederationAPIComponent(
 	entry.SetJoinRoomsRepo(joinRoomsRepo)
 	entry.SetPublicRoomsAPI(publicroomsAPI)
 	entry.SetRpcClient(rpcClient)
+	entry.SetRpcCli(rpcCli)
 	entry.SetEncryptionDB(encryptionDB)
 	entry.SetComplexCache(complexCache)
 	lc := new(cache.LocalCacheRepo)

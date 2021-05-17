@@ -21,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/finogeeks/ligase/common/uid"
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/nats-io/nats.go"
@@ -33,7 +32,6 @@ type RpcClient struct {
 	url  string
 	conn *nats.Conn
 	subs *sync.Map
-	idg  *uid.UidGenerator
 }
 
 type Result struct {
@@ -117,10 +115,9 @@ type rpcSubVal struct {
 	sub *nats.Subscription
 }
 
-func NewRpcClient(url string, idg *uid.UidGenerator) *RpcClient {
+func NewRpcClient(url string) *RpcClient {
 	rpc := new(RpcClient)
 	rpc.url = url
-	rpc.idg = idg
 
 	return rpc
 }
