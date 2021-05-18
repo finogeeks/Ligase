@@ -18,12 +18,12 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/storage/model"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 )
 
 type RecordItem struct {
@@ -38,7 +38,7 @@ type RecordItem struct {
 // OutgoingQueues is a collection of queues for sending transactions to other
 // matrix servers
 type OutgoingQueues struct {
-	cfg         *config.Dendrite
+	cfg         *config.Fed
 	origin      gomatrixserverlib.ServerName
 	sentCounter *int64
 	// client     *gomatrixserverlib.FederationClient
@@ -56,7 +56,7 @@ func NewOutgoingQueues(
 	fedClient *client.FedClientWrap,
 	rpcCli roomserverapi.RoomserverRPCAPI,
 	db model.FederationDatabase,
-	cfg *config.Dendrite,
+	cfg *config.Fed,
 	feddomains *common.FedDomains,
 ) *OutgoingQueues {
 	return &OutgoingQueues{

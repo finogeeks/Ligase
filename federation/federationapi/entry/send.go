@@ -21,18 +21,18 @@ import (
 	"sort"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/utils"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/fedutil"
 	"github.com/finogeeks/ligase/federation/model/repos"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/pkg/errors"
 )
 
@@ -174,7 +174,7 @@ func downloadMedia(pdus []gomatrixserverlib.Event, fedClient *client.FedClientWr
 			continue
 		}
 		domain, _ := utils.DomainFromID(ev.Sender())
-		if common.CheckValidDomain(domain, config.GetConfig().GetServerName()) {
+		if common.CheckValidDomain(domain, config.GetFedConfig().GetServerName()) {
 			continue
 		}
 		destination, ok := feddomains.GetDomainHost(domain)

@@ -24,11 +24,10 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/rpc"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
 	"github.com/nats-io/nats.go"
 )
 
@@ -112,13 +111,12 @@ type APIEvent struct {
 }
 
 type APIConsumer struct {
-	name      string
-	userData  interface{}
-	handlers  sync.Map
-	msgChan   chan APIEvent
-	Cfg       config.Dendrite
-	RpcCli    *common.RpcClient
-	RpcClient rpc.RpcClient
+	name     string
+	userData interface{}
+	handlers sync.Map
+	msgChan  chan APIEvent
+	Cfg      config.Dendrite
+	RpcCli   *common.RpcClient
 }
 
 func (c *APIConsumer) GetCfg() config.Dendrite {

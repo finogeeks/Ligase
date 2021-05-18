@@ -21,11 +21,11 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {

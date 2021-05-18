@@ -261,14 +261,6 @@ func (e Event) SetUnsigned(unsigned interface{}, resetContent bool) (Event, erro
 	return result, nil
 }
 
-func (e *Event) SetUnsignedBytes(unsigned []byte) {
-	e.fields.Unsigned = unsigned
-}
-
-func (e *Event) SetContentBytes(content []byte) {
-	e.fields.Content = content
-}
-
 // SetUnsignedField takes a path and value to insert into the unsigned dict of
 // the event.
 // path is a dot separated path into the unsigned dict (see gjson package
@@ -515,10 +507,6 @@ func (e Event) DomainOffset() int64 {
 	return e.fields.DomainOffset
 }
 
-func (e Event) RedactsSender() string {
-	return e.fields.RedactsSender
-}
-
 func (e *Event) SetDepth(depth int64) {
 	e.fields.Depth = depth
 }
@@ -596,12 +584,4 @@ func SplitID(sigil byte, id string) (local string, domain ServerName, err error)
 		return "", "", fmt.Errorf("gomatrixserverlib: invalid ID %q missing ':'", id)
 	}
 	return parts[0][1:], ServerName(parts[1]), nil
-}
-
-type EventFields = eventFields
-
-func BuildEventsByFields(fields eventFields) *Event {
-	return &Event{
-		fields: fields,
-	}
 }

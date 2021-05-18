@@ -16,14 +16,13 @@ package rpc
 
 import (
 	"context"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/model/types"
 	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/tokenrewrite/storage"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
 	"github.com/nats-io/nats.go"
 )
 

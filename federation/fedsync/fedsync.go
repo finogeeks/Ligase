@@ -16,22 +16,24 @@ package fedsync
 
 import (
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/fedsync/syncconsumer"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 )
 
 type FederationSync struct {
-	cfg       *config.Dendrite
+	cfg       *config.Fed
 	rpcClient *common.RpcClient
 	consumer  *syncconsumer.SyncConsumer
 	// roomAliasRpcCli *syncconsumer.RoomAliasRpcConsumer
 	// profileRpcCli *syncconsumer.ProfileRpcConsumer
 }
 
-func NewFederationSync(cfg *config.Dendrite, fedClient *client.FedClientWrap, feddomains *common.FedDomains) *FederationSync {
-	rpcClient := common.NewRpcClient(cfg.Nats.Uri)
+func NewFederationSync(cfg *config.Fed, fedClient *client.FedClientWrap, feddomains *common.FedDomains) *FederationSync {
+	idg, _ := uid.NewIdGenerator(0, 0)
+	rpcClient := common.NewRpcClient(cfg.GetMsgBusAddress(), idg)
 
 	consumer := syncconsumer.NewSyncConsumer(cfg, fedClient, rpcClient, feddomains)
 	// roomAliasRpcConsumer := syncconsumer.NewRoomAliasRpcConsumer(cfg, fedClient, rpcClient)

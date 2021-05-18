@@ -16,18 +16,19 @@ package entry
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -100,7 +101,7 @@ func QueryClientKeys(msg *model.GobMessage, cache service.Cache, rpcCli roomserv
 	return &model.GobMessage{Body: body}, nil
 }
 
-func ClaimClientKeys(msg *model.GobMessage, cache service.Cache, rpcClient roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
+func ClaimClientKeys(msg *model.GobMessage, cache service.Cache, rpcCli roomserverapi.RoomserverRPCAPI, fedClient *client.FedClientWrap, db fedmodel.FederationDatabase) (*model.GobMessage, error) {
 	var reqParam external.PostClaimClientKeysRequest
 	reqParam.Decode(msg.Body)
 
@@ -145,10 +146,11 @@ func ClaimClientKeys(msg *model.GobMessage, cache service.Cache, rpcClient rooms
 				OneTimeKeyChangeUserId:   uid,
 				OneTimeKeyChangeDeviceId: deviceID,
 			}
-			ctx := context.Background()
-			err := rpcCli.UpdateOneTimeKey(ctx, &content)
-			if err != nil {
-				log.Errorf("ClaimOneTimeKeys %s %s pub key update err %v", deviceID, uid, err)
+			bytes, err := json.Marshal(content)
+			if err == nil {
+				rpcClient.Pub(types.KeyUpdateTopicDef, bytes)
+			} else {
+				log.Errorf("ClaimOneTimeKeys pub key update err %v", err)
 				return &model.GobMessage{}, err
 			}
 		}

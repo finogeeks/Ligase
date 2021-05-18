@@ -28,7 +28,6 @@ import (
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
@@ -107,7 +106,7 @@ func UpdatePresenceByID(
 	return http.StatusOK, nil
 }
 func GetPresenceByID(
-	rpcCli rpc.RpcClient,
+	rpcCli *common.RpcClient,
 	cache service.Cache,
 	federation *fed.Federation,
 	cfg *config.Dendrite,
@@ -122,8 +121,14 @@ func GetPresenceByID(
 		extStatusMsg = presences.ExtStatusMsg
 	}
 	if status == "" {
-		ctx := context.Background()
-		resp, err := rpcCli.GetOnlinePresence(ctx, userID)
+		req := types.OnlinePresence{UserID: userID}
+		data, _ := json.Marshal(&req)
+		respData, err := rpcCli.Request(types.PresenceTopicDef, data, 30000)
+		if err != nil {
+			return http.StatusInternalServerError, jsonerror.Unknown("Internal Server Error." + err.Error())
+		}
+		var resp types.OnlinePresence
+		err = json.Unmarshal(respData, &resp)
 		if err != nil {
 			return http.StatusInternalServerError, jsonerror.Unknown("Internal Server Error." + err.Error())
 		}

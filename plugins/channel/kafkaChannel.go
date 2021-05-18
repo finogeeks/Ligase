@@ -128,7 +128,7 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 	ctx := context.Background()
 	md, err := a.GetMetadata(&topic, false, 5000)
 	if err != nil {
-		log.Errorln("Failed to get kafka meta data: ", topic, err)
+		log.Errorln("Failed to get kafka meta data: ", err)
 		return err
 	}
 

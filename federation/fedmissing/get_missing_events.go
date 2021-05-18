@@ -23,13 +23,13 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/federation/storage/model"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/skunkworks/util/cas"
 )
 
@@ -48,7 +48,7 @@ func NewGetMissingEventsProcessor(
 	rpcCli roomserverapi.RoomserverRPCAPI,
 	db model.FederationDatabase,
 	feddomain *common.FedDomains,
-	cfg *config.Dendrite,
+	cfg *config.Fed,
 ) *GetMissingEventsProcessor {
 	val, ok := common.GetTransportMultiplexer().GetChannel(
 		cfg.Kafka.Consumer.GetMissingEvent.Underlying,

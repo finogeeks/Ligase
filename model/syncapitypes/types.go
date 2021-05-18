@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/finogeeks/ligase/model/types"
+	"github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -77,19 +77,17 @@ func (p *Response) Decode(input []byte) error {
 	return json.Unmarshal(input, p)
 }
 
-type SyncServerResponseRooms struct {
-	Join   map[string]JoinResponse   `json:"join,omitempty"`
-	Invite map[string]InviteResponse `json:"invite,omitempty"`
-	Leave  map[string]LeaveResponse  `json:"leave,omitempty"`
-}
-
 type SyncServerResponse struct {
-	Rooms            SyncServerResponseRooms `json:"rooms,omitempty"`
-	MaxReceiptOffset int64                   `json:"max_receipt_offset,omitempty"`
-	AllLoaded        bool                    `json:"all_loaded,omitempty"`
-	NewUsers         []string                `json:"new_users,omitempty"`
-	Ready            bool                    `json:"ready,omitempty"`
-	MaxRoomOffset    map[string]int64        `json:"max_room_offset,omitempty"`
+	Rooms struct {
+		Join   map[string]JoinResponse   `json:"join,omitempty"`
+		Invite map[string]InviteResponse `json:"invite,omitempty"`
+		Leave  map[string]LeaveResponse  `json:"leave,omitempty"`
+	} `json:"rooms,omitempty"`
+	MaxReceiptOffset int64            `json:"max_receipt_offset,omitempty"`
+	AllLoaded        bool             `json:"all_loaded,omitempty"`
+	NewUsers         []string         `json:"new_users,omitempty"`
+	Ready            bool             `json:"ready,omitempty"`
+	MaxRoomOffset    map[string]int64 `json:"max_room_offset,omitempty"`
 }
 
 type ToDevice struct {
@@ -343,14 +341,14 @@ type SyncServerRequest struct {
 	MaxReceiptOffset int64      `json:"max_receipt_offset,omitempty"`
 	IsHuman          bool       `json:"is_human,omitempty"`
 	Limit            int        `json:"limit,omitempty"`
-	LoadReady        bool       `json:"-"`
-	SyncReady        bool       `json:"-"`
+	LoadReady        bool       `json:"load_ready,omitempty"`
+	SyncReady        bool       `json:"sync_ready,omitempty"`
 	SyncInstance     uint32     `json:"sync_instance"`
 	IsFullSync       bool       `json:"is_full_sync"`
-	Reply            string     `json:"-"`
-	TraceID          string     `json:"trace_id"`
-	Slot             uint32     `json:"slot"`
-	RSlot            uint32     `json:"-"`
+	Reply            string
+	TraceID          string `json:"trace_id"`
+	Slot             uint32 `json:"slot"`
+	RSlot            uint32 `json:"rslot"`
 }
 
 type SyncRoom struct {

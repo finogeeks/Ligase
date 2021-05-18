@@ -18,20 +18,20 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/client/cert"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
 	"github.com/finogeeks/ligase/federation/model/repos"
+
+	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/federation/config"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	modelRepos "github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/rpc"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
 )
 
@@ -41,7 +41,7 @@ var (
 	regMtx         sync.RWMutex
 	FedApiFunc     = make(map[model.Command]FedApiEntryCB)
 	feddomains     *common.FedDomains
-	cfg            *config.Dendrite
+	cfg            *config.Fed
 	keyDB          dbmodel.KeyDatabase
 	certInfo       *cert.Cert
 	localCache     service.LocalCache
@@ -51,7 +51,6 @@ var (
 	backfillProc   backfilltypes.BackFillProcessor
 	publicroomsAPI publicroomsapi.PublicRoomsQueryAPI
 	rpcClient      *common.RpcClient
-	rpcCli         rpc.RpcClient
 	encryptionDB   dbmodel.EncryptorAPIDatabase
 	complexCache   *common.ComplexCache
 	rsRepo         *modelRepos.RoomServerCurStateRepo
@@ -76,7 +75,7 @@ func SetFedDomains(v *common.FedDomains) {
 	feddomains = v
 }
 
-func SetCfg(v *config.Dendrite) {
+func SetCfg(v *config.Fed) {
 	cfg = v
 }
 
@@ -114,10 +113,6 @@ func SetPublicRoomsAPI(api publicroomsapi.PublicRoomsQueryAPI) {
 
 func SetRpcClient(rpcCli *common.RpcClient) {
 	rpcClient = rpcCli
-}
-
-func SetRpcCli(rpcClient rpc.RpcClient) {
-	rpcCli = rpcClient
 }
 
 func SetEncryptionDB(db dbmodel.EncryptorAPIDatabase) {

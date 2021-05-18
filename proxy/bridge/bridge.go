@@ -24,13 +24,16 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
-	"github.com/finogeeks/ligase/plugins/message/external"
+
+	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/util/id"
+
+	// "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model"
 	wp "github.com/finogeeks/ligase/skunkworks/util/workerpool"
 	pool "github.com/jolestar/go-commons-pool"
 )
@@ -104,7 +107,7 @@ func (b *Bridge) processInstantMessage(gobMsg *model.GobMessage) error {
 	return nil
 }
 
-func (b *Bridge) process(payload interface{}) error {
+func (b *Bridge) process(payload model.Payload) error {
 	msg := payload.(model.GobMessage)
 	// fmt.Printf("process, msg type: %d, msg: %v\n", msg.MsgType, msg)
 	switch msg.MsgType {
@@ -125,7 +128,7 @@ func (b *Bridge) SetupBridge(cfg *config.Dendrite) {
 	b.ctx = context.Background()
 	b.objPool = pool.NewObjectPoolWithDefaultConfig(b.ctx, factory)
 
-	b.w = wp.NewWorkerPool(10, 0)
+	b.w = wp.NewWorkerPool(10)
 	// defer w.Stop()
 	b.w.SetHandler(b.process).Run()
 
@@ -153,7 +156,7 @@ func (b *Bridge) OnMessage(topic string, partition int32, data []byte) {
 	log.Infof("fed bridge response recv msg, MsgType:%d , MsgSeq:%s, NodeId:%d cmd:%d Body:%s", msg.MsgType, msg.MsgSeq, msg.NodeId, msg.Cmd, msg.Body)
 	// msg := payload.(*model.GobMessage)
 	msg.MsgType = model.REPLY
-	b.w.Feed(*msg)
+	b.w.FeedPayload(*msg)
 }
 
 func (b *Bridge) SendAndRecv(msg model.GobMessage, timeout int) (reply *model.GobMessage, err error) {
@@ -196,7 +199,7 @@ func (b *Bridge) SendAndRecv(msg model.GobMessage, timeout int) (reply *model.Go
 func (b *Bridge) Send(msg model.GobMessage) {
 	msg.MsgType = model.REQUEST
 	msg.NodeId = id.GetNodeId()
-	b.w.Feed(msg)
+	b.w.FeedPayload(msg)
 }
 
 func SetupBridge(cfg *config.Dendrite) {

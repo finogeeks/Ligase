@@ -18,9 +18,9 @@ import (
 	"strings"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
@@ -55,7 +55,7 @@ func splitMxc(s string) (domain, netdiskID string) {
 }
 
 func DownloadFromNetdisk(domain, destination string, ev *gomatrixserverlib.Event, content map[string]interface{}, fedClient *client.FedClientWrap) {
-	cfg := config.GetConfig().Kafka.Producer.DownloadMedia
+	cfg := config.GetFedConfig().Kafka.Producer.DownloadMedia
 	common.GetTransportMultiplexer().SendWithRetry(
 		cfg.Underlying,
 		cfg.Name,

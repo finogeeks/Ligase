@@ -20,16 +20,16 @@ import (
 	"strconv"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/federation/client"
+	"github.com/finogeeks/ligase/federation/config"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/nats.go"
 )
 
 type ProfileRpcConsumer struct {
-	cfg       *config.Dendrite
+	cfg       *config.Fed
 	fedClient *client.FedClientWrap
 	rpcClient *common.RpcClient
 	feddomain *common.FedDomains
@@ -37,7 +37,7 @@ type ProfileRpcConsumer struct {
 }
 
 func NewProfileRpcConsumer(
-	cfg *config.Dendrite,
+	cfg *config.Fed,
 	fedClient *client.FedClientWrap,
 	rpcClient *common.RpcClient,
 	feddomain *common.FedDomains,

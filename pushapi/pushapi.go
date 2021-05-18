@@ -20,7 +20,6 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/pushapi/api"
-	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -28,12 +27,11 @@ func SetupPushAPIComponent(
 	base *basecomponent.BaseDendrite,
 	redisCache service.Cache,
 	rpcCli *common.RpcClient,
-	rpcClient rpc.RpcClient,
 	pushDataRepo *repos.PushDataRepo,
 ) model.PushAPIDatabase {
 	pushDB := base.CreatePushApiDB()
 	apiConsumer := api.NewInternalMsgConsumer(
-		*base.Cfg, pushDB, redisCache, rpcCli, rpcClient, pushDataRepo,
+		*base.Cfg, pushDB, redisCache, rpcCli, pushDataRepo,
 	)
 	apiConsumer.Start()
 	return pushDB

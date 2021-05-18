@@ -22,12 +22,12 @@ import (
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/fedutil"
 	fedmodel "github.com/finogeeks/ligase/federation/storage/model"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model"
 	"github.com/finogeeks/ligase/model/noticetypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	dbmodel "github.com/finogeeks/ligase/storage/model"
 	"github.com/pkg/errors"
 )
@@ -54,11 +54,11 @@ func NotaryNotice(msg *model.GobMessage, cache service.Cache, rpcCli roomservera
 }
 
 func noticeHandler(action, targetDomain string, keyDB dbmodel.KeyDatabase) (err error) {
-	log.Infof("noticeHandler, action: %s, targetDomain: %s, servername: %#v", action, targetDomain, cfg.Matrix.ServerName)
+	log.Infof("noticeHandler, action: %s, targetDomain: %s, servername: %#v", action, targetDomain, cfg.Homeserver.ServerName)
 
 	var reqUrl string
 	if action == "add" {
-		reqUrl = fmt.Sprintf(cfg.NotaryService.CertUrl, cfg.Matrix.ServerName[0])
+		reqUrl = fmt.Sprintf(cfg.NotaryService.CertUrl, cfg.Homeserver.ServerName[0])
 		_, err = fedutil.DownloadFromNotary("cert", reqUrl, keyDB)
 	} else if action == "update" || action == "delete" {
 		// update crl
@@ -69,10 +69,10 @@ func noticeHandler(action, targetDomain string, keyDB dbmodel.KeyDatabase) (err 
 		}
 
 		// update/delete if needed
-		if common.CheckValidDomain(targetDomain, cfg.Matrix.ServerName) {
+		if common.CheckValidDomain(targetDomain, cfg.Homeserver.ServerName) {
 			var resp noticetypes.GetCertsResponse
 			if action == "update" {
-				reqUrl = fmt.Sprintf(cfg.NotaryService.CertUrl, cfg.Matrix.ServerName[0])
+				reqUrl = fmt.Sprintf(cfg.NotaryService.CertUrl, cfg.Homeserver.ServerName[0])
 				resp, err = fedutil.DownloadFromNotary("cert", reqUrl, keyDB)
 				if err == nil {
 					certInfo.GetCerts().Store("serverCert", resp.ServerCert)
@@ -90,7 +90,7 @@ func noticeHandler(action, targetDomain string, keyDB dbmodel.KeyDatabase) (err 
 				log.Warnf(err.Error())
 			}
 			// renew fed client if cert updated
-			client.ReNewFedClient(cfg.Matrix.ServerName[0])
+			client.ReNewFedClient(cfg.Homeserver.ServerName[0])
 		}
 	} else {
 		return errors.New("cann't find notary service handler")
