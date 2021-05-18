@@ -27,10 +27,9 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/rpc"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -44,7 +43,6 @@ func GenNewToken(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	rpcClient *common.RpcClient,
-	rpcCli rpc.RpcClient,
 	ip string,
 ) (int, core.Coder) {
 	mac := common.GetDeviceMac(device.ID)
@@ -81,7 +79,7 @@ func GenNewToken(
 	}
 
 	log.Infof("login success user %s device %s ip:%s token %s", dev.UserID, dev.ID, ip, token)
-	pubLoginToken(dev.UserID, dev.ID, rpcCli)
+	pubLoginToken(dev.UserID, dev.ID, rpcClient)
 	pubLoginInfo(dev.UserID, ip, device.DisplayName, "newtoken", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      dev.UserID,
@@ -101,7 +99,6 @@ func GetSuperAdminToken(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	rpcClient *common.RpcClient,
-	rpcCli rpc.RpcClient,
 	ip string,
 ) (int, core.Coder) {
 	userID := "super_admin"
@@ -157,7 +154,7 @@ func GetSuperAdminToken(
 	}
 
 	log.Infof("login success super user %s device %s ip:%s gen token %s", userID, dev.ID, ip, token)
-	pubLoginToken(userID, dev.ID, rpcCli)
+	pubLoginToken(userID, dev.ID, rpcClient)
 	pubLoginInfo(userID, displayName, ip, "super", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      userID,

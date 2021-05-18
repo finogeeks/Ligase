@@ -24,13 +24,12 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/encryptoapi/routing"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"github.com/finogeeks/ligase/rpc"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -55,14 +54,12 @@ func NewInternalMsgConsumer(
 	idg *uid.UidGenerator,
 	cache service.Cache,
 	rpcCli *common.RpcClient,
-	rpcClient rpc.RpcClient,
 	federation *gomatrixserverlib.FederationClient,
 	serverName []string,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
 	c.RpcCli = rpcCli
-	c.RpcClient = rpcClient
 	c.encryptionDB = encryptionDB
 	c.syncDB = syncDB
 	c.idg = idg
@@ -120,7 +117,7 @@ func (ReqPostUploadKeyByDeviceID) Process(consumer interface{}, msg core.Coder, 
 	req := msg.(*types.UploadEncrypt)
 	return routing.UploadPKeys(
 		context.Background(), req, c.encryptionDB, device, c.cache,
-		c.RpcClient, c.syncDB, c.idg,
+		c.RpcCli, c.syncDB, c.idg,
 	)
 }
 
@@ -152,7 +149,7 @@ func (ReqPostUploadKey) Process(consumer interface{}, msg core.Coder, device *au
 	req := msg.(*types.UploadEncrypt)
 	return routing.UploadPKeys(
 		context.Background(), req, c.encryptionDB, device, c.cache,
-		c.RpcClient, c.syncDB, c.idg,
+		c.RpcCli, c.syncDB, c.idg,
 	)
 }
 
@@ -214,6 +211,6 @@ func (ReqPostClaimKey) Process(consumer interface{}, msg core.Coder, device *aut
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostClaimKeysRequest)
 	return routing.ClaimOneTimeKeys(
-		context.Background(), req, c.cache, c.encryptionDB, c.RpcClient,
+		context.Background(), req, c.cache, c.encryptionDB, c.RpcCli,
 	)
 }

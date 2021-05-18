@@ -16,17 +16,17 @@ package fedsender
 
 import (
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/federation/config"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/nats-io/nats.go"
 )
 
 type EduSender struct {
 	sender    *FederationSender
-	cfg       *config.Dendrite
+	cfg       *config.Fed
 	channel   core.IChannel
 	rpcClient *common.RpcClient
 	chanSize  uint32
@@ -34,7 +34,7 @@ type EduSender struct {
 }
 
 func NewEduSender(
-	cfg *config.Dendrite,
+	cfg *config.Fed,
 	rpcClient *common.RpcClient,
 ) *EduSender {
 	val, ok := common.GetTransportMultiplexer().GetChannel(

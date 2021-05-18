@@ -16,22 +16,21 @@ package api
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/common/jsonerror"
+	"github.com/finogeeks/ligase/model/repos"
 	"net/http"
 
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
-	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/pushapi/routing"
-	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -40,9 +39,9 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type InternalMsgConsumer struct {
 	apiconsumer.APIConsumer
-	pushDB       model.PushAPIDatabase
-	redisCache   service.Cache
-	localcache   *cache.LocalCacheRepo
+	pushDB     model.PushAPIDatabase
+	redisCache service.Cache
+	localcache *cache.LocalCacheRepo
 	pushDataRepo *repos.PushDataRepo
 }
 
@@ -51,13 +50,11 @@ func NewInternalMsgConsumer(
 	pushDB model.PushAPIDatabase,
 	redisCache service.Cache,
 	rpcCli *common.RpcClient,
-	rpcClient rpc.RpcClient,
 	pushDataRepo *repos.PushDataRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
 	c.RpcCli = rpcCli
-	c.RpcClient = rpcClient
 	c.pushDB = pushDB
 	c.redisCache = redisCache
 
@@ -109,7 +106,7 @@ func (ReqGetPushers) FillRequest(coder core.Coder, req *http.Request, vars map[s
 	return nil
 }
 func (ReqGetPushers) NewResponse(code int) core.Coder {
-	return new(pushapitypes.PushersWitchInterfaceData)
+	return new(pushapitypes.Pushers)
 }
 func (ReqGetPushers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -205,7 +202,7 @@ func (ReqGetPushRulesGlobal) FillRequest(coder core.Coder, req *http.Request, va
 	return nil
 }
 func (ReqGetPushRulesGlobal) NewResponse(code int) core.Coder {
-	return new(pushapitypes.Rules)
+	return new(pushapitypes.RuleSet)
 }
 func (ReqGetPushRulesGlobal) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -534,12 +531,12 @@ func (ReqPostUsersPushKey) Process(consumer interface{}, msg core.Coder, device 
 	if req.Users != nil && len(req.Users) > 0 {
 		if !common.IsRelatedRequest(req.Users[0], c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 			return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
-		} else {
+		}else{
 			return routing.GetUsersPushers(
-				context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcClient,
+				context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcCli,
 			)
 		}
-	} else {
+	}else{
 		pushersRes := pushapitypes.PushersRes{}
 		pushers := []pushapitypes.PusherRes{}
 		pushersRes.PushersRes = pushers

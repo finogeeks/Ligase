@@ -15,7 +15,6 @@
 package rpc
 
 import (
-	"context"
 	"net/http"
 	"sync"
 
@@ -25,7 +24,6 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/rpc"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/nats.go"
@@ -33,7 +31,6 @@ import (
 
 type UnReadRpcConsumer struct {
 	rpcClient    *common.RpcClient
-	rpcCli       rpc.RpcClient
 	userTimeLine *repos.UserTimeLineRepo
 	chanSize     uint32
 	msgChan      []chan *types.UnreadReqContent
@@ -42,13 +39,11 @@ type UnReadRpcConsumer struct {
 
 func NewUnReadRpcConsumer(
 	rpcClient *common.RpcClient,
-	rpcCli rpc.RpcClient,
 	userTimeLine *repos.UserTimeLineRepo,
 	cfg *config.Dendrite,
 ) *UnReadRpcConsumer {
 	s := &UnReadRpcConsumer{
 		rpcClient:    rpcClient,
-		rpcCli:       rpcCli,
 		userTimeLine: userTimeLine,
 		chanSize:     4,
 		cfg:          cfg,
@@ -130,13 +125,23 @@ func (s *UnReadRpcConsumer) processOnUnread(userID, reply string) {
 			countMap *sync.Map,
 		) {
 			syncReq.SyncInstance = instance
-			result, err := s.rpcCli.OnUnRead(context.Background(), syncReq)
+			bytes, err := json.Marshal(*syncReq)
 			if err == nil {
-				log.Errorf("call rpc for syncServer unread user %s error %v", syncReq.UserID, err)
-				wg.Done()
-				return
+				data, err := s.rpcClient.Request(types.SyncUnreadTopicDef, bytes, 30000)
+				if err == nil {
+					var result syncapitypes.SyncUnreadResponse
+					err = json.Unmarshal(data, &result)
+					if err != nil {
+						log.Errorf("sync unread response Unmarshal error %v", err)
+					} else {
+						countMap.Store(syncReq.SyncInstance, result.Count)
+					}
+				} else {
+					log.Errorf("call rpc for syncServer unread user %s error %v", syncReq.UserID, err)
+				}
+			} else {
+				log.Errorf("marshal call sync unread content error, user %s error %v", syncReq.UserID, err)
 			}
-			countMap.Store(syncReq.SyncInstance, result.Count)
 			wg.Done()
 		}(instance, syncReq, countMap)
 	}

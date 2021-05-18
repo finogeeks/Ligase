@@ -21,10 +21,9 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
-	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncaggregate/sync"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -43,7 +42,6 @@ type InternalMsgConsumer struct {
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
 	rpcCli *common.RpcClient,
-	rpcClient rpc.RpcClient,
 	idg *uid.UidGenerator,
 	sm *sync.SyncMng,
 	userTimeLine *repos.UserTimeLineRepo,
@@ -55,7 +53,6 @@ func NewInternalMsgConsumer(
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
 	c.RpcCli = rpcCli
-	c.RpcClient = rpcClient
 	c.idg = idg
 	c.sm = sm
 	c.userTimeLine = userTimeLine

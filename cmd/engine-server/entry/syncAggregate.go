@@ -19,8 +19,6 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/domain"
 	"github.com/finogeeks/ligase/common/uid"
-	rpcService "github.com/finogeeks/ligase/rpc"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncaggregate"
 )
 
@@ -45,17 +43,12 @@ func StartSyncAggregate(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
 	base.CheckDomainCfg()
 
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
 	rpcClient.Start(false)
-
-	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
-	if err != nil {
-		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
-	}
 
 	accountDB := base.CreateAccountsDB()
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 
-	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, rpcCli, idg, complexCache)
+	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, idg, complexCache)
 }

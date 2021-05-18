@@ -2,24 +2,22 @@ package workerpool
 
 import (
 	"fmt"
-)
-
-const (
-	defaultMaxQueue = 200
+	"github.com/finogeeks/ligase/model"
+	"os"
+	"strconv"
 )
 
 // Job represents the job to be run
 type Job struct {
-	payload interface{}
+	payload model.Payload
 }
 
 //worker handler
-type Handler func(p interface{}) error
+type Handler func(p model.Payload) error
 
-// WorkerPool A pool of workers channels that are registered with the workerpool
 type WorkerPool struct {
+	// A pool of workers channels that are registered with the workerpool
 	maxWorkers int
-	maxQueue   int
 	handler    Handler
 	//idle workers for dispatch
 	jobPool chan chan Job
@@ -28,23 +26,28 @@ type WorkerPool struct {
 	//a queue to store all request message payloads to be processed
 	jobQueue chan Job
 	//remember all workers initialized
-	workers []worker
+	workers map[int]worker
 }
 
-func (wp *WorkerPool) Feed(payload interface{}) {
+func (wp *WorkerPool) FeedPayload(payload model.Payload) {
 	job := Job{payload: payload}
 	wp.jobQueue <- job
 }
 
-// NewWorkerPool return a worker pool with maxWorkers workers and maxQueue size job queue.
-// If maxQueue == 0, it will set to default value 200.
-func NewWorkerPool(maxWorkers, maxQueue int) *WorkerPool {
-	if maxQueue == 0 {
-		maxQueue = defaultMaxQueue
+func NewWorkerPool(maxWorkers int) *WorkerPool {
+	pool := make(chan chan Job, maxWorkers)
+	quit := make(chan bool)
+
+	queue_size, err := strconv.Atoi(os.Getenv("WP_MAX_QUEUE"))
+	if err == nil {
+		maxQueue = queue_size
 	}
 	return &WorkerPool{
+		jobPool:    pool,
+		jobQueue:   make(chan Job, maxQueue),
 		maxWorkers: maxWorkers,
-		maxQueue:   maxQueue,
+		quit:       quit,
+		workers:    make(map[int]worker),
 	}
 }
 
@@ -55,17 +58,12 @@ func (wp *WorkerPool) SetHandler(f Handler) *WorkerPool {
 
 func (wp *WorkerPool) Stop() {
 	// stop all workers
-	for _, worker := range wp.workers {
-		worker.stop()
+	for i := 0; i < wp.maxWorkers; i++ {
+		wp.workers[i].stop()
 	}
 }
 
 func (wp *WorkerPool) Run() {
-	wp.jobPool = make(chan chan Job, wp.maxWorkers)
-	wp.jobQueue = make(chan Job, wp.maxQueue)
-	wp.quit = make(chan bool)
-	wp.workers = make([]worker, wp.maxWorkers)
-
 	// starting n number of workers
 	for i := 0; i < wp.maxWorkers; i++ {
 		worker := newWorker(wp)
@@ -79,6 +77,7 @@ func (wp *WorkerPool) Run() {
 func (wp *WorkerPool) dispatch() {
 	fmt.Println("Worker pool dispatcher started...")
 	for {
+
 		select {
 		case job := <-wp.jobQueue:
 			//fmt.Printf("a dispatcher request received")

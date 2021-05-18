@@ -30,13 +30,12 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/rpc"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -47,7 +46,7 @@ func UploadPKeys(
 	encryptionDB model.EncryptorAPIDatabase,
 	device *authtypes.Device,
 	cache service.Cache,
-	rpcCli rpc.RpcClient,
+	rpcClient *common.RpcClient,
 	syncDB model.SyncAPIDatabase,
 	idg *uid.UidGenerator,
 ) (int, core.Coder) {
@@ -65,7 +64,7 @@ func UploadPKeys(
 	// }
 	keySpecific := turnSpecific(keyBody)
 	// persist keys into encryptionDB
-	err := persistKeys(ctx, encryptionDB, &keySpecific, userID, device.ID, cache, rpcCli, syncDB, idg)
+	err := persistKeys(ctx, encryptionDB, &keySpecific, userID, device.ID, cache, rpcClient, syncDB, idg)
 	// numMap is algorithm-num map
 	numMap := (QueryOneTimeKeys(userID, device.ID, cache)).(map[string]int)
 
@@ -203,7 +202,7 @@ func ClaimOneTimeKeys(
 	claimRq *external.PostClaimKeysRequest,
 	cache service.Cache,
 	encryptionDB model.EncryptorAPIDatabase,
-	rpcCli rpc.RpcClient,
+	rpcClient *common.RpcClient,
 ) (int, core.Coder) {
 	// var claimRq types.ClaimRequest
 	claimRp := &external.PostClaimKeysResponse{}
@@ -275,9 +274,11 @@ func ClaimOneTimeKeys(
 				OneTimeKeyChangeUserId:   uid,
 				OneTimeKeyChangeDeviceId: deviceID,
 			}
-			err := rpcCli.UpdateOneTimeKey(ctx, &content)
-			if err != nil {
-				log.Errorf("ClaimOneTimeKeys pub key update, device: %s, user: %s, error: %v", deviceID, uid, err)
+			bytes, err := json.Marshal(content)
+			if err == nil {
+				rpcClient.Pub(types.KeyUpdateTopicDef, bytes)
+			} else {
+				log.Errorf("ClaimOneTimeKeys pub key update err %v", err)
 				return httputil.LogThenErrorCtx(ctx, err)
 			}
 		}
@@ -335,7 +336,7 @@ func persistKeys(
 	userID,
 	deviceID string,
 	cache service.Cache,
-	rpcCli rpc.RpcClient,
+	rpcClient *common.RpcClient,
 	syncDB model.SyncAPIDatabase,
 	idg *uid.UidGenerator,
 ) (err error) {
@@ -394,8 +395,10 @@ func persistKeys(
 				},
 			},
 		}
-		err = rpcCli.UpdateDeviceKey(ctx, &content)
-		if err != nil {
+		bytes, err := json.Marshal(content)
+		if err == nil {
+			rpcClient.Pub(types.KeyUpdateTopicDef, bytes)
+		} else {
 			return err
 		}
 
@@ -404,8 +407,10 @@ func persistKeys(
 			OneTimeKeyChangeUserId:   userID,
 			OneTimeKeyChangeDeviceId: deviceID,
 		}
-		err = rpcCli.UpdateOneTimeKey(ctx, &content)
-		if err != nil {
+		bytes, err = json.Marshal(content)
+		if err == nil {
+			rpcClient.Pub(types.KeyUpdateTopicDef, bytes)
+		} else {
 			return err
 		}
 	} else {
@@ -418,8 +423,10 @@ func persistKeys(
 				OneTimeKeyChangeUserId:   userID,
 				OneTimeKeyChangeDeviceId: deviceID,
 			}
-			err = rpcCli.UpdateOneTimeKey(ctx, &content)
-			if err != nil {
+			bytes, err := json.Marshal(content)
+			if err == nil {
+				rpcClient.Pub(types.KeyUpdateTopicDef, bytes)
+			} else {
 				return err
 			}
 		} else {

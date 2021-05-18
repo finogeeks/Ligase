@@ -15,17 +15,14 @@
 package rpc
 
 import (
-	"context"
-
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
-	"github.com/finogeeks/ligase/rpc"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
 	"github.com/nats-io/nats.go"
 )
 
@@ -34,7 +31,6 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 type TypingRpcConsumer struct {
 	roomCurState *repos.RoomCurStateRepo
 	rpcClient    *common.RpcClient
-	rpcCli       rpc.RpcClient
 	chanSize     uint32
 	msgChan      []chan *types.TypingContent
 	cfg          *config.Dendrite
@@ -43,13 +39,11 @@ type TypingRpcConsumer struct {
 func NewTypingRpcConsumer(
 	roomCurState *repos.RoomCurStateRepo,
 	rpcClient *common.RpcClient,
-	rpcCli rpc.RpcClient,
 	cfg *config.Dendrite,
 ) *TypingRpcConsumer {
 	s := &TypingRpcConsumer{
 		roomCurState: roomCurState,
 		rpcClient:    rpcClient,
-		rpcCli:       rpcCli,
 		chanSize:     16,
 		cfg:          cfg,
 	}
@@ -98,14 +92,11 @@ func (s *TypingRpcConsumer) startWorker(msgChan chan *types.TypingContent) {
 				}
 				return true
 			})
-			ctx := context.Background()
-			var err error
-			if data.Type == "add" {
-				err = s.rpcCli.AddTyping(ctx, &update)
+
+			bytes, err := json.Marshal(update)
+			if err == nil {
+				s.rpcClient.Pub(types.TypingUpdateTopicDef, bytes)
 			} else {
-				err = s.rpcCli.RemoveTyping(ctx, &update)
-			}
-			if err != nil {
 				log.Errorf("TypingRpcConsumer pub typing update error %v", err)
 			}
 

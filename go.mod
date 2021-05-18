@@ -11,12 +11,10 @@ require (
 	github.com/go-resty/resty/v2 v2.3.0
 	github.com/gomodule/redigo/redis v0.0.0-20200429221454-e14091dffc1b
 	github.com/gorilla/mux v1.7.4
-	github.com/hashicorp/consul/api v1.3.0
 	github.com/irfansharif/cfilter v0.1.1
 	github.com/jolestar/go-commons-pool v2.0.0+incompatible
 	github.com/json-iterator/go v1.1.10
 	github.com/lib/pq v1.7.0
-	github.com/mbobakov/grpc-consul-resolver v1.4.3
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
 	github.com/nats-io/nats-server/v2 v2.1.8 // indirect
 	github.com/nats-io/nats.go v1.10.0
@@ -27,9 +25,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/robfig/cron v1.2.0
-	github.com/satori/go.uuid v1.2.0
 	github.com/smallnest/gofsm v0.0.0-20190306032117-f5ba1bddca7b
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.4.0
 	github.com/tidwall/gjson v1.6.0
 	github.com/tidwall/sjson v1.1.1
 	github.com/tinylib/msgp v1.1.2 // indirect
@@ -39,8 +36,6 @@ require (
 	go.uber.org/multierr v1.5.0
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	google.golang.org/appengine v1.6.6 // indirect
-	google.golang.org/grpc v1.37.0
-	google.golang.org/protobuf v1.25.0
 	gopkg.in/confluentinc/confluent-kafka-go.v1 v1.1.0
 	gopkg.in/macaroon.v2 v2.1.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0

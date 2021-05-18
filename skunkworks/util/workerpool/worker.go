@@ -4,6 +4,10 @@ import (
 	"fmt"
 )
 
+var (
+	maxQueue = 200
+)
+
 // Worker represents the worker that executes the job
 type worker struct {
 	workerPool *WorkerPool

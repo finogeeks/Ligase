@@ -21,8 +21,6 @@ import (
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/proxy"
-	rpcService "github.com/finogeeks/ligase/rpc"
-	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func StartApiGateWay(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
@@ -39,14 +37,9 @@ func StartApiGateWay(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	cache := base.PrepareCache()
 
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
 	rpcClient.Start(true)
-
-	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
-	if err != nil {
-		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
-	}
-	rsRpcCli := base.CreateRsRPCCli(rpcClient, rpcCli)
+	rsRpcCli := base.CreateRsRPCCli(rpcClient)
 
 	serverConfDB := base.CreateServerConfDB()
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)

@@ -18,9 +18,6 @@ import (
 	"bytes"
 	"container/list"
 	"context"
-	"net/http"
-	"time"
-
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -29,11 +26,13 @@ import (
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
+	"net/http"
+	"time"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -47,10 +46,22 @@ func GetPushersByName(userID string, pushDataRepo *repos.PushDataRepo, forReques
 		return pushers
 	}
 	for _, data := range pushersData {
-		pusher := data
-		if forRequest {
-			pusher.PushKeyTs = 0
+		pusher := pushapitypes.Pusher{}
+		pusher.UserName = data.UserName
+		pusher.Lang = data.Lang
+		pusher.PushKey = data.PushKey
+		if !forRequest {
+			pusher.PushKeyTs = data.PushKeyTs
 		}
+		pusher.AppDisplayName = data.AppDisplayName
+		pusher.AppId = data.AppId
+		pusher.Kind = data.Kind
+		pusher.ProfileTag = data.ProfileTag
+		pusher.DeviceDisplayName = data.DeviceDisplayName
+		pusher.DeviceID = data.DeviceID
+		var pusherData pushapitypes.PusherData
+		json.Unmarshal([]byte(data.Data.(string)), &pusherData)
+		pusher.Data = pusherData
 		pushers.Pushers = append(pushers.Pushers, pusher)
 	}
 	return pushers
@@ -62,14 +73,7 @@ func GetPushers(
 	pushDataRepo *repos.PushDataRepo,
 ) (int, core.Coder) {
 	pushers := GetPushersByName(userID, pushDataRepo, true, nil)
-	resp := pushapitypes.PushersWitchInterfaceData{}
-	for _, v := range pushers.Pushers {
-		resp.Pushers = append(resp.Pushers, v.ToPusherWitchInterfaceData())
-	}
-	if resp.Pushers == nil {
-		resp.Pushers = []pushapitypes.PusherWitchInterfaceData{}
-	}
-	return http.StatusOK, &resp
+	return http.StatusOK, &pushers
 }
 
 //PutPushers implements POST /_matrix/client/r0/pushers/set
@@ -100,18 +104,18 @@ func PutPusher(
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 	addPusher := pushapitypes.Pusher{
-		UserName:          device.UserID,
-		DeviceID:          common.GetDeviceMac(device.ID),
-		PushKey:           pushers.Pushkey,
-		PushKeyTs:         time.Now().Unix(),
-		Kind:              pushers.Kind,
-		AppId:             pushers.AppID,
-		AppDisplayName:    pushers.AppDisplayName,
+		UserName: device.UserID,
+		DeviceID: common.GetDeviceMac(device.ID),
+		PushKey: pushers.Pushkey,
+		PushKeyTs: time.Now().Unix(),
+		Kind: pushers.Kind,
+		AppId: pushers.AppID,
+		AppDisplayName: pushers.AppDisplayName,
 		DeviceDisplayName: pushers.DeviceDisplayName,
-		ProfileTag:        pushers.ProfileTag,
-		Lang:              pushers.Lang,
-		Append:            pushers.Append,
-		Data:              string(dataStr),
+		ProfileTag: pushers.ProfileTag,
+		Lang: pushers.Lang,
+		Append: pushers.Append,
+		Data: string(dataStr),
 	}
 	if pushers.Append {
 		if err := pushDataRepo.DeleteUserPusher(ctx, device.UserID, pushers.AppID, pushers.Pushkey); err != nil {
@@ -178,15 +182,16 @@ func CheckPusherBody(pushers *external.PostSetPushersRequest) string {
 	return ""
 }
 
-func rpcGetUserPushData(req *pushapitypes.ReqPushUsers, cfg config.Dendrite, pushDataRepo *repos.PushDataRepo, rpcCli rpc.RpcClient) *pushapitypes.RespUsersPusher {
+func rpcGetUserPushData(req *pushapitypes.ReqPushUsers, cfg config.Dendrite,pushDataRepo *repos.PushDataRepo, rpcClient *common.RpcClient) *pushapitypes.RespUsersPusher {
 	if req.Slot == cfg.MultiInstance.Instance {
 		return getUserPushDataFromLocal(req, pushDataRepo)
-	} else {
-		return getUserPushDataFromRemote(req, rpcCli)
+	}else{
+		return getUserPushDataFromRemote(req, rpcClient)
 	}
+	//return getUserPushDataFromRemote(req, rpcClient)
 }
 
-func getUserPushDataFromLocal(req *pushapitypes.ReqPushUsers, pushDataRepo *repos.PushDataRepo) *pushapitypes.RespUsersPusher {
+func getUserPushDataFromLocal(req *pushapitypes.ReqPushUsers, pushDataRepo *repos.PushDataRepo) *pushapitypes.RespUsersPusher{
 	data := &pushapitypes.RespUsersPusher{
 		Data: make(map[string][]pushapitypes.Pusher),
 	}
@@ -201,14 +206,40 @@ func getUserPushDataFromLocal(req *pushapitypes.ReqPushUsers, pushDataRepo *repo
 	return data
 }
 
-func getUserPushDataFromRemote(req *pushapitypes.ReqPushUsers, rpcCli rpc.RpcClient) *pushapitypes.RespUsersPusher {
-	ctx := context.Background()
-	data, err := rpcCli.GetPusherBatch(ctx, req)
+func getUserPushDataFromRemote(req *pushapitypes.ReqPushUsers, rpcClient *common.RpcClient) *pushapitypes.RespUsersPusher{
+	data := &pushapitypes.RespUsersPusher{
+		Data: make(map[string][]pushapitypes.Pusher),
+	}
+	payload, err := json.Marshal(req)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote json.Marshal payload:%+v err:%v", req, err)
-		return &pushapitypes.RespUsersPusher{
-			Data: make(map[string][]pushapitypes.Pusher),
-		}
+		return data
+	}
+	request := pushapitypes.PushDataRequest{
+		Payload: payload,
+		ReqType: types.GET_PUSHER_BATCH,
+		Slot: 	 req.Slot,
+	}
+	bt, err := json.Marshal(request)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Marshal request:%+v err:%v", req, err)
+		return data
+	}
+	r, err := rpcClient.Request(types.PushDataTopicDef, bt, 15000)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote rpc req:%+v err:%v", req, err)
+		return data
+	}
+	resp := pushapitypes.RpcResponse{}
+	err = json.Unmarshal(r, &resp)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
+		return data
+	}
+	err = json.Unmarshal(resp.Payload,&data)
+	if err != nil {
+		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
+		return data
 	}
 	return data
 }
@@ -219,20 +250,20 @@ func GetUsersPushers(
 	users *external.PostUsersPushKeyRequest,
 	pushDataRepo *repos.PushDataRepo,
 	cfg config.Dendrite,
-	rpcCli rpc.RpcClient,
+	rpcClient *common.RpcClient,
 ) (int, core.Coder) {
 	pushersRes := pushapitypes.PushersRes{}
 	pushers := []pushapitypes.PusherRes{}
 	pushersRes.PushersRes = pushers
 	slotMembers := make(map[uint32]*pushapitypes.ReqPushUsers)
-	for _, member := range users.Users {
+	for _, member := range users.Users{
 		slot := common.CalcStringHashCode(member) % cfg.MultiInstance.Total
 		if _, ok := slotMembers[slot]; ok {
 			slotMembers[slot].Users = append(slotMembers[slot].Users, member)
-		} else {
+		}else{
 			slotMembers[slot] = &pushapitypes.ReqPushUsers{
 				Users: []string{member},
-				Slot:  slot,
+				Slot: slot,
 			}
 		}
 	}
@@ -241,7 +272,7 @@ func GetUsersPushers(
 		if len(req.Users) <= 0 {
 			continue
 		}
-		r := rpcGetUserPushData(req, cfg, pushDataRepo, rpcCli)
+		r := rpcGetUserPushData(req, cfg, pushDataRepo, rpcClient)
 		if r != nil {
 			for key, pushers := range r.Data {
 				result[key] = pushers
@@ -250,13 +281,12 @@ func GetUsersPushers(
 	}
 	for user, pushers := range result {
 		for _, data := range pushers {
-			pusher := pushapitypes.PusherRes{
-				UserName:  user,
-				AppId:     data.AppId,
-				Kind:      data.Kind,
-				PushKey:   data.PushKey,
-				PushKeyTs: data.PushKeyTs,
-			}
+			var pusher pushapitypes.PusherRes
+			pusher.UserName = user
+			pusher.AppId = data.AppId
+			pusher.Kind = data.Kind
+			pusher.PushKey = data.PushKey
+			pusher.PushKeyTs = data.PushKeyTs
 			pushersRes.PushersRes = append(pushersRes.PushersRes, pusher)
 		}
 	}

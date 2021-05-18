@@ -20,7 +20,6 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/service"
-	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -37,14 +36,12 @@ type InternalMsgConsumer struct {
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
 	rpcCli *common.RpcClient,
-	rpcClient rpc.RpcClient,
 	db model.ConfigDatabase,
 	cache service.Cache,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
 	c.RpcCli = rpcCli
-	c.RpcClient = rpcClient
 	c.idg, _ = uid.NewDefaultIdGenerator(cfg.Matrix.InstanceId)
 	c.db = db
 	c.cache = cache

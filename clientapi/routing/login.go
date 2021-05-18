@@ -32,7 +32,6 @@ import (
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
@@ -58,7 +57,6 @@ func providerLogin(
 	idg *uid.UidGenerator,
 	tokenFilter *filter.Filter,
 	rpcClient *common.RpcClient,
-	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	if admin == true {
 		if r.Password != cfg.Authorization.AuthorizeCode {
@@ -122,12 +120,16 @@ func providerLogin(
 			DisplayName: dev.DisplayName,
 			Identifier:  dev.Identifier,
 		}
-		err = rpcCli.UpdateToken(ctx, &content)
-		if err != nil {
-			log.Errorf("pub login info err %v", err)
+
+		bytes, err := json.Marshal(content)
+		if err == nil {
+			log.Infof("pub login info %s", string(bytes))
+			rpcClient.Pub(types.LoginTopicDef, bytes)
+		} else {
+			log.Errorf("pub login info  Marshal err %v", err)
 		}
 	}
-	pubLoginToken(userID, deviceID, rpcCli)
+	pubLoginToken(userID, deviceID, rpcClient)
 	info := ""
 	if r.InitialDisplayName != nil {
 		info = *r.InitialDisplayName
@@ -141,15 +143,18 @@ func providerLogin(
 	}
 }
 
-func pubLoginToken(userID string, deviceID string, rpcCli rpc.RpcClient) {
+func pubLoginToken(userID string, deviceID string, rpcClient *common.RpcClient) {
 	content := types.FilterTokenContent{
 		UserID:     userID,
 		DeviceID:   deviceID,
 		FilterType: types.FILTERTOKENADD,
 	}
-	err := rpcCli.AddFilterToken(context.Background(), &content)
-	if err != nil {
-		log.Errorf("pub login filter token info err %v", err)
+	bytes, err := json.Marshal(content)
+	if err == nil {
+		log.Infof("pub login filter token info %s", string(bytes))
+		rpcClient.Pub(types.FilterTokenTopicDef, bytes)
+	} else {
+		log.Errorf("pub login filter token info Marshal err %v", err)
 	}
 }
 
@@ -186,7 +191,6 @@ func LoginPost(
 	idg *uid.UidGenerator,
 	tokenFilter *filter.Filter,
 	rpcClient *common.RpcClient,
-	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	// var r external.PostLoginRequest
 	// resErr := httputil.UnmarshalJSONRequest(req, &r)
@@ -210,7 +214,7 @@ func LoginPost(
 	}
 
 	if strings.EqualFold(cfg.Authorization.AuthorizeMode, "provider") {
-		return providerLogin(req.User, ctx, *req, cfg, deviceDB, accountDB, encryptDB, syncDB, admin, idg, tokenFilter, rpcClient, rpcCli)
+		return providerLogin(req.User, ctx, *req, cfg, deviceDB, accountDB, encryptDB, syncDB, admin, idg, tokenFilter, rpcClient)
 	}
 
 	return http.StatusServiceUnavailable, jsonerror.Unknown("Internal Server Error")
