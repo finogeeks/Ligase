@@ -346,14 +346,24 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 		}(instance, syncReq, req)
 	}
 	wg.Wait()
-	loaded := len(requestMap) == 0
+	loaded := true
 	req.remoteReady = true
 	req.remoteFinished = true
-	for _, syncReq := range requestMap {
-		if syncReq.LoadReady {
-			loaded = true
-		} else {
-			log.Warnf("SyncMng.callSyncLoad traceid:%s instance:%d loaded false", req.traceId, syncReq.SyncInstance)
+	if req.isFullSync {
+		for _, syncReq := range requestMap {
+			if syncReq.LoadReady == false {
+				loaded = false
+				log.Warnf("SyncMng.callSyncLoad traceid:%s instance:%d loaded false", req.traceId, syncReq.SyncInstance)
+			}
+		}
+	} else {
+		loaded = len(requestMap) == 0
+		for _, syncReq := range requestMap {
+			if syncReq.LoadReady {
+				loaded = true
+			} else {
+				log.Warnf("SyncMng.callSyncLoad traceid:%s instance:%d loaded false", req.traceId, syncReq.SyncInstance)
+			}
 		}
 	}
 	if loaded == false {
