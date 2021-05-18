@@ -16,10 +16,11 @@ package repos
 
 import (
 	"fmt"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/model/service"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type ReadCountRepo struct {
@@ -75,6 +76,7 @@ func (tl *ReadCountRepo) GetRoomReadCount(roomID, userID string) (int64, int64) 
 	if val, ok := tl.readCount.Load(key); ok {
 		readCount = val.(int64)
 	} else {
+		log.Infof("get unread count from redis roomID:%s userID:%s", roomID, userID)
 		tl.UpdateRoomReadCountFromCache(roomID, userID)
 		if val, ok := tl.readCount.Load(key); ok {
 			readCount = val.(int64)
@@ -84,6 +86,7 @@ func (tl *ReadCountRepo) GetRoomReadCount(roomID, userID string) (int64, int64) 
 	if val, ok := tl.hlCount.Load(key); ok {
 		hlCount = val.(int64)
 	} else {
+		log.Infof("get highlight count from redis roomID:%s userID:%s", roomID, userID)
 		tl.UpdateRoomReadCountFromCache(roomID, userID)
 		if val, ok := tl.hlCount.Load(key); ok {
 			hlCount = val.(int64)

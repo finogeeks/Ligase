@@ -203,7 +203,7 @@ func (s *SyncServer) processFullSync(req *syncapitypes.SyncServerRequest) {
 
 	if req.IsHuman {
 		s.addReceipt(req, receiptMaxPos, &response)
-		s.addUnreadCount(&response, req.UserID)
+		s.addUnreadCount(req, &response, req.UserID)
 	}
 
 	s.responseSync(req, &response)
@@ -260,7 +260,7 @@ func (s *SyncServer) processIncrementSync(req *syncapitypes.SyncServerRequest) {
 
 	if req.IsHuman {
 		s.addReceipt(req, receiptMaxPos, &response)
-		s.addUnreadCount(&response, req.UserID)
+		s.addUnreadCount(req, &response, req.UserID)
 	}
 
 	for user := range newUserMap {
@@ -283,7 +283,9 @@ func (s *SyncServer) responseSync(req *syncapitypes.SyncServerRequest, resp *syn
 		UserID:  req.UserID,
 		IsHuman: req.IsHuman,
 	}
+	timespend := common.NewTimeSpend()
 	extra.ExpandSyncData(s.rsCurState, &device, s.displayNameRepo, resp)
+	timespend.Logf(types.DB_EXCEED_TIME, "responseSync expand hint traceid:%s", req.TraceID)
 	contentBytes, _ := json.Marshal(*resp)
 	log.Infof("SyncServer.responseSync traceid:%s slot:%d rslot:%d user %s device %s AllLoaded:%t maxroomoffset:%v", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, resp.AllLoaded, resp.MaxRoomOffset)
 	msgSize := int64(len(contentBytes))
@@ -603,7 +605,8 @@ func (s *SyncServer) addReceipt(req *syncapitypes.SyncServerRequest, maxPos int6
 	}
 }
 
-func (s *SyncServer) addUnreadCount(response *syncapitypes.SyncServerResponse, userID string) {
+func (s *SyncServer) addUnreadCount(req *syncapitypes.SyncServerRequest, response *syncapitypes.SyncServerResponse, userID string) {
+	timespend := common.NewTimeSpend()
 	for rid, joinRooms := range response.Rooms.Join {
 		ntfCount, hlCount := s.readCountRepo.GetRoomReadCount(rid, userID)
 		joinRooms.Unread = &syncapitypes.UnreadNotifications{
@@ -611,8 +614,8 @@ func (s *SyncServer) addUnreadCount(response *syncapitypes.SyncServerResponse, u
 			HighLightCount:    hlCount,
 		}
 		response.Rooms.Join[rid] = joinRooms
-
 	}
+	timespend.Logf(types.DB_EXCEED_TIME, "addUnreadCount traceid:%s user:%s ", req.TraceID, userID)
 }
 
 type BuildRoomRespOpt struct {

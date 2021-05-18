@@ -967,6 +967,7 @@ func mRoomMessageHandler(userID string, displayNameRepo *repos.DisplayNameRepo, 
 }
 
 func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent, prvStates *list.List) {
+	timespend := common.NewTimeSpend()
 	if e.Type == MRoomCreate {
 		mRoomCreateHandler(repo, roomID, e)
 	} else if e.Type == MRoomName {
@@ -986,6 +987,7 @@ func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID stri
 	} else if e.Type == MRoomTopic {
 		mRoomTopicHandller(device.UserID, displayNameRepo, e)
 	}
+	timespend.WarnIfExceedf(300, "extra hint %s", e.Type)
 }
 
 func ExpandEventHint(event *gomatrixserverlib.ClientEvent, device *authtypes.Device, repo *repos.RoomCurStateRepo, displayNameRepo *repos.DisplayNameRepo) {
