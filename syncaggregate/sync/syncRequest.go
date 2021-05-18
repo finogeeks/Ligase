@@ -377,10 +377,12 @@ func (sm *SyncMng) OnSyncRequest(
 			}
 		}
 
+		/*
 		if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(request.marks.stdRecv, device.UserID, device.ID) && now-start > 500 && request.device.IsHuman == true {
 			log.Infof("SyncMng break has send to device messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
 			break
 		}
+		*/
 
 		//if sm.cfg.SendMemberEvent == false {
 		if sm.presenceStreamRepo.ExistsPresence(request.device.UserID, request.marks.preRecv) && now-start > 500 && request.device.IsHuman == true {
