@@ -39,7 +39,7 @@ type ReqGetLRURooms struct{}
 
 func (ReqGetLRURooms) GetRoute() string       { return "/lru/syncwriter/rooms" }
 func (ReqGetLRURooms) GetMetricsName() string { return "get_lru_syncwirter_rooms" }
-func (ReqGetLRURooms) GetMsgType() int32      { return internals.MSG_GET_LRU_ROOMS }
+func (ReqGetLRURooms) GetMsgType() int32      { return internals.MSG_GET_LRU_SYNC_WRITER_ROOMS }
 func (ReqGetLRURooms) GetAPIType() int8       { return apiconsumer.APITypeExternal }
 func (ReqGetLRURooms) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
@@ -77,7 +77,7 @@ type ReqPutLRURoom struct{}
 
 func (ReqPutLRURoom) GetRoute() string       { return "/lru/syncwriter/room" }
 func (ReqPutLRURoom) GetMetricsName() string { return "put_lru_syncwriter_room" }
-func (ReqPutLRURoom) GetMsgType() int32      { return internals.MSG_PUT_LRU_ROOM }
+func (ReqPutLRURoom) GetMsgType() int32      { return internals.MSG_PUT_LRU_SYNC_WRITER_ROOM }
 func (ReqPutLRURoom) GetAPIType() int8       { return apiconsumer.APITypeInternal }
 func (ReqPutLRURoom) GetMethod() []string {
 	return []string{http.MethodPut, http.MethodOptions}
