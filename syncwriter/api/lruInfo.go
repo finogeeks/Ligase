@@ -31,33 +31,33 @@ import (
 )
 
 func init() {
-	apiconsumer.SetAPIProcessor(ReqGetLRUInfo{})
+	apiconsumer.SetAPIProcessor(ReqGetLRURooms{})
 	apiconsumer.SetAPIProcessor(ReqPutLRURoom{})
 }
 
-type ReqGetLRUInfo struct{}
+type ReqGetLRURooms struct{}
 
-func (ReqGetLRUInfo) GetRoute() string       { return "/lru/syncwriter/rooms" }
-func (ReqGetLRUInfo) GetMetricsName() string { return "get_lru_syncwirter_rooms" }
-func (ReqGetLRUInfo) GetMsgType() int32      { return internals.MSG_GET_LRU_ROOMS }
-func (ReqGetLRUInfo) GetAPIType() int8       { return apiconsumer.APITypeExternal }
-func (ReqGetLRUInfo) GetMethod() []string {
+func (ReqGetLRURooms) GetRoute() string       { return "/lru/syncwriter/rooms" }
+func (ReqGetLRURooms) GetMetricsName() string { return "get_lru_syncwirter_rooms" }
+func (ReqGetLRURooms) GetMsgType() int32      { return internals.MSG_GET_LRU_ROOMS }
+func (ReqGetLRURooms) GetAPIType() int8       { return apiconsumer.APITypeExternal }
+func (ReqGetLRURooms) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }
-func (ReqGetLRUInfo) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
-func (ReqGetLRUInfo) GetPrefix() []string                  { return []string{"r0"} }
-func (ReqGetLRUInfo) NewRequest() core.Coder {
+func (ReqGetLRURooms) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqGetLRURooms) GetPrefix() []string                  { return []string{"r0"} }
+func (ReqGetLRURooms) NewRequest() core.Coder {
 	return new(external.GetLRURoomsRequest)
 }
-func (ReqGetLRUInfo) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+func (ReqGetLRURooms) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
 	msg := coder.(*external.GetLRURoomsRequest)
 	msg.Timestamp = fmt.Sprintf("%d", time.Now().Unix())
 	return nil
 }
-func (ReqGetLRUInfo) NewResponse(code int) core.Coder {
+func (ReqGetLRURooms) NewResponse(code int) core.Coder {
 	return new(external.GetLRURoomsResponse)
 }
-func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetLRURooms) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetLRURoomsRequest)
 	if !common.IsRelatedRequest(req.Timestamp, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
