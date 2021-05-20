@@ -48,11 +48,11 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.Init("syncwriterapi", c, c.Cfg.Rpc.ProxySyncApiTopic)
-	//c.APIConsumer.InitGroup("syncapi",c,c.Cfg.Rpc.ProxySyncApiTopic,types.SYNC_API_GROUP)
+	c.APIConsumer.Init("syncwriterapi", c, c.Cfg.Rpc.ProxySyncWriterApiTopic)
+	//c.APIConsumer.InitGroup("syncapi",c,c.Cfg.Rpc.ProxySyncWriterApiTopic,types.SYNC_API_GROUP)
 	c.APIConsumer.Start()
 }
 
 func getProxyRpcTopic(cfg *config.Dendrite) string {
-	return cfg.Rpc.ProxySyncApiTopic
+	return cfg.Rpc.ProxySyncWriterApiTopic
 }
