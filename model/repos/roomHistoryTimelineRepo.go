@@ -288,13 +288,13 @@ func (tl *RoomHistoryTimeLineRepo) SetRoomMinStream(roomID string, minStream int
 func (tl *RoomHistoryTimeLineRepo) LoadDomainMaxStream(roomID string) (*sync.Map, error) {
 	for {
 		if val, ok := tl.domainMaxOffset.Load(roomID); ok {
-			return val.(*sync.Map), nil 
+			return val.(*sync.Map), nil
 		} else {
 			if _, loading := tl.loadingDomainMaxOffset.LoadOrStore(roomID, true); loading {
 				time.Sleep(time.Millisecond * 3)
 				continue
 			}
-			
+
 			defer tl.loadingDomainMaxOffset.Delete(roomID)
 			domains, offsets, err := tl.persist.SelectDomainMaxOffset(context.TODO(), roomID)
 			if err != nil {
@@ -307,7 +307,9 @@ func (tl *RoomHistoryTimeLineRepo) LoadDomainMaxStream(roomID string) (*sync.Map
 			}
 			tl.domainMaxOffset.Store(roomID, domainMap)
 
+			val, _ := tl.domainMaxOffset.Load(roomID)
 			return val.(*sync.Map), nil
+
 		}
 	}
 }
