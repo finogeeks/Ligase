@@ -145,7 +145,7 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	//roomServerDB := base.CreateRoomDB()
 	//migration.SetupMigrationComponent(base, accountDB, deviceDB, pushDB, roomServerDB, idg, syncDB)
 	//tokenrewrite.SetupTokenRewrite(rpcClient, base.Cfg)
-	syncwriter.SetupSyncWriterComponent(base)
+	syncwriter.SetupSyncWriterComponent(base, rpcClient)
 	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, idg, complexCache)
 	proxy.SetupProxy(base, cache, rpcClient, rsRpcCli, newTokenFilter)
 	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)

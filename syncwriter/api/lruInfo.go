@@ -32,12 +32,13 @@ import (
 
 func init() {
 	apiconsumer.SetAPIProcessor(ReqGetLRUInfo{})
+	apiconsumer.SetAPIProcessor(ReqPutLRURoom{})
 }
 
 type ReqGetLRUInfo struct{}
 
-func (ReqGetLRUInfo) GetRoute() string       { return "/lru/syncserver/rooms" }
-func (ReqGetLRUInfo) GetMetricsName() string { return "lru_syncserver_rooms" }
+func (ReqGetLRUInfo) GetRoute() string       { return "/lru/syncwriter/rooms" }
+func (ReqGetLRUInfo) GetMetricsName() string { return "get_lru_syncwirter_rooms" }
 func (ReqGetLRUInfo) GetMsgType() int32      { return internals.MSG_GET_LRU_ROOMS }
 func (ReqGetLRUInfo) GetAPIType() int8       { return apiconsumer.APITypeExternal }
 func (ReqGetLRUInfo) GetMethod() []string {
@@ -69,5 +70,45 @@ func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *autht
 		Loaded: loaded,
 		Max:    max,
 		Server: fmt.Sprintf("%s%d", os.Getenv("SERVICE_NAME"), c.Cfg.MultiInstance.Instance),
+	}
+}
+
+type ReqPutLRURoom struct{}
+
+func (ReqPutLRURoom) GetRoute() string       { return "/lru/syncwriter/room" }
+func (ReqPutLRURoom) GetMetricsName() string { return "put_lru_syncwriter_room" }
+func (ReqPutLRURoom) GetMsgType() int32      { return internals.MSG_PUT_LRU_ROOM }
+func (ReqPutLRURoom) GetAPIType() int8       { return apiconsumer.APITypeInternal }
+func (ReqPutLRURoom) GetMethod() []string {
+	return []string{http.MethodPut, http.MethodOptions}
+}
+func (ReqPutLRURoom) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqPutLRURoom) GetPrefix() []string                  { return []string{"inr0"} }
+func (ReqPutLRURoom) NewRequest() core.Coder {
+	return new(external.PutLRURoomRequest)
+}
+func (ReqPutLRURoom) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.PutLRURoomRequest)
+	if err := common.UnmarshalJSON(req, msg); err != nil {
+		return err
+	}
+	return nil
+}
+func (ReqPutLRURoom) NewResponse(code int) core.Coder {
+	return new(external.PutLRURoomResponse)
+}
+func (ReqPutLRURoom) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+	c := consumer.(*InternalMsgConsumer)
+	req := msg.(*external.PutLRURoomRequest)
+	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
+	}
+
+	c.rmHsTimeline.LoadHistory(req.RoomID, false)
+	c.rmHsTimeline.LoadDomainMaxStream(req.RoomID)
+	c.rsTimeline.LoadStreamStates(req.RoomID, false)
+
+	return http.StatusOK, &external.PutLRURoomResponse{
+		RoomID: req.RoomID,
 	}
 }
