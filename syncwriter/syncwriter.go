@@ -29,7 +29,7 @@ func SetupSyncWriterComponent(
 	rpcClient *common.RpcClient,
 ) {
 	syncDB := base.CreateSyncDB()
-	maxEntries := base.Cfg.Lru.MaxEntries / 10
+	maxEntries := base.Cfg.Lru.MaxEntries
 	gcPerNum := base.Cfg.Lru.GcPerNum
 
 	monitor := mon.GetInstance()

@@ -307,8 +307,7 @@ func (tl *RoomHistoryTimeLineRepo) LoadDomainMaxStream(roomID string) (*sync.Map
 			}
 			tl.domainMaxOffset.Store(roomID, domainMap)
 
-			val, _ := tl.domainMaxOffset.Load(roomID)
-			return val.(*sync.Map), nil
+			return domainMap, nil
 
 		}
 	}
