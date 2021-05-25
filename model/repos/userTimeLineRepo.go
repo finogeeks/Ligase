@@ -281,13 +281,10 @@ func (tl *UserTimeLineRepo) loadJoinRoomOffsetsByPage(batchId, user string, even
 
 func (tl *UserTimeLineRepo) doLoad(loadMap, readyMap *sync.Map, key string, override bool, loader func() (interface{}, error)) error {
 	if _, ok := readyMap.Load(key); !ok {
-		log.Infof("===============================================UserTimeLineRepo.doLoad start, key=%s\n", key)
 		res, err := loader()
 		if err != nil {
-			log.Infof("===============================================UserTimeLineRepo.doLoad failed, key=%s\n", key)
 			return err
 		}
-		log.Infof("===============================================UserTimeLineRepo.doLoad succeeded, key=%s\n", key)
 
 		if override {
 			loadMap.Store(key, res)
