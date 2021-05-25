@@ -58,7 +58,7 @@ func StartSyncMonolith(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 
-	syncwriter.SetupSyncWriterComponent(base)
+	syncwriter.SetupSyncWriterComponent(base, rpcClient)
 	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, idg)
 	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, idg, complexCache)
 }

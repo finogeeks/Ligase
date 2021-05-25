@@ -286,40 +286,47 @@ func (tl *RoomHistoryTimeLineRepo) SetRoomMinStream(roomID string, minStream int
 	tl.roomMinStream.Store(roomID, minStream)
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetDomainMaxStream(roomID, domain string) int64 {
+func (tl *RoomHistoryTimeLineRepo) LoadDomainMaxStream(roomID string) (*sync.Map, error) {
 	for {
-		if val, ok := tl.domainMaxOffset.Load(roomID); !ok {
-			if _, loaded := tl.loadingDomainMaxOffset.LoadOrStore(roomID, true); loaded {
+		if val, ok := tl.domainMaxOffset.Load(roomID); ok {
+			return val.(*sync.Map), nil
+		} else {
+			if _, loading := tl.loadingDomainMaxOffset.LoadOrStore(roomID, true); loading {
 				time.Sleep(time.Millisecond * 3)
 				continue
-			} else {
-				defer tl.loadingDomainMaxOffset.Delete(roomID)
-				domains, offsets, err := tl.persist.SelectDomainMaxOffset(context.TODO(), roomID)
-				if err != nil {
-					log.Errorf("RoomHistoryTimeLineRepo GetDomainMaxStream roomID %s err %v", roomID, err)
-					return -1
-				}
-				domainMap := new(sync.Map)
-				for index, domain := range domains {
-					domainMap.Store(domain, offsets[index])
-				}
-				tl.domainMaxOffset.Store(roomID, domainMap)
-				if val, ok := domainMap.Load(domain); ok {
-					tl.queryHitCounter.WithLabelValues("db", "RoomHistoryTimeLineRepo", "GetDomainMaxStream").Add(1)
-
-					return val.(int64)
-				}
-				return -1
 			}
-		} else {
-			if val, ok := val.(*sync.Map).Load(domain); ok {
-				tl.queryHitCounter.WithLabelValues("cache", "RoomHistoryTimeLineRepo", "GetDomainMaxStream").Add(1)
 
-				return val.(int64)
+			defer tl.loadingDomainMaxOffset.Delete(roomID)
+			domains, offsets, err := tl.persist.SelectDomainMaxOffset(context.TODO(), roomID)
+			if err != nil {
+				log.Errorf("RoomHistoryTimeLineRepo GetDomainMaxStream roomID %s err %v", roomID, err)
+				return nil, err
 			}
-			return -1
+			domainMap := new(sync.Map)
+			for index, domain := range domains {
+				domainMap.Store(domain, offsets[index])
+			}
+			tl.domainMaxOffset.Store(roomID, domainMap)
+
+			return domainMap, nil
+
 		}
 	}
+}
+
+func (tl *RoomHistoryTimeLineRepo) GetDomainMaxStream(roomID, domain string) int64 {
+	maxStreams, err := tl.LoadDomainMaxStream(roomID)
+	if err != nil {
+		return -1
+	}
+
+	if val, ok := maxStreams.Load(domain); ok {
+		tl.queryHitCounter.WithLabelValues("cache", "RoomHistoryTimeLineRepo", "GetDomainMaxStream").Add(1)
+
+		return val.(int64)
+	}
+
+	return -1
 }
 
 func (tl *RoomHistoryTimeLineRepo) SetDomainMaxStream(roomID, domain string, offset int64) {

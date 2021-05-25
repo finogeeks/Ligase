@@ -211,6 +211,7 @@ type Dendrite struct {
 		ProxyPublicRoomApiTopic    string `yaml:"proxy_publicroom_api_topic"`
 		ProxyPushApiTopic          string `yaml:"proxy_push_api_topic"`
 		ProxySyncApiTopic          string `yaml:"proxy_sync_api_topic"`
+		ProxySyncWriterApiTopic    string `yaml:"proxy_sync_writer_api_topic"`
 		ProxySyncAggregateApiTopic string `yaml:"proxy_syncaggregate_api_topic"`
 		ProxyFedApiTopic           string `yaml:"proxy_fed_api_topic"`
 		ProxyBgmgrApiTopic         string `yaml:"proxy_bgmgr_api_topic"`

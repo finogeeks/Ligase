@@ -47,8 +47,9 @@ var RCSEventTopicDef = "rcs-event-topic"
 var PushDataTopicDef = "push-data-topic"
 
 const (
-	SYNC_AGGR_GROUP = "synaggregatecapi"
-	SYNC_API_GROUP  = "syncapi"
+	SYNC_AGGR_GROUP   = "synaggregatecapi"
+	SYNC_WRITER_GROUP = "syncwriterapi"
+	SYNC_API_GROUP    = "syncapi"
 )
 
 const (

@@ -180,6 +180,11 @@ func (s *receiptDataStreamStatements) selectUserMaxPos(
 	userID string,
 ) (int64, error) {
 	rows, err := s.selectUserMaxReceiptPosStmt.QueryContext(ctx, userID)
+	if err != nil {
+		log.Errorf("receiptDataStreamStatements.selectUserMaxPos err: %v\n", err)
+		return -1, err
+	}
+
 	defer rows.Close()
 	for rows.Next() {
 		var streamPos int64
