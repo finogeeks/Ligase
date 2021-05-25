@@ -39,7 +39,7 @@ type ReqGetLRUInfo struct{}
 func (ReqGetLRUInfo) GetRoute() string       { return "/lru/syncserver/rooms" }
 func (ReqGetLRUInfo) GetMetricsName() string { return "lru_syncserver_rooms" }
 func (ReqGetLRUInfo) GetMsgType() int32      { return internals.MSG_GET_LRU_SYNC_SERVER_ROOMS }
-func (ReqGetLRUInfo) GetAPIType() int8       { return apiconsumer.APITypeExternal }
+func (ReqGetLRUInfo) GetAPIType() int8       { return apiconsumer.APITypeAuth }
 func (ReqGetLRUInfo) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }

@@ -40,7 +40,7 @@ type ReqGetLRURooms struct{}
 func (ReqGetLRURooms) GetRoute() string       { return "/lru/syncwriter/rooms" }
 func (ReqGetLRURooms) GetMetricsName() string { return "get_lru_syncwirter_rooms" }
 func (ReqGetLRURooms) GetMsgType() int32      { return internals.MSG_GET_LRU_SYNC_WRITER_ROOMS }
-func (ReqGetLRURooms) GetAPIType() int8       { return apiconsumer.APITypeExternal }
+func (ReqGetLRURooms) GetAPIType() int8       { return apiconsumer.APITypeAuth }
 func (ReqGetLRURooms) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }

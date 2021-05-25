@@ -203,21 +203,15 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 			for {
 				loaded := true
 				if ok := sm.clientDataStreamRepo.CheckLoadReady(user, false); !ok {
-					log.Infoln("================================clientDataStreamRepo not ok")
 					loaded = false
 				}
-				/*
-					if ok := sm.stdEventStreamRepo.CheckLoadReady(user, req.device.ID, false); !ok {
-						log.Infoln("================================stdEventStreamRepo not ok")
-						loaded = false
-					}
-				*/
+				if ok := sm.stdEventStreamRepo.CheckLoadReady(user, req.device.ID, false); !ok {
+					loaded = false
+				}
 				if ok := sm.presenceStreamRepo.CheckLoadReady(user, false); !ok {
-					log.Infoln("================================presenceStreamRepo not ok")
 					loaded = false
 				}
 				if ok := sm.keyChangeRepo.CheckLoadReady(user, false); !ok {
-					log.Infoln("================================keyChangeRepo not ok")
 					loaded = false
 				}
 
