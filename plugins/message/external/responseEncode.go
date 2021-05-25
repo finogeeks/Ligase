@@ -872,6 +872,10 @@ func (res *GetLRURoomsResponse) Encode() ([]byte, error) {
 	return json.Marshal(res)
 }
 
+func (res *PutLRURoomResponse) Encode() ([]byte, error) {
+	return json.Marshal(res)
+}
+
 func (res *GetPushersResponse) Encode() ([]byte, error) {
 	msg, seg, err := capn.NewMessage(capn.SingleSegment(nil))
 	if err != nil {

@@ -17,6 +17,7 @@ package entry
 import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
+	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/syncwriter"
 )
 
@@ -30,5 +31,8 @@ func StartSyncWriter(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	transportMultiplexer.PreStart()
 
-	syncwriter.SetupSyncWriterComponent(base)
+	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
+	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
+	rpcClient.Start(false)
+	syncwriter.SetupSyncWriterComponent(base, rpcClient)
 }

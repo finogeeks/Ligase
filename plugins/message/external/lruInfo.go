@@ -14,7 +14,8 @@
 
 package external
 
-//  GET /_matrix/client/r0/rooms/{roomID}/visibility_range
+//  GET /_matrix/client/r0/lru/syncserver/rooms
+//  GET /_matrix/client/r0/lru/syncwriter/rooms
 type GetLRURoomsRequest struct {
 	Timestamp string `json:"timestamp"`
 }
@@ -23,4 +24,13 @@ type GetLRURoomsResponse struct {
 	Loaded int    `json:"loaded"`
 	Max    int    `json:"max"`
 	Server string `json:"server"`
+}
+
+//  PUT /_matrix/client/r0/lru/syncwriter/room
+type PutLRURoomRequest struct {
+	RoomID string `json:"roomId"`
+}
+
+type PutLRURoomResponse struct {
+	RoomID string `json:"roomId"`
 }
