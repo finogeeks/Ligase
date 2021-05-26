@@ -533,11 +533,20 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 	wg.Wait()
 	es := time.Now().UnixNano() / 1000000
 	log.Infof("SyncMng.buildSyncData remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
-	finished := len(requestMap) == 0
-	for _, syncReq := range requestMap {
-		if syncReq.SyncReady {
-			finished = true
-			break
+	finished := true
+	if req.isFullSync {
+		for _, syncReq := range requestMap {
+			if syncReq.SyncReady == false {
+				finished = false
+			}
+		}
+	} else {
+		finished = len(requestMap) == 0
+		for _, syncReq := range requestMap {
+			if syncReq.SyncReady {
+				finished = true
+				break
+			}
 		}
 	}
 	if finished {
