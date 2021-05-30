@@ -122,7 +122,7 @@ func (tl *TimeLineRepo) setDefault(key string) {
 	slot := tl.getSlot(key)
 	if _, ok := tl.buks[slot].Load(key); !ok {
 		tls := feedstypes.NewEvTimeLines(tl.tlSize, tl.tlLimit)
-		tl.buks[slot].Store(key, tls)
+		tl.buks[slot].LoadOrStore(key, tls)
 	}
 }
 

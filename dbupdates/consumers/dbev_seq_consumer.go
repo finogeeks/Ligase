@@ -74,7 +74,7 @@ func (c *DBEventSeqConsumer) startWorker(msgChan chan dbupdatetypes.DBEventDataI
 				}
 				inputSeq = append(inputSeq, input)
 				lastKey = input.Event.Key
-				if len(inputSeq) >= 30 || c.batchKeys == nil || !c.batchKeys[input.Event.Key] {
+				if len(inputSeq) >= 300 || c.batchKeys == nil || !c.batchKeys[input.Event.Key] {
 					c.processInputs(ctx, inputSeq)
 					inputSeq = inputSeq[:0]
 					timer.Reset(duration)

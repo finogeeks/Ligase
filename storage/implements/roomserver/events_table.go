@@ -22,7 +22,6 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/model/dbtypes"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -349,14 +348,14 @@ func (s *eventStatements) insertEventRaw(
 	if err != nil {
 		return err
 	}
-	if depth > 1 {
-		var lastEventNID int64
-		var lastEventID string
-		err = s.selectRoomEventByDepthStmt.QueryRowContext(ctx, roomNID, depth-1).Scan(&lastEventNID, &lastEventID)
-		if err != nil || lastEventNID == 0 {
-			log.Errorf("EventLoss roomNid: %d, depth: %d, nextEventID: %s", roomNID, depth-1, eventID)
-		}
-	}
+	// if depth > 1 {
+	// 	var lastEventNID int64
+	// 	var lastEventID string
+	// 	err = s.selectRoomEventByDepthStmt.QueryRowContext(ctx, roomNID, depth-1).Scan(&lastEventNID, &lastEventID)
+	// 	if err != nil || lastEventNID == 0 {
+	// 		log.Errorf("EventLoss roomNid: %d, depth: %d, nextEventID: %s", roomNID, depth-1, eventID)
+	// 	}
+	// }
 
 	return nil
 }

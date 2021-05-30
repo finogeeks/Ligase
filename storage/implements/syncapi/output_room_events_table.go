@@ -541,14 +541,14 @@ func (s *outputRoomEventsStatements) insertEventRaw(
 		return err
 	}
 
-	if depth > 1 {
-		var eventID string
-		var offset int64
-		err = s.selectSyncEventByDepthStmt.QueryRowContext(ctx, roomId, depth-1).Scan(&eventID, &offset)
-		if err != nil || offset == 0 {
-			log.Errorf("EventLoss syncapi roomID: %s, depth: %d, nextEventID: %s", roomId, depth-1, eventID)
-		}
-	}
+	// if depth > 1 {
+	// 	var eventID string
+	// 	var offset int64
+	// 	err = s.selectSyncEventByDepthStmt.QueryRowContext(ctx, roomId, depth-1).Scan(&eventID, &offset)
+	// 	if err != nil || offset == 0 {
+	// 		log.Errorf("EventLoss syncapi roomID: %s, depth: %d, nextEventID: %s", roomId, depth-1, eventID)
+	// 	}
+	// }
 	return nil
 }
 
