@@ -258,9 +258,9 @@ func (d *Database) OnUpdateRoomAttribute(
 }
 
 func (d *Database) OnIncrementJoinedMembersInRoom(
-	ctx context.Context, roomID string,
+	ctx context.Context, roomID string, n int,
 ) error {
-	return d.statements.onIncrementJoinedMembersInRoom(ctx, roomID)
+	return d.statements.onIncrementJoinedMembersInRoom(ctx, roomID, n)
 }
 
 func (d *Database) OnDecrementJoinedMembersInRoom(

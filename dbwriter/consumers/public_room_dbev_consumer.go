@@ -21,10 +21,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/storage/model"
 	"io"
 	"os"
 	"strings"
@@ -32,8 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/storage/model"
+
 	"github.com/finogeeks/ligase/model/dbtypes"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -66,7 +67,7 @@ func (s *PublicRoomDBEVConsumer) startWorker(msgChan chan *dbtypes.DBEvent) erro
 		case dbtypes.PublicRoomUpdateKey:
 			res = s.onUpdateRoomAttribute(context.TODO(), data.PublicRoomUpdate)
 		case dbtypes.PublicRoomIncrementJoinedKey:
-			res = s.onIncrementJoinedMembersInRoom(context.TODO(), data.PublicRoomJoined)
+			res = s.onIncrementJoinedMembersInRoom(context.TODO(), data.PublicRoomJoined, 1)
 		case dbtypes.PublicRoomDecrementJoinedKey:
 			res = s.onDecrementJoinedMembersInRoom(context.TODO(), data.PublicRoomJoined)
 		default:
@@ -181,9 +182,9 @@ func (s *PublicRoomDBEVConsumer) onUpdateRoomAttribute(
 }
 
 func (s *PublicRoomDBEVConsumer) onIncrementJoinedMembersInRoom(
-	ctx context.Context, roomID *string,
+	ctx context.Context, roomID *string, n int,
 ) error {
-	return s.db.OnIncrementJoinedMembersInRoom(ctx, *roomID)
+	return s.db.OnIncrementJoinedMembersInRoom(ctx, *roomID, n)
 }
 
 func (s *PublicRoomDBEVConsumer) onDecrementJoinedMembersInRoom(

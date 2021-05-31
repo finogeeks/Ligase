@@ -46,6 +46,7 @@ func (p *DBRoomserverRoomsProcessor) Start() {
 func (p *DBRoomserverRoomsProcessor) BatchKeys() map[int64]bool {
 	return map[int64]bool{
 		dbtypes.EventRoomInsertKey: true,
+		dbtypes.EventRoomUpdateKey: true,
 	}
 }
 
@@ -114,8 +115,18 @@ func (p *DBRoomserverRoomsProcessor) processInsert(ctx context.Context, inputs [
 }
 
 func (p *DBRoomserverRoomsProcessor) processUpdate(ctx context.Context, inputs []dbupdatetypes.DBEventDataInput) error {
+	cache := map[int64]*dbtypes.EventRoomUpdate{}
 	for _, v := range inputs {
 		msg := v.Event.RoomDBEvents.EventRoomUpdate
+		if v, ok := cache[msg.RoomNid]; ok {
+			if v.Version < msg.Version {
+				cache[msg.RoomNid] = msg
+			}
+		} else {
+			cache[msg.RoomNid] = msg
+		}
+	}
+	for _, msg := range cache {
 		err := p.db.UpdateLatestEventNIDs(ctx, msg.RoomNid,
 			msg.LatestEventNids,
 			msg.LastEventSentNid,

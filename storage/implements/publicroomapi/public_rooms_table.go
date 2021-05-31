@@ -78,7 +78,7 @@ const insertNewRoomSQL = "" +
 
 const incrementJoinedMembersInRoomSQL = "" +
 	"UPDATE publicroomsapi_public_rooms" +
-	" SET joined_members = joined_members + 1" +
+	" SET joined_members = joined_members + $2" +
 	" WHERE room_id = $1"
 
 const decrementJoinedMembersInRoomSQL = "" +
@@ -246,13 +246,13 @@ func (s *publicRoomsStatements) incrementJoinedMembersInRoom(
 		return s.db.WriteDBEventWithTbl(&update, "publicroomsapi_public_rooms")
 	}
 
-	return s.onIncrementJoinedMembersInRoom(ctx, roomID)
+	return s.onIncrementJoinedMembersInRoom(ctx, roomID, 1)
 }
 
 func (s *publicRoomsStatements) onIncrementJoinedMembersInRoom(
-	ctx context.Context, roomID string,
+	ctx context.Context, roomID string, n int,
 ) error {
-	_, err := s.incrementJoinedMembersInRoomStmt.ExecContext(ctx, roomID)
+	_, err := s.incrementJoinedMembersInRoomStmt.ExecContext(ctx, roomID, n)
 	return err
 }
 

@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/dbupdates/dbregistry"
 	"github.com/finogeeks/ligase/dbupdates/dbupdatetypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
-	"github.com/finogeeks/ligase/storage/model"
-	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/storage/model"
 )
 
 func init() {
@@ -39,6 +39,12 @@ func (p *DBPublicroomapiPublicRoomsProcessor) Start() {
 		log.Panicf("failed to connect to publicroomapi db")
 	}
 	p.db = db.(model.PublicRoomAPIDatabase)
+}
+
+func (p *DBPublicroomapiPublicRoomsProcessor) BatchKeys() map[int64]bool {
+	return map[int64]bool{
+		dbtypes.PublicRoomIncrementJoinedKey: true,
+	}
 }
 
 func (p *DBPublicroomapiPublicRoomsProcessor) Process(ctx context.Context, inputs []dbupdatetypes.DBEventDataInput) error {
@@ -87,9 +93,14 @@ func (p *DBPublicroomapiPublicRoomsProcessor) processUpdate(ctx context.Context,
 }
 
 func (p *DBPublicroomapiPublicRoomsProcessor) processIncJoined(ctx context.Context, inputs []dbupdatetypes.DBEventDataInput) error {
+	cache := map[string]int{}
 	for _, v := range inputs {
 		roomID := *v.Event.PublicRoomDBEvents.PublicRoomJoined
-		err := p.db.OnIncrementJoinedMembersInRoom(ctx, roomID)
+		cache[roomID] = cache[roomID] + 1
+	}
+
+	for roomID, n := range cache {
+		err := p.db.OnIncrementJoinedMembersInRoom(ctx, roomID, n)
 		if err != nil {
 			log.Error(p.name, "inc joined err", err, roomID)
 		}

@@ -2,6 +2,7 @@ package processors
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -33,6 +34,12 @@ func NewDBRoomserverRoomDomainsProcessor(
 	return p
 }
 
+func (p *DBRoomserverRoomDomainsProcessor) BatchKeys() map[int64]bool {
+	return map[int64]bool{
+		dbtypes.RoomDomainInsertKey: true,
+	}
+}
+
 func (p *DBRoomserverRoomDomainsProcessor) Start() {
 	db, err := common.GetDBInstance("roomserver", p.cfg)
 	if err != nil {
@@ -57,11 +64,22 @@ func (p *DBRoomserverRoomDomainsProcessor) Process(ctx context.Context, inputs [
 }
 
 func (p *DBRoomserverRoomDomainsProcessor) processInsert(ctx context.Context, inputs []dbupdatetypes.DBEventDataInput) error {
+	cache := map[string]*dbtypes.RoomDomainInsert{}
 	for _, v := range inputs {
 		msg := v.Event.RoomDBEvents.RoomDomainInsert
-		err := p.db.RoomDomainsInsertRaw(ctx, msg.RoomNid, msg.Domain, msg.Offset)
+		key := strconv.FormatInt(msg.RoomNid, 10) + "_" + msg.Domain
+		if v, ok := cache[key]; ok {
+			if v.Offset < msg.Offset {
+				cache[key] = msg
+			}
+		} else {
+			cache[key] = msg
+		}
+	}
+	for _, v := range cache {
+		err := p.db.RoomDomainsInsertRaw(ctx, v.RoomNid, v.Domain, v.Offset)
 		if err != nil {
-			log.Error(p.name, "insert err", err, msg.RoomNid, msg.Domain, msg.Offset)
+			log.Error(p.name, "insert err", err, v.RoomNid, v.Domain, v.Offset)
 		}
 	}
 	return nil

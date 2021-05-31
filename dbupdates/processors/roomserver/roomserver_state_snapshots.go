@@ -33,6 +33,12 @@ func NewDBRoomserverStateSanpshotsProcessor(
 	return p
 }
 
+func (p *DBRoomserverStateSanpshotsProcessor) BatchKeys() map[int64]bool {
+	return map[int64]bool{
+		dbtypes.EventStateSnapInsertKey: true,
+	}
+}
+
 func (p *DBRoomserverStateSanpshotsProcessor) Start() {
 	db, err := common.GetDBInstance("roomserver", p.cfg)
 	if err != nil {
