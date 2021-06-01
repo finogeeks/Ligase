@@ -881,6 +881,14 @@ func (res *PutLRURoomResponse) Decode(input []byte) error {
 	return json.Unmarshal(input, res)
 }
 
+func (res *GetLRUSendToDeviceResponse) Decode(input []byte) error {
+	return json.Unmarshal(input, res)
+}
+
+func (res *PutLRUSendToDeviceResponse) Decode(input []byte) error {
+	return json.Unmarshal(input, res)
+}
+
 func (res *GetPushersResponse) Decode(input []byte) error {
 	msg, err := capn.Unmarshal(input)
 	if err != nil {
