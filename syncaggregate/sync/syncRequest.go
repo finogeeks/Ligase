@@ -431,7 +431,7 @@ func (sm *SyncMng) OnSyncRequest(
 			if sm.cfg.UseEncrypt {
 				if common.IsActualDevice(device.DeviceType) {
 					sm.addKeyChangeInfo(request, res)
-					//sm.addSendToDevice(request, res)
+					sm.addSendToDevice(request, res)
 					sm.addOneTimeKeyCountInfo(request, res)
 				} else {
 					res.SignNum = common.DefaultKeyCount()
