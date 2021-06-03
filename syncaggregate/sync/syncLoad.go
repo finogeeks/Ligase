@@ -205,9 +205,11 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 				if ok := sm.clientDataStreamRepo.CheckLoadReady(user, false); !ok {
 					loaded = false
 				}
+				/*
 				if ok := sm.stdEventStreamRepo.CheckLoadReady(user, req.device.ID, false); !ok {
 					loaded = false
 				}
+				*/
 				if ok := sm.presenceStreamRepo.CheckLoadReady(user, false); !ok {
 					loaded = false
 				}
