@@ -1653,6 +1653,14 @@ func (externalReq *PutLRURoomRequest) Encode() ([]byte, error) {
 	return json.Marshal(externalReq)
 }
 
+func (externalReq *GetLRUSendToDeviceRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}
+
+func (externalReq *PutLRUSendToDeviceRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}
+
 func (externalReq *PutRoomUserTypingRequest) Encode() ([]byte, error) {
 	msg, seg, err := capn.NewMessage(capn.SingleSegment(nil))
 	if err != nil {

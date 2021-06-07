@@ -26,6 +26,17 @@ type GetLRURoomsResponse struct {
 	Server string `json:"server"`
 }
 
+//  GET /_matrix/client/r0/lru/syncaggregate/sendtodevice
+type GetLRUSendToDeviceRequest struct {
+	Timestamp string `json:"timestamp"`
+}
+
+type GetLRUSendToDeviceResponse struct {
+	Loaded int    `json:"loaded"`
+	Max    int    `json:"max"`
+	Server string `json:"server"`
+}
+
 //  PUT /_matrix/client/r0/lru/syncwriter/room
 type PutLRURoomRequest struct {
 	RoomID string `json:"roomId"`
@@ -33,4 +44,15 @@ type PutLRURoomRequest struct {
 
 type PutLRURoomResponse struct {
 	RoomID string `json:"roomId"`
+}
+
+//  PUT /_matrix/client/r0/lru/syncaggregate/sendtodevice
+type PutLRUSendToDeviceRequest struct {
+	UserID string `json:"userId"`
+	DeviceID string `json:"deviceId"`
+}
+
+type PutLRUSendToDeviceResponse struct {
+	UserID string `json:"userId"`
+	DeviceID string `json:"deviceId"`
 }
