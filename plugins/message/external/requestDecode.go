@@ -1804,6 +1804,14 @@ func (externalReq *PutLRURoomRequest) Decode(input []byte) error {
 	return json.Unmarshal(input, externalReq)
 }
 
+func (externalReq *GetLRUSendToDeviceRequest) Decode(input []byte) error {
+	return json.Unmarshal(input, externalReq)
+}
+
+func (externalReq *PutLRUSendToDeviceRequest) Decode(input []byte) error {
+	return json.Unmarshal(input, externalReq)
+}
+
 func (externalReq *PutRoomUserTypingRequest) Decode(input []byte) error {
 	msg, err := capn.Unmarshal(input)
 	if err != nil {

@@ -68,6 +68,10 @@ func NewSTDEventStreamRepo(
 	return tls
 }
 
+func (tl *STDEventStreamRepo) GetLoadedNumber() (int, int) {
+	return tl.repo.GetKeyNumbers()
+}
+
 func (tl *STDEventStreamRepo) startFlush() error {
 	go func() {
 		t := time.NewTimer(time.Millisecond * time.Duration(tl.delay))
