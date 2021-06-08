@@ -21,9 +21,14 @@ type GetLRURoomsRequest struct {
 }
 
 type GetLRURoomsResponse struct {
-	Loaded int    `json:"loaded"`
-	Max    int    `json:"max"`
-	Server string `json:"server"`
+	LoadedRoomCurrentState    int    `json:"loadedRoomCurrentState"`
+	LoadedRoomStateTimeline   int    `json:"loadedRoomStateTimeline"`
+	LoadedRoomHistoryTimeline int    `json:"loadedRoomHistoryTimeline"`
+	LoadedRoomLatestOffset    int    `json:"loadedRoomLatestOffset"`
+	LoadedRoomMinStream       int    `json:"loadedRoomMinStream"`
+	LoadedRoomDomainMaxOffset int    `json:"loadedRoomDomainMaxOffset"`
+	MaxEntries                int    `json:"maxEntries"`
+	Server                    string `json:"server"`
 }
 
 //  GET /_matrix/client/r0/lru/syncaggregate/sendtodevice
@@ -48,11 +53,11 @@ type PutLRURoomResponse struct {
 
 //  PUT /_matrix/client/r0/lru/syncaggregate/sendtodevice
 type PutLRUSendToDeviceRequest struct {
-	UserID string `json:"userId"`
+	UserID   string `json:"userId"`
 	DeviceID string `json:"deviceId"`
 }
 
 type PutLRUSendToDeviceResponse struct {
-	UserID string `json:"userId"`
+	UserID   string `json:"userId"`
 	DeviceID string `json:"deviceId"`
 }
