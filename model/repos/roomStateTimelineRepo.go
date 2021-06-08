@@ -46,7 +46,7 @@ type RoomStateTimeLineRepo struct {
 }
 
 type RoomStateLoadedData struct {
-	Timeline int
+	Timeline   int
 	MaxEntries int
 }
 
@@ -66,12 +66,12 @@ func NewRoomStateTimeLineRepo(
 }
 
 func (tl *RoomStateTimeLineRepo) GetLoadedData() *RoomStateLoadedData {
-	data := RoomStateLoadedData {
-		Timeline: 0,
+	data := RoomStateLoadedData{
+		Timeline:   0,
 		MaxEntries: 0,
 	}
 
-	data.Timeline, data.MaxEntries = tl.repo.GetKeyNumbers()
+	data.Timeline, data.MaxEntries = tl.streamRepo.GetKeyNumbers()
 	return &data
 }
 
