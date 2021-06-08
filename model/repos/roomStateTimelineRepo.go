@@ -45,6 +45,11 @@ type RoomStateTimeLineRepo struct {
 	QueryHitCounter mon.LabeledCounter
 }
 
+type RoomStateLoadedData struct {
+	Timeline int
+	MaxEntries int
+}
+
 //room state time line 不限制大小
 func NewRoomStateTimeLineRepo(
 	bukSize int,
@@ -58,6 +63,16 @@ func NewRoomStateTimeLineRepo(
 	tls.rsRepo = rsRepo
 
 	return tls
+}
+
+func (tl *RoomStateTimeLineRepo) GetLoadedData() *RoomStateLoadedData {
+	data := RoomStateLoadedData {
+		Timeline: 0,
+		MaxEntries: 0,
+	}
+
+	data.Timeline, data.MaxEntries = tl.repo.GetKeyNumbers()
+	return &data
 }
 
 func (tl *RoomStateTimeLineRepo) SetPersist(db model.SyncAPIDatabase) {

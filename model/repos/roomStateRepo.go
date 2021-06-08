@@ -696,6 +696,22 @@ type RoomCurStateRepo struct {
 	persist   model.SyncAPIDatabase
 }
 
+type RoomCurStateLoadedData struct {
+	Rooms int
+}
+
+func (tl *RoomCurStateRepo) GetLoadedData() *RoomCurStateLoadedData {
+	data := RoomCurStateLoadedData{
+		Rooms: 0,
+	}
+	tl.roomState.Range(func(key interface{}, value interface{}) bool {
+		data.Rooms++
+		return true
+	})
+
+	return &data
+}
+
 func (tl *RoomCurStateRepo) SetPersist(db model.SyncAPIDatabase) {
 	tl.persist = db
 }

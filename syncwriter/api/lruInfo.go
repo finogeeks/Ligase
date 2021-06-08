@@ -64,12 +64,19 @@ func (ReqGetLRURooms) Process(consumer interface{}, msg core.Coder, device *auth
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 
-	loaded, max := c.rmHsTimeline.GetLoadedRoomNumber()
+	hsTimeline := c.rmHsTimeline.GetLoadedData()
+	rsTimeline := c.rsTimeline.GetLoadedData()
+	rsCurState := c.rsCurState.GetLoadedData()
 
 	return http.StatusOK, &external.GetLRURoomsResponse{
-		Loaded: loaded,
-		Max:    max,
-		Server: fmt.Sprintf("%s%d", os.Getenv("SERVICE_NAME"), c.Cfg.MultiInstance.Instance),
+		LoadedRoomCurrentState:    rsCurState.Rooms,
+		LoadedRoomStateTimeline:   rsTimeline.Timeline,
+		LoadedRoomHistoryTimeline: hsTimeline.Timeline,
+		LoadedRoomLatestOffset:    hsTimeline.Latest,
+		LoadedRoomMinStream:       hsTimeline.MinStream,
+		LoadedRoomDomainMaxOffset: hsTimeline.DomainMaxOffset,
+		MaxEntries:                hsTimeline.MaxEntries,
+		Server:                    fmt.Sprintf("%s%d", os.Getenv("SERVICE_NAME"), c.Cfg.MultiInstance.Instance),
 	}
 }
 
