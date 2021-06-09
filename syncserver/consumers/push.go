@@ -178,9 +178,13 @@ func (s *PushConsumer) PrintStaticData(static *push.StaticObj) {
 }
 
 func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj, result chan types.TimeLineItem) {
+	log.Debugw("Trace timestamp, PushConsumer.OnEvent, begin", log.KeysAndValues{
+		"timestamp", time.Now().UnixNano()/1000000, "roomID", input.RoomID, "eventID", input.EventID, "eventOffset", input.EventOffset})
 	static.ChanStart = time.Now().UnixNano() / 1000
 	static.ChanSpend = static.ChanStart - static.Start
 	defer func() {
+		log.Debugw("Trace timestamp, PushConsumer.OnEvent, end", log.KeysAndValues{
+			"timestamp", time.Now().UnixNano()/1000000, "roomID", input.RoomID, "eventID", input.EventID, "eventOffset", input.EventOffset})
 		result <- types.TimeLineItem{
 			TraceId: static.TraceId,
 			Start:   static.Start,
