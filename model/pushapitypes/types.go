@@ -18,7 +18,7 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -346,8 +346,8 @@ type PushPubContents struct {
 	RoomAlias         string                         `json:"roomAlias,omitempty"`
 	Contents          []*PushPubContent              `json:"contents,omitempty"`
 	CreateContent     *interface{}                   `json:"create_content"`
-	Slot 			  uint32						 `json:"slot"`
-	TraceId 		  string						 `json:"trace_id"`
+	Slot              uint32                         `json:"slot"`
+	TraceId           string                         `json:"trace_id"`
 }
 
 type PushPubContent struct {
@@ -375,7 +375,7 @@ type RoomReceipt struct {
 	RoomID   string
 	EvID     string
 	EvOffSet int64
-	Content  *sync.Map	//key:user, value: ts
+	Content  *sync.Map //key:user, value: ts
 }
 
 type PusherUsers struct {
@@ -404,78 +404,86 @@ func (p *PushersRes) Decode(input []byte) error {
 }
 
 type StaticPercent struct {
-	Chan 			string 		`json:"chan"`
-	Rpc	    		string 		`json:"rpc"`
-	RuleHandle 		string 		`json:"rule_handle"`
-	RuleCache 		string   	`json:"rule_cache"`
-	SenderCache     string      `json:"send_cache"`
+	Chan        string `json:"chan"`
+	Rpc         string `json:"rpc"`
+	RuleHandle  string `json:"rule_handle"`
+	RuleCache   string `json:"rule_cache"`
+	SenderCache string `json:"send_cache"`
 }
 
 type StaticAvg struct {
-	AvgMemSpend    	int64  	`json:"avg_mem_spend"`
-	AvgRuleSpend   	int64 	`json:"avg_rule_spend"`
-	AvgUnreadSpend 	int64 	`json:"avg_unread_spend"`
-	AvgProfileSpend int64   `json:"avg_profile_spend"`
-	AvgPushCacheSpend int64 `json:"avg_push_cache_spend"`
+	AvgMemSpend            int64 `json:"avg_mem_spend"`
+	AvgRuleSpend           int64 `json:"avg_rule_spend"`
+	AvgUnreadSpend         int64 `json:"avg_unread_spend"`
+	AvgProfileSpend        int64 `json:"avg_profile_spend"`
+	AvgPushCacheSpend      int64 `json:"avg_push_cache_spend"`
+	AvgReadUnreadSpend     int64 `json:"avg_read_unread_spend"`
+	AvgCheckConditionSpend int64 `json:"avg_check_condition_spend"`
+	AvgGlobalMatchSpend    int64 `json:"avg_global_match_spend"`
 }
 
 type StaticObj struct {
-	TraceId			string		`json:"traceid"`
-	TotalSpend		int64 		`json:"total_spend"`
-	MemSpend    	int64 		`json:"mem_spend"`
-	MemAllSpend 	int64 		`json:"mem_all_spend"`
-	RuleSpend   	int64 		`json:"rule_spend"`
-	RuleCount   	int64 		`json:"rule_count"`
-	MemCount 		int 		`json:"mem_count"`
-	RoomID 			string 		`json:"room_id"`
-	EventID 		string 		`json:"event_id"`
-	Type 			string 		`json:"type"`
-	Start  			int64 		`json:"start"`
-	UnreadSpend 	int64 		`json:"unread_spend"`
-	PushCacheSpend  int64 		`json:"push_cache_spend"`
-	ChanSpend   	int64 		`json:"chan_spend"`
-	ChanStart   	int64 		`json:"chan_start"`
-	NoneMemSpend 	int64 		`json:"none_mem_spend"`
-	PusherCount    	int64 	`json:"pusher_count"`
-	PushRuleCount  	int64 	`json:"pushrule_count"`
-	ProfileSpend    int64 	`json:"profile_spend"`
-	ProfileCount 	int64 	`json:"profile_count"`
-	SenderCache  	int64   `json:"sender_cache"`
-	MemCache 		int64   `json:"mem_cache"`
-	MemRule   		int64   `json:"mem_rule"`
-	Avg 			StaticAvg `json:"avg"`
-	Percent			StaticPercent `json:"percent"`
+	TraceId             string        `json:"traceid"`
+	TotalSpend          int64         `json:"total_spend"`
+	MemSpend            int64         `json:"mem_spend"`
+	MemAllSpend         int64         `json:"mem_all_spend"`
+	RuleSpend           int64         `json:"rule_spend"`
+	RuleCount           int64         `json:"rule_count"`
+	EffectedRuleCount   int64         `json:"effected_rule_count"`
+	CheckConditionSpend int64         `json:"check_condition_spend"`
+	GlobalMatchCount    int64         `json:"global_match_count"`
+	GlobalMatchSpend    int64         `json:"global_match_spend"`
+	MemCount            int           `json:"mem_count"`
+	RoomID              string        `json:"room_id"`
+	EventID             string        `json:"event_id"`
+	Type                string        `json:"type"`
+	Start               int64         `json:"start"`
+	UnreadSpend         int64         `json:"unread_spend"`
+	ReadUnreadSpend     int64         `json:"read_unread_spend"`
+	PushCacheSpend      int64         `json:"push_cache_spend"`
+	ChanSpend           int64         `json:"chan_spend"`
+	ChanStart           int64         `json:"chan_start"`
+	NoneMemSpend        int64         `json:"none_mem_spend"`
+	PusherCount         int64         `json:"pusher_count"`
+	PushRuleCount       int64         `json:"pushrule_count"`
+	ProfileSpend        int64         `json:"profile_spend"`
+	ProfileCount        int64         `json:"profile_count"`
+	SenderCache         int64         `json:"sender_cache"`
+	MemCache            int64         `json:"mem_cache"`
+	MemRule             int64         `json:"mem_rule"`
+	Avg                 StaticAvg     `json:"avg"`
+	Percent             StaticPercent `json:"percent"`
 }
 
 //load push relate data
 type PushDataRequest struct {
-	Payload 	jsoniter.RawMessage		`json:"payload"`
-	ReqType 	string 					`json:"reqType"`
-	Slot 		uint32 					`json:"slot"`
-	Reply       string
+	Payload jsoniter.RawMessage `json:"payload"`
+	ReqType string              `json:"reqType"`
+	Slot    uint32              `json:"slot"`
+	Reply   string
 }
 
 type ReqPushUser struct {
-	UserID 		string 		`json:"user_id"`
-	DeviceID 	string 		`json:"device_id"`
+	UserID   string `json:"user_id"`
+	DeviceID string `json:"device_id"`
 }
 
 type ReqPushUsers struct {
-	Users 		[]string 	`json:"users"`
-	Slot 		uint32 		`json:"slot"`
+	Users []string `json:"users"`
+	Slot  uint32   `json:"slot"`
 }
 
 type RespPushData struct {
-	Pushers 	Pushers  	`json:"pushers"`
-	Rules		Rules 		`json:"rules"`
+	Pushers Pushers `json:"pushers"`
+	Rules   Rules   `json:"rules"`
 }
 
 type RespPushUsersData struct {
-	Data 		map[string]RespPushData `json:"data"`
+	Data map[string]RespPushData `json:"data"`
 }
 
 type RespUsersPusher struct {
-	Data 		map[string][]Pusher  	`json:"data"`
+	Data map[string][]Pusher `json:"data"`
 }
 
 type RpcResponse struct {

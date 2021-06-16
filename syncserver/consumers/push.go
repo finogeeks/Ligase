@@ -161,10 +161,19 @@ func (s *PushConsumer) PrintStaticData(static *push.StaticObj) {
 	if static.PushRuleCount <= 0 {
 		static.PushRuleCount = 1
 	}
+	if static.EffectedRuleCount <= 0 {
+		static.EffectedRuleCount = 1
+	}
+	if static.GlobalMatchCount <= 0 {
+		static.GlobalMatchCount = 1
+	}
 	static.TotalSpend = time.Now().UnixNano()/1000 - static.Start
 	static.Avg.AvgMemSpend = static.MemAllSpend / int64(static.MemCount)
 	static.Avg.AvgRuleSpend = static.RuleSpend / static.RuleCount
-	static.Avg.AvgUnreadSpend = static.UnreadSpend / int64(static.MemCount)
+	static.Avg.AvgCheckConditionSpend = static.CheckConditionSpend / int64(static.RuleCount)
+	static.Avg.AvgReadUnreadSpend = static.ReadUnreadSpend / int64(static.EffectedRuleCount)
+	static.Avg.AvgUnreadSpend = static.UnreadSpend / int64(static.EffectedRuleCount)
+	static.Avg.AvgGlobalMatchSpend = static.GlobalMatchSpend / int64(static.GlobalMatchCount)
 	static.Avg.AvgProfileSpend = static.ProfileSpend / static.ProfileCount
 	static.Avg.AvgPushCacheSpend = static.PushCacheSpend / (static.PusherCount + static.PushRuleCount)
 	static.Percent.Rpc = fmt.Sprintf("%.2f", float64(static.NoneMemSpend)/float64(static.TotalSpend)*100) + "%"
@@ -594,7 +603,8 @@ func (s *PushConsumer) processPush(
 			continue
 		}
 		atomic.AddInt64(&static.RuleCount, 1)
-		if s.checkCondition(&v.Conditions, userID, memCount, eventJson) {
+		if s.checkCondition(&v.Conditions, userID, memCount, eventJson, static) {
+			atomic.AddInt64(&static.EffectedRuleCount, 1)
 			log.Infof("roomID:%s eventID:%s userID:%s match rule:%s", input.RoomID, input.EventID, *userID, v.RuleId)
 			action := s.getActions(v.Actions)
 
@@ -618,7 +628,9 @@ func (s *PushConsumer) processPush(
 				atomic.AddInt64(&static.UnreadSpend, sp)
 			}
 
+			rcss := time.Now().UnixNano() / 1000
 			count, _ := s.countRepo.GetRoomReadCount(input.RoomID, *userID)
+			atomic.AddInt64(&static.ReadUnreadSpend, time.Now().UnixNano()/1000 - rcss)
 
 			if action.HighLight {
 				if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
@@ -649,10 +661,16 @@ func (s *PushConsumer) checkCondition(
 	userID *string,
 	memCount int,
 	eventJSON *[]byte,
+	static *push.StaticObj,
 ) bool {
+	bs := time.Now().UnixNano() / 1000
+	defer func(bs int64) {
+		spend := time.Now().UnixNano()/1000 - bs
+		atomic.AddInt64(&static.CheckConditionSpend, spend)
+	}(bs)
 	if len(*conditions) > 0 {
 		for _, v := range *conditions {
-			match := s.isMatch(&v, userID, memCount, eventJSON)
+			match := s.isMatch(&v, userID, memCount, eventJSON, static)
 			if !match {
 				return false
 			}
@@ -667,10 +685,11 @@ func (s *PushConsumer) isMatch(
 	userID *string,
 	memCount int,
 	eventJSON *[]byte,
+	static *push.StaticObj,
 ) bool {
 	switch condition.Kind {
 	case "event_match":
-		return s.eventMatch(condition, userID, eventJSON)
+		return s.eventMatch(condition, userID, eventJSON, static)
 	case "room_member_count":
 		return s.roomMemberCount(condition, memCount)
 	case "signal":
@@ -703,6 +722,7 @@ func (s *PushConsumer) eventMatch(
 	condition *push.PushCondition,
 	userID *string,
 	eventJSON *[]byte,
+	static *push.StaticObj,
 ) bool {
 	var pattern *string
 	var context string
@@ -739,12 +759,13 @@ func (s *PushConsumer) eventMatch(
 		context = value.String()
 	}
 
-	return s.globalMatch(pattern, &context, wordBoundary)
+	return s.globalMatch(pattern, &context, wordBoundary, static)
 }
 
 func (s *PushConsumer) containsDisplayName(
 	displayName *string,
 	eventJSON *[]byte,
+	static *push.StaticObj,
 ) bool {
 	if displayName == nil {
 		return false
@@ -761,14 +782,21 @@ func (s *PushConsumer) containsDisplayName(
 	}
 	valueStr := value.String()
 
-	return s.globalMatch(displayName, &valueStr, true)
+	return s.globalMatch(displayName, &valueStr, true, static)
 }
 
 func (s *PushConsumer) globalMatch(
 	global,
 	req *string,
 	wordBoundary bool,
+	static *push.StaticObj,
 ) bool {
+	atomic.AddInt64(&static.GlobalMatchCount, 1)
+	bs := time.Now().UnixNano() / 1000
+	defer func(bs int64) {
+		spend := time.Now().UnixNano()/1000 - bs
+		atomic.AddInt64(&static.GlobalMatchSpend, spend)
+	}(bs)
 	globalRegex := regexp.MustCompile(`\\\[(\\\!|)(.*)\\\]`)
 	isGlobal := regexp.MustCompile(`[\?\*\[\]]`)
 
