@@ -202,7 +202,7 @@ func (r ReqGetRoomMessages) Process(consumer interface{}, msg core.Coder, device
 			loadFromDB     = false
 			dbFromPos      = fromPos
 			dbFromTs       = fromTs
-			visibilityTime = c.settings.GetMessageVisilibityTime()
+			visibilityTime = c.GetCfg().Sync.Visibility
 			nowTs          = time.Now().Unix()
 
 			foundAll    = false // loaded all request event from cache
@@ -364,7 +364,7 @@ func (r ReqGetRoomMessages) selectFromDB(
 		return
 	}
 
-	visibilityTime := c.settings.GetMessageVisilibityTime()
+	visibilityTime := c.GetCfg().Sync.Visibility
 	nowTs := time.Now().Unix()
 
 	for idx := range events {

@@ -432,3 +432,4 @@ license: '{"organ_name":"community","expire_time":1627920000000,"total_users":10
 sync:
     rpc_timeout: 2000
     fullsync_rpc_timeout: 15000
+    visibility: 0

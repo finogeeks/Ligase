@@ -486,6 +486,7 @@ type Dendrite struct {
 	Sync struct {
 		RpcTimeout      int64 `yaml:"rpc_timeout"`
 		FullSyncTimeout int64 `yaml:"fullsync_rpc_timeout"`
+		Visibility      int64 `yaml:"visibility"`
 	} `yaml:"sync"`
 }
 
