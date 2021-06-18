@@ -135,6 +135,8 @@ type Fed struct {
 		CRLUrl         string `yaml:"crl_url"`
 		CertUrl        string `yaml:"cert_url"`
 	} `yaml:"notary_service"`
+
+	GcTimer int64 `yaml:"gc_timer"`
 }
 
 type ConnectorConf struct {
