@@ -20,10 +20,11 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"syscall"
+	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
@@ -45,6 +46,7 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	_ "github.com/finogeeks/ligase/plugins"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	_ "github.com/finogeeks/ligase/storage/implements"
 	"github.com/finogeeks/ligase/storage/model"
 )
@@ -73,6 +75,7 @@ func Entry() {
 	log.Infof("Server version:%s", VERSION)
 	log.Infof("-------------------------------------")
 
+	startGCDebugger(config.GetFedConfig().GcTimer)
 	startFedMonolith()
 
 	if httpBindAddr != nil && *httpBindAddr != "" {
@@ -334,5 +337,19 @@ func listenHTTP(bindAddr string) {
 	go func() {
 		log.Info("Start http listening on ", bindAddr)
 		log.Fatal(http.ListenAndServe(bindAddr, nil))
+	}()
+}
+
+func startGCDebugger(t int64) {
+	if t == 0 {
+		return
+	}
+	go func() {
+		log.Infof("start gc timer: %d", t)
+		for true {
+			time.Sleep(time.Duration(t) * time.Second)
+			log.Infof("call debug.FreeOSMemory()")
+			debug.FreeOSMemory()
+		}
 	}()
 }

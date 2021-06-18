@@ -482,10 +482,12 @@ type Dendrite struct {
 	CheckReceipt int64  `yaml:"check_receipt"`
 	OnlineSpec   string `yaml:"online_spec"`
 	OnlineDetail string `yaml:"online_detail_spec"`
+	GcTimer      int64  `yaml:"gc_timer"`
 
 	Sync struct {
 		RpcTimeout      int64 `yaml:"rpc_timeout"`
 		FullSyncTimeout int64 `yaml:"fullsync_rpc_timeout"`
+		Visibility      int64 `yaml:"visibility"`
 	} `yaml:"sync"`
 }
 

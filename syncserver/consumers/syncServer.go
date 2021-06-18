@@ -1004,7 +1004,7 @@ func (s *SyncServer) getJoinUsers(roomID string) []string {
 
 func (s *SyncServer) isSkipEv(opt *BuildRoomRespOpt, ev *gomatrixserverlib.ClientEvent, checkTs int64) bool {
 	skipEv := false
-	visibilityTime := s.settings.GetMessageVisilibityTime()
+	visibilityTime := s.cfg.Sync.Visibility
 	if visibilityTime > 0 {
 		if int64(ev.OriginServerTS)/1000+visibilityTime < checkTs {
 			log.Infof("SyncServer.buildRoomJoinResp skip traceid:%s event:%s, ts:%d", opt.TraceID, ev.EventID, ev.OriginServerTS)
@@ -1118,7 +1118,7 @@ func (s *SyncServer) buildRoomLeaveResp(req *syncapitypes.SyncServerRequest, roo
 	msgEvent = []gomatrixserverlib.ClientEvent{}
 	minStream := s.roomHistory.GetRoomMinStream(roomID)
 
-	visibilityTime := s.settings.GetMessageVisilibityTime()
+	visibilityTime := s.cfg.Sync.Visibility
 	nowTs := time.Now().Unix()
 
 	for i, feed := range feeds {

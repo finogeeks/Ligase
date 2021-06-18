@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -198,6 +199,8 @@ func Entry() {
 	log.Infof("Server version:%s", VERSION)
 	log.Infof("-------------------------------------")
 
+	startGCDebugger(cfg.GcTimer)
+
 	handleSignal()
 
 	if cmdLine.httpBindAddr == nil || *cmdLine.httpBindAddr == "" {
@@ -305,4 +308,18 @@ func startContentService(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 		downloadConsumer,
 		idg,
 	)
+}
+
+func startGCDebugger(t int64) {
+	if t == 0 {
+		return
+	}
+	go func() {
+		log.Infof("start gc timer: %d", t)
+		for true {
+			time.Sleep(time.Duration(t) * time.Second)
+			log.Infof("call debug.FreeOSMemory()")
+			debug.FreeOSMemory()
+		}
+	}()
 }

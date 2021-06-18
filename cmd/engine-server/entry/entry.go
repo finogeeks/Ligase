@@ -31,6 +31,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -424,6 +425,8 @@ func Entry() {
 		initPanicFile(cfg.Log.Files[0])
 	}
 
+	startGCDebugger(cfg.GcTimer)
+
 	handleSignal()
 	loadDefault(base, cmdLine)
 	decodeLicense(base.Cfg)
@@ -455,4 +458,18 @@ func Entry() {
 		panic(err)
 	}
 	select {}
+}
+
+func startGCDebugger(t int64) {
+	if t == 0 {
+		return
+	}
+	go func() {
+		log.Infof("start gc timer: %d", t)
+		for true {
+			time.Sleep(time.Duration(t) * time.Second)
+			log.Infof("call debug.FreeOSMemory()")
+			debug.FreeOSMemory()
+		}
+	}()
 }

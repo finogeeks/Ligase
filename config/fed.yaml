@@ -162,3 +162,5 @@ log:
 cache:
     durationDefault: 900
     durationRefresh: 900
+
+gc_timer: 0

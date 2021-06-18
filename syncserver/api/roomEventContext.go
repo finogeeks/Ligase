@@ -26,14 +26,14 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncserver/extra"
 )
 
@@ -119,7 +119,7 @@ func (ReqGetEventContext) Process(consumer interface{}, msg core.Coder, device *
 	fromTs := int64(baseEvent[0].OriginServerTS)
 	fromPos := offsets[0]
 
-	visibilityTime := c.settings.GetMessageVisilibityTime()
+	visibilityTime := c.GetCfg().Sync.Visibility
 	nowTs := time.Now().Unix()
 	if visibilityTime > 0 {
 		ts := int64(baseEvent[0].OriginServerTS) / 1000
@@ -191,7 +191,7 @@ func (source GetMessagesSource) getMessages(
 		log.Debugf("get context [%s dir] from cache, but out of range, get from db, endPos: %d", dir, endPos)
 	} else { // use cache
 		cacheLoaded := true
-		visibilityTime := source.c.settings.GetMessageVisilibityTime()
+		visibilityTime := source.c.GetCfg().Sync.Visibility
 		nowTs := time.Now().Unix()
 		if dir == "b" {
 			source.tl.RAtomic(func(data *feedstypes.TimeLinesAtomicData) {
@@ -347,7 +347,7 @@ func (source GetMessagesSource) getFromDB(
 		return outputRoomEvents, fromPos, fromTs, nil
 	}
 
-	visibilityTime := source.c.settings.GetMessageVisilibityTime()
+	visibilityTime := source.c.GetCfg().Sync.Visibility
 	nowTs := time.Now().Unix()
 	for i := range events {
 		if (dir == "b" && ((fromPos >= 0 && offsets[i] <= fromPos) || (fromPos < 0 && (offsets[i] > 0 || offsets[i] <= fromPos)))) || (dir == "f" && offsets[i] >= fromPos) {
