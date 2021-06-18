@@ -45,6 +45,14 @@ type RoomHistoryTimeLineRepo struct {
 	queryHitCounter mon.LabeledCounter
 }
 
+type RoomHistoryLoadedData struct {
+	Timeline        int
+	Latest          int
+	MinStream       int
+	DomainMaxOffset int
+	MaxEntries      int
+}
+
 func NewRoomHistoryTimeLineRepo(
 	bukSize,
 	maxEntries,
@@ -57,8 +65,29 @@ func NewRoomHistoryTimeLineRepo(
 	return tls
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetLoadedRoomNumber() (int, int) {
-	return tl.repo.GetKeyNumbers()
+func (tl *RoomHistoryTimeLineRepo) GetLoadedData() *RoomHistoryLoadedData {
+	data := RoomHistoryLoadedData{
+		Timeline:        0,
+		Latest:          0,
+		MinStream:       0,
+		DomainMaxOffset: 0,
+		MaxEntries:      0,
+	}
+
+	data.Timeline, data.MaxEntries = tl.repo.GetKeyNumbers()
+	tl.roomLatest.Range(func(key interface{}, value interface{}) bool {
+		data.Latest++
+		return true
+	})
+	tl.roomMinStream.Range(func(key interface{}, value interface{}) bool {
+		data.MinStream++
+		return true
+	})
+	tl.domainMaxOffset.Range(func(key interface{}, value interface{}) bool {
+		data.DomainMaxOffset++
+		return true
+	})
+	return &data
 }
 
 func (tl *RoomHistoryTimeLineRepo) SetPersist(db model.SyncAPIDatabase) {
@@ -256,7 +285,7 @@ func (tl *RoomHistoryTimeLineRepo) GetRoomLastOffset(roomID string) int64 {
 	return int64(-1)
 }
 
-func (tl *RoomHistoryTimeLineRepo) GetRoomMinStream(roomID string) int64 {
+func (tl *RoomHistoryTimeLineRepo) LoadRoomMinStream(roomID string) int64 {
 	if val, ok := tl.roomMinStream.Load(roomID); ok {
 		tl.queryHitCounter.WithLabelValues("cache", "RoomHistoryTimeLineRepo", "GetRoomMinStream").Add(1)
 		return val.(int64)
@@ -279,6 +308,10 @@ func (tl *RoomHistoryTimeLineRepo) GetRoomMinStream(roomID string) int64 {
 	tl.queryHitCounter.WithLabelValues("db", "RoomHistoryTimeLineRepo", "GetRoomMinStream").Add(1)
 
 	return pos
+}
+
+func (tl *RoomHistoryTimeLineRepo) GetRoomMinStream(roomID string) int64 {
+	return tl.LoadRoomMinStream(roomID)	
 }
 
 func (tl *RoomHistoryTimeLineRepo) SetRoomMinStream(roomID string, minStream int64) {
