@@ -796,13 +796,13 @@ func (s *PushConsumer) processCommonRule(
 	static *push.StaticObj,
 ) bool {
 	if !rule.Enabled {
-		log.Infof("roomID:%s eventID:%s userID:%s rule:%s is not enable", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
+		log.Debugf("roomID:%s eventID:%s userID:%s rule:%s is not enable", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
 		return false
 	}
 	atomic.AddInt64(&static.RuleCount, 1)
 	if s.checkCondition(&rule.Conditions, userID, memCount, eventJson, helperEvent, static) {
 		atomic.AddInt64(&static.EffectedRuleCount, 1)
-		log.Infof("roomID:%s eventID:%s userID:%s match rule:%s", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
+		log.Debugf("roomID:%s eventID:%s userID:%s match rule:%s", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
 		action := s.getActions(rule.Actions)
 		if action.HighLight && (helperEvent.Type == "m.room.message" || helperEvent.Type == "m.room.encrypted") {
 			s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase_hl")
