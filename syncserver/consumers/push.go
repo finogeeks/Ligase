@@ -36,6 +36,41 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+var (
+	globalRegex          = regexp.MustCompile(`\\\[(\\\!|)(.*)\\\]`)
+	isGlobal             = regexp.MustCompile(`[\?\*\[\]]`)
+	mRoomMemberRegex     = regexp.MustCompile(`^m\.room\.member$`)
+	inviteRegex          = regexp.MustCompile(`^invite$`)
+	mRoomMessageRegex    = regexp.MustCompile(`^m\.room\.message$`)
+	mRoomEncryptedRegex  = regexp.MustCompile(`^m\.room\.encrypted$`)
+	mModularVideoRegex   = regexp.MustCompile(`^m\.modular\.video$`)
+	mNoticeRegex         = regexp.MustCompile(`^m\.notice$`)
+	mAlertRegex          = regexp.MustCompile(`^m\.alert$`)
+	mCallInviteRegex     = regexp.MustCompile(`^m\.call\.invite$`)
+	roomMemberCountRegex = regexp.MustCompile("^([=<>]*)([0-9]*)$")
+)
+
+type HelperSignalContent struct {
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+	Type  string `json:"type"`
+	Val   string `json:"val"`
+}
+
+type HelperContent struct {
+	Body    string              `json:"body"`
+	MsgType string              `json:"msgtype"`
+	Signals HelperSignalContent `json:"signals"`
+}
+
+type HelperEvent struct {
+	Content HelperContent `json:"content,omitempty"`
+	EventID string        `json:"event_id,omitempty"`
+	RoomID  string        `json:"room_id,omitempty"`
+	Type    string        `json:"type,omitempty"`
+	Sender  string        `json:"sender,omitempty"`
+}
+
 type PushConsumer struct {
 	rpcClient    *common.RpcClient
 	cache        service.Cache
@@ -187,13 +222,9 @@ func (s *PushConsumer) PrintStaticData(static *push.StaticObj) {
 }
 
 func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj, result chan types.TimeLineItem) {
-	log.Debugw("Trace timestamp, PushConsumer.OnEvent, begin", log.KeysAndValues{
-		"timestamp", time.Now().UnixNano()/1000000, "roomID", input.RoomID, "eventID", input.EventID, "eventOffset", input.EventOffset})
 	static.ChanStart = time.Now().UnixNano() / 1000
 	static.ChanSpend = static.ChanStart - static.Start
 	defer func() {
-		log.Debugw("Trace timestamp, PushConsumer.OnEvent, end", log.KeysAndValues{
-			"timestamp", time.Now().UnixNano()/1000000, "roomID", input.RoomID, "eventID", input.EventID, "eventOffset", input.EventOffset})
 		result <- types.TimeLineItem{
 			TraceId: static.TraceId,
 			Start:   static.Start,
@@ -206,6 +237,13 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 		log.Errorf("PushConsumer processEvent marshal error %d, message %s", err, input.EventID)
 		return
 	}
+
+	var helperEvent HelperEvent
+	if err = json.Unmarshal(eventJson, &helperEvent); err != nil {
+		log.Errorf("PushConsumer processEvent unmarshal error %d, message %s", err, input.EventID)
+		return
+	}
+
 	redactOffset := int64(-1)
 	isRelatesContent := false
 	var members []string
@@ -256,7 +294,7 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 		wg.Add(1)
 		go func(
 			member string,
-			input *gomatrixserverlib.ClientEvent,
+			helperEvent *HelperEvent,
 			memCount int,
 			eventOffset,
 			redactOffset int64,
@@ -266,9 +304,9 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 			static *push.StaticObj,
 			pushData map[string]push.RespPushData,
 		) {
-			s.preProcessPush(&member, input, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent, static, pushData)
+			s.preProcessPush(&member, helperEvent, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent, static, pushData)
 			wg.Done()
-		}(member, input, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent, static, pushData)
+		}(member, &helperEvent, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent, static, pushData)
 	}
 	wg.Wait()
 	static.MemCount = len(members)
@@ -400,7 +438,7 @@ func (s *PushConsumer) getUserPushRule(user string, pushData map[string]push.Res
 
 func (s *PushConsumer) preProcessPush(
 	member *string,
-	input *gomatrixserverlib.ClientEvent,
+	helperEvent *HelperEvent,
 	memCount int,
 	eventOffset,
 	redactOffset int64,
@@ -411,13 +449,13 @@ func (s *PushConsumer) preProcessPush(
 	pushData map[string]push.RespPushData,
 ) {
 	bs := time.Now().UnixNano() / 1000
-	if *member != input.Sender {
-		if input.Type == "m.room.redaction" {
-			if s.eventRepo.GetUserLastOffset(*member, input.RoomID) < redactOffset || redactOffset == -1 {
+	if *member != helperEvent.Sender {
+		if helperEvent.Type == "m.room.redaction" {
+			if s.eventRepo.GetUserLastOffset(*member, helperEvent.RoomID) < redactOffset || redactOffset == -1 {
 				//如果一个用户读完消息以后，有新的未读，此时hs重启，其他人撤销之前已读消息，计数会不准确
 				//高亮信息撤回，暂时也不好处理计减
 				if !isRelatesContent {
-					s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "decrease")
+					s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *member, "decrease")
 				}
 			}
 		}
@@ -426,32 +464,15 @@ func (s *PushConsumer) preProcessPush(
 		global := s.getUserPushRule(*member, pushData)
 		sp := time.Now().UnixNano()/1000 - ms
 		atomic.AddInt64(&static.PushCacheSpend, sp)
-		var rules []push.PushRule
-		for _, v := range global.Override {
-			rules = append(rules, v)
-		}
-		for _, v := range global.Content {
-			rules = append(rules, v)
-		}
-		for _, v := range global.Room {
-			rules = append(rules, v)
-		}
-		for _, v := range global.Sender {
-			rules = append(rules, v)
-		}
-		for _, v := range global.UnderRide {
-			rules = append(rules, v)
-		}
-		//log.Infof("roomID:%s eventID:%s userID:%s rules:%+v", input.RoomID, input.EventID, *member, rules)
 		rs := time.Now().UnixNano() / 1000
-		s.processPush(&pushers, &rules, input, member, memCount, eventJson, pushContents, static)
+		s.processPush(&pushers, &global, helperEvent, member, memCount, eventJson, pushContents, static)
 		rsp := time.Now().UnixNano()/1000 - rs
 		atomic.AddInt64(&static.MemRule, rsp)
 	} else {
 		//当前用户在发消息，应该把该用户的未读数置为0
-		s.eventRepo.AddUserReceiptOffset(*member, input.RoomID, eventOffset)
+		s.eventRepo.AddUserReceiptOffset(*member, helperEvent.RoomID, eventOffset)
 		ss := time.Now().UnixNano() / 1000
-		s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *member, "reset")
+		s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *member, "reset")
 		sp := time.Now().UnixNano()/1000 - ss
 		atomic.AddInt64(&static.UnreadSpend, sp)
 	}
@@ -577,10 +598,247 @@ func (s *PushConsumer) pubPushContents(pushContents *push.PushPubContents, event
 	}
 }
 
+func (s *PushConsumer) processMessageEvent(
+	pushers *push.Pushers,
+	global *push.Rules,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) {
+	if global.Default {
+		highlight := s.isSignalRule(userID, helperEvent)
+		if highlight {
+			s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase_hl")
+		}
+
+		action := s.getDefaultAction(highlight)
+		s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, action, true, true, static)
+		return
+	}
+
+	if global.OverrideDefault {
+		highlight := s.isSignalRule(userID, helperEvent)
+		if highlight {
+			s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase_hl")
+			action := s.getDefaultAction(highlight)
+			s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, action, true, true, static)
+			return
+		}
+	}
+
+	if s.processOverrideRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) {
+		return
+	}
+
+	if !global.ContentDefault && s.processContentRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) {
+		return
+	}
+
+	if !global.RoomDefault && s.processRoomRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) {
+		return
+	}
+
+	if !global.SenderDefault && s.processSenderRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) {
+		return
+	}
+
+	if global.UnderRideDefault {
+		action := s.getDefaultAction(false)
+		s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, action, true, true, static)
+		return
+	}
+
+	s.processUnderRideRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static)
+}
+
+func (s *PushConsumer) updateReadCountAndNotify(
+	pushers *push.Pushers,
+	helperEvent *HelperEvent,
+	userID *string,
+	pushContents *push.PushPubContents,
+	action *push.TweakAction,
+	updateReadCount bool,
+	notify bool,
+	static *push.StaticObj,
+) {
+	if updateReadCount {
+		bs := time.Now().UnixNano() / 1000
+		s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase")
+		atomic.AddInt64(&static.UnreadSpend, time.Now().UnixNano()/1000-bs)
+	}
+
+	bs := time.Now().UnixNano() / 1000
+	count, _ := s.countRepo.GetRoomReadCount(helperEvent.RoomID, *userID)
+	atomic.AddInt64(&static.ReadUnreadSpend, time.Now().UnixNano()/1000-bs)
+	if notify && s.rpcClient != nil && len(pushers.Pushers) > 0 {
+		var pubContent push.PushPubContent
+		pubContent.UserID = *userID
+		pubContent.Pushers = pushers
+		pubContent.Action = action
+		pubContent.NotifyCount = count
+
+		pushContents.Contents = append(pushContents.Contents, &pubContent)
+	}
+}
+
+func (s *PushConsumer) isSignalRule(userID *string, helperEvent *HelperEvent) bool {
+	return helperEvent.Content.MsgType == "m.alert" &&
+		(strings.Contains(helperEvent.Content.Signals.Val, "@all") ||
+			strings.Contains(helperEvent.Content.Signals.Val, *userID))
+}
+
+func (s *PushConsumer) processOverrideRules(
+	pushers *push.Pushers,
+	global *push.Rules,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) bool {
+	for _, v := range global.Override {
+		if s.processCommonRule(pushers, &v, helperEvent, userID, memCount, eventJson, pushContents, static) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *PushConsumer) processContentRules(
+	pushers *push.Pushers,
+	global *push.Rules,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) bool {
+	for _, v := range global.Content {
+		if s.processCommonRule(pushers, &v, helperEvent, userID, memCount, eventJson, pushContents, static) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *PushConsumer) processSenderRules(
+	pushers *push.Pushers,
+	global *push.Rules,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) bool {
+	for _, v := range global.Sender {
+		if s.processCommonRule(pushers, &v, helperEvent, userID, memCount, eventJson, pushContents, static) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *PushConsumer) processUnderRideRules(
+	pushers *push.Pushers,
+	global *push.Rules,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) bool {
+	for _, v := range global.UnderRide {
+		if s.processCommonRule(pushers, &v, helperEvent, userID, memCount, eventJson, pushContents, static) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *PushConsumer) processRoomRules(
+	pushers *push.Pushers,
+	global *push.Rules,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) bool {
+	for _, v := range global.Room {
+		if v.RuleId == helperEvent.RoomID && s.processCommonRule(pushers, &v, helperEvent, userID, memCount, eventJson, pushContents, static) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *PushConsumer) processCommonRule(
+	pushers *push.Pushers,
+	rule *push.PushRule,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) bool {
+	if !rule.Enabled {
+		log.Infof("roomID:%s eventID:%s userID:%s rule:%s is not enable", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
+		return false
+	}
+	atomic.AddInt64(&static.RuleCount, 1)
+	if s.checkCondition(&rule.Conditions, userID, memCount, eventJson, helperEvent, static) {
+		atomic.AddInt64(&static.EffectedRuleCount, 1)
+		log.Infof("roomID:%s eventID:%s userID:%s match rule:%s", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
+		action := s.getActions(rule.Actions)
+		if action.HighLight && (helperEvent.Type == "m.room.message" || helperEvent.Type == "m.room.encrypted") {
+			s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase_hl")
+		}
+
+		increase := helperEvent.Type == "m.room.encrypted" || (helperEvent.Type == "m.room.message" && helperEvent.Content.MsgType != "m.shake")
+		s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, &action, increase, action.Notify == "notify", static)
+		return true
+	}
+
+	return false
+}
+
+func (s *PushConsumer) processNonMessageEvent(
+	pushers *push.Pushers,
+	global *push.Rules,
+	helperEvent *HelperEvent,
+	userID *string,
+	memCount int,
+	eventJson *[]byte,
+	pushContents *push.PushPubContents,
+	static *push.StaticObj,
+) {
+	if s.processOverrideRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) ||
+		s.processContentRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) ||
+		s.processRoomRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) ||
+		s.processSenderRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) ||
+		s.processUnderRideRules(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static) {
+		return
+	}
+}
+
 func (s *PushConsumer) processPush(
 	pushers *push.Pushers,
-	rules *[]push.PushRule,
-	input *gomatrixserverlib.ClientEvent,
+	global *push.Rules,
+	helperEvent *HelperEvent,
 	userID *string,
 	memCount int,
 	eventJson *[]byte,
@@ -592,67 +850,14 @@ func (s *PushConsumer) processPush(
 		spend := time.Now().UnixNano()/1000 - bs
 		atomic.AddInt64(&static.RuleSpend, spend)
 	}(bs)
-	//这种写法真的很挫，但没找到其他的处理方式
-	result := gjson.Get(string(*eventJson), "content.msgtype")
-	if result.Str == "m.notice" {
+	if helperEvent.Content.MsgType == "m.notice" {
 		return
 	}
-	for _, v := range *rules {
-		if !v.Enabled {
-			log.Infof("roomID:%s eventID:%s userID:%s rule:%s is not enable", input.RoomID, input.EventID, *userID, v.RuleId)
-			continue
-		}
-		atomic.AddInt64(&static.RuleCount, 1)
-		if s.checkCondition(&v.Conditions, userID, memCount, eventJson, static) {
-			atomic.AddInt64(&static.EffectedRuleCount, 1)
-			log.Infof("roomID:%s eventID:%s userID:%s match rule:%s", input.RoomID, input.EventID, *userID, v.RuleId)
-			action := s.getActions(v.Actions)
 
-			increase := false
-			if input.Type == "m.room.encrypted" {
-				increase = true
-			}
-			if input.Type == "m.room.message" {
-				var content struct {
-					MsgType string `json:"msgtype"`
-				}
-				json.Unmarshal(input.Content, &content)
-				if content.MsgType != "m.shake" {
-					increase = true
-				}
-			}
-			if increase {
-				ss := time.Now().UnixNano() / 1000
-				s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *userID, "increase")
-				sp := time.Now().UnixNano()/1000 - ss
-				atomic.AddInt64(&static.UnreadSpend, sp)
-			}
-
-			rcss := time.Now().UnixNano() / 1000
-			count, _ := s.countRepo.GetRoomReadCount(input.RoomID, *userID)
-			atomic.AddInt64(&static.ReadUnreadSpend, time.Now().UnixNano()/1000 - rcss)
-
-			if action.HighLight {
-				if input.Type == "m.room.message" || input.Type == "m.room.encrypted" {
-					s.countRepo.UpdateRoomReadCount(input.RoomID, input.EventID, *userID, "increase_hl")
-				}
-			}
-
-			if action.Notify == "notify" {
-				if s.rpcClient != nil && len(pushers.Pushers) > 0 {
-					var pubContent push.PushPubContent
-					pubContent.UserID = *userID
-					pubContent.Pushers = pushers
-					pubContent.Action = &action
-					pubContent.NotifyCount = count
-
-					pushContents.Contents = append(pushContents.Contents, &pubContent)
-				}
-			}
-			break
-		} else {
-			log.Infof("roomID:%s eventID:%s userID:%s not match rule:%s", input.RoomID, input.EventID, *userID, v.RuleId)
-		}
+	if helperEvent.Type == "m.room.message" || helperEvent.Type == "m.room.encrypted" {
+		s.processMessageEvent(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static)
+	} else {
+		s.processNonMessageEvent(pushers, global, helperEvent, userID, memCount, eventJson, pushContents, static)
 	}
 }
 
@@ -661,6 +866,7 @@ func (s *PushConsumer) checkCondition(
 	userID *string,
 	memCount int,
 	eventJSON *[]byte,
+	helperEvent *HelperEvent,
 	static *push.StaticObj,
 ) bool {
 	bs := time.Now().UnixNano() / 1000
@@ -670,7 +876,7 @@ func (s *PushConsumer) checkCondition(
 	}(bs)
 	if len(*conditions) > 0 {
 		for _, v := range *conditions {
-			match := s.isMatch(&v, userID, memCount, eventJSON, static)
+			match := s.isMatch(&v, userID, memCount, eventJSON, helperEvent, static)
 			if !match {
 				return false
 			}
@@ -685,43 +891,33 @@ func (s *PushConsumer) isMatch(
 	userID *string,
 	memCount int,
 	eventJSON *[]byte,
+	helperEvent *HelperEvent,
 	static *push.StaticObj,
 ) bool {
 	switch condition.Kind {
 	case "event_match":
-		return s.eventMatch(condition, userID, eventJSON, static)
+		return s.eventMatch(condition, userID, eventJSON, helperEvent, static)
 	case "room_member_count":
 		return s.roomMemberCount(condition, memCount)
 	case "signal":
-		return s.signal(userID, eventJSON)
+		return s.signal(userID, helperEvent)
 	}
 	return true
 }
 
 func (s *PushConsumer) signal(
 	userID *string,
-	eventJSON *[]byte,
+	helperEvent *HelperEvent,
 ) bool {
-	if userID == nil {
-		return false
-	}
-
-	value := gjson.Get(string(*eventJSON), "content.signals")
-	if value.Raw == "" {
-		return false
-	}
-
-	if strings.Contains(value.Raw, "@all") {
-		return true
-	}
-
-	return strings.Contains(value.Raw, *userID)
+	return userID != nil &&
+		(strings.Contains(helperEvent.Content.Signals.Val, "@all") || strings.Contains(helperEvent.Content.Signals.Val, *userID))
 }
 
 func (s *PushConsumer) eventMatch(
 	condition *push.PushCondition,
 	userID *string,
 	eventJSON *[]byte,
+	helperEvent *HelperEvent,
 	static *push.StaticObj,
 ) bool {
 	var pattern *string
@@ -744,12 +940,12 @@ func (s *PushConsumer) eventMatch(
 	}
 
 	if condition.Key == "content.body" {
-		value := gjson.Get(string(*eventJSON), "content.body")
-		if value.String() == "" {
+		if helperEvent.Content.Body == "" {
 			return false
 		}
+
+		context = helperEvent.Content.Body
 		wordBoundary = true
-		context = value.String()
 	} else {
 		value := gjson.Get(string(*eventJSON), condition.Key)
 		if value.String() == "" {
@@ -760,29 +956,6 @@ func (s *PushConsumer) eventMatch(
 	}
 
 	return s.globalMatch(pattern, &context, wordBoundary, static)
-}
-
-func (s *PushConsumer) containsDisplayName(
-	displayName *string,
-	eventJSON *[]byte,
-	static *push.StaticObj,
-) bool {
-	if displayName == nil {
-		return false
-	}
-
-	emptyName := ""
-	if *displayName == emptyName {
-		return false
-	}
-
-	value := gjson.Get(string(*eventJSON), "content.body")
-	if value.String() == "" {
-		return false
-	}
-	valueStr := value.String()
-
-	return s.globalMatch(displayName, &valueStr, true, static)
 }
 
 func (s *PushConsumer) globalMatch(
@@ -797,8 +970,24 @@ func (s *PushConsumer) globalMatch(
 		spend := time.Now().UnixNano()/1000 - bs
 		atomic.AddInt64(&static.GlobalMatchSpend, spend)
 	}(bs)
-	globalRegex := regexp.MustCompile(`\\\[(\\\!|)(.*)\\\]`)
-	isGlobal := regexp.MustCompile(`[\?\*\[\]]`)
+	switch *global {
+	case "m.room.member":
+		return mRoomMemberRegex.Match([]byte(*req))
+	case "invite":
+		return inviteRegex.Match([]byte(*req))
+	case "m.room.message":
+		return mRoomMessageRegex.Match([]byte(*req))
+	case "m.room.encrypted":
+		return mRoomEncryptedRegex.Match([]byte(*req))
+	case "m.modular.video":
+		return mModularVideoRegex.Match([]byte(*req))
+	case "m.notice":
+		return mNoticeRegex.Match([]byte(*req))
+	case "m.alert":
+		return mAlertRegex.Match([]byte(*req))
+	case "m.call.invite":
+		return mCallInviteRegex.Match([]byte(*req))
+	}
 
 	if isGlobal.Match([]byte(*global)) {
 		*global = regexp.QuoteMeta(*global)
@@ -838,9 +1027,8 @@ func (s *PushConsumer) roomMemberCount(
 		return false
 	}
 
-	reg := regexp.MustCompile("^([=<>]*)([0-9]*)$")
-	if reg.Match([]byte(condition.Is)) {
-		s := reg.FindStringSubmatch(condition.Is)
+	if roomMemberCountRegex.Match([]byte(condition.Is)) {
+		s := roomMemberCountRegex.FindStringSubmatch(condition.Is)
 		num, _ := strconv.Atoi(s[2])
 
 		switch s[1] {
@@ -909,4 +1097,12 @@ func (s *PushConsumer) getActions(actions []interface{}) push.TweakAction {
 	}
 
 	return action
+}
+
+func (s *PushConsumer) getDefaultAction(highlight bool) *push.TweakAction {
+	return &push.TweakAction{
+		Notify:    "notify",
+		Sound:     "default",
+		HighLight: highlight,
+	}
 }

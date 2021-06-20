@@ -149,11 +149,7 @@ func (s *RoomEventFeedConsumer) Start() error {
 func (s *RoomEventFeedConsumer) insertTimeline(msgChan chan types.TimeLineItem) {
 	for timelineItem := range msgChan {
 		ev := timelineItem.Ev
-		log.Debugw("Trace timestamp, RoomEventFeedConsumer.insertTimeline, before s.roomHistoryTimeLine.AddEv", log.KeysAndValues{
-			"timestamp", time.Now().UnixNano()/1000000, "roomID", ev.RoomID, "eventID", ev.EventID, "eventOffset", ev.EventOffset})
 		s.roomHistoryTimeLine.AddEv(ev, ev.EventOffset, true)
-		log.Debugw("Trace timestamp, RoomEventFeedConsumer.insertTimeline, after s.roomHistoryTimeLine.AddEv", log.KeysAndValues{
-			"timestamp", time.Now().UnixNano()/1000000, "roomID", ev.RoomID, "eventID", ev.EventID, "eventOffset", ev.EventOffset})
 		spend := time.Now().UnixNano()/1000 - timelineItem.Start
 		log.Infof("traceid:%s feedserver insert ev to timeline roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%d", timelineItem.TraceId, ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
 	}
@@ -524,9 +520,6 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	ctx context.Context, msg *roomserverapi.OutputNewRoomEvent,
 ) error {
 	defer func() {
-		ev := msg.Event
-		log.Debugw("Trace timestamp, RoomEventFeedConsumer.onNewRoomEvent, end", log.KeysAndValues{
-			"timestamp", time.Now().UnixNano()/1000000, "roomID", ev.RoomID, "eventID", ev.EventID, "eventOffset", ev.EventOffset})
 		if e := recover(); e != nil {
 			stack := common.PanicTrace(4)
 			log.Panicf("%v\n%s\n", e, stack)
@@ -535,8 +528,6 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	bs := time.Now().UnixNano() / 1000000
 	ev := msg.Event
 	log.Infof("feedserver onNewRoomEvent start roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
-	log.Debugw("Trace timestamp, RoomEventFeedConsumer.onNewRoomEvent, begin", log.KeysAndValues{
-		"timestamp", time.Now().UnixNano()/1000000, "roomID", ev.RoomID, "eventID", ev.EventID, "eventOffset", ev.EventOffset})
 	domain, _ := common.DomainFromID(ev.Sender)
 	if ev.Type != "m.room.create" {
 		bs := time.Now().UnixNano() / 1000000
@@ -730,33 +721,29 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	if s.cfg.CalculateReadCount {
 		traceId, _ := s.idg.Next()
 		staticObj := &pushapitypes.StaticObj{
-			TraceId:        fmt.Sprintf("%d", traceId),
-			RoomID:         ev.RoomID,
-			EventID:        ev.EventID,
-			Type:           ev.Type,
-			Start:          time.Now().UnixNano() / 1000,
-			MemAllSpend:    0,
-			MemSpend:       0,
-			MemCount:       0,
-			RuleSpend:      0,
-			RuleCount:      0,
-			UnreadSpend:    0,
-			ReadUnreadSpend: 0,
-			EffectedRuleCount: 0,
+			TraceId:             fmt.Sprintf("%d", traceId),
+			RoomID:              ev.RoomID,
+			EventID:             ev.EventID,
+			Type:                ev.Type,
+			Start:               time.Now().UnixNano() / 1000,
+			MemAllSpend:         0,
+			MemSpend:            0,
+			MemCount:            0,
+			RuleSpend:           0,
+			RuleCount:           0,
+			UnreadSpend:         0,
+			ReadUnreadSpend:     0,
+			EffectedRuleCount:   0,
 			CheckConditionSpend: 0,
-			GlobalMatchCount: 0,
-			GlobalMatchSpend: 0,
-			PushCacheSpend: 0,
-			ChanSpend:      0,
-			PushRuleCount:  0,
-			PusherCount:    0,
-			ProfileSpend:   0,
+			GlobalMatchCount:    0,
+			GlobalMatchSpend:    0,
+			PushCacheSpend:      0,
+			ChanSpend:           0,
+			PushRuleCount:       0,
+			PusherCount:         0,
+			ProfileSpend:        0,
 		}
-		log.Debugw("Trace timestamp, RoomEventFeedConsumer.onNewRoomEvent, before s.pushConsumer.DispthEvent", log.KeysAndValues{
-			"timestamp", time.Now().UnixNano()/1000000, "roomID", ev.RoomID, "eventID", ev.EventID, "eventOffset", ev.EventOffset})
 		s.pushConsumer.DispthEvent(&ev, staticObj, s.insertChan)
-		log.Debugw("Trace timestamp, RoomEventFeedConsumer.onNewRoomEvent, after s.pushConsumer.DispthEvent", log.KeysAndValues{
-			"timestamp", time.Now().UnixNano()/1000000, "roomID", ev.RoomID, "eventID", ev.EventID, "eventOffset", ev.EventOffset})
 	}
 	return nil
 }

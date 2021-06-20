@@ -248,11 +248,17 @@ func (p *RuleSet) Decode(input []byte) error {
 }
 
 type Rules struct {
-	Content   []PushRule `json:"content"`
-	Override  []PushRule `json:"override"`
-	Room      []PushRule `json:"room"`
-	Sender    []PushRule `json:"sender"`
-	UnderRide []PushRule `json:"underride"`
+	Default          bool       `json:"default"`
+	ContentDefault   bool       `json:"content_default"`
+	OverrideDefault  bool       `json:"override_default"`
+	RoomDefault      bool       `json:"room_default"`
+	SenderDefault    bool       `json:"sender_default"`
+	UnderRideDefault bool       `json:"underride_default"`
+	Content          []PushRule `json:"content"`
+	Override         []PushRule `json:"override"`
+	Room             []PushRule `json:"room"`
+	Sender           []PushRule `json:"sender"`
+	UnderRide        []PushRule `json:"underride"`
 }
 
 type GlobalRule struct {
