@@ -189,7 +189,14 @@ func FormatRuleResponse(rules pushapitypes.Rules) pushapitypes.RuleSet {
 
 func GetUserPushRules(userID string, pushDataRepo *repos.PushDataRepo, forRequest bool, static *pushapitypes.StaticObj) (global pushapitypes.Rules) {
 	ctx := context.TODO()
-	global = pushapitypes.Rules{}
+	global = pushapitypes.Rules{
+		Default: true,
+		ContentDefault: true,
+		OverrideDefault: true,
+		RoomDefault: true,
+		SenderDefault: true,
+		UnderRideDefault: true,
+	}
 	bases := make(map[string]pushapitypes.PushRuleData)
 	var rules pushapitypes.PushRuleDataArray
 	rulesData, _ := pushDataRepo.GetPushRule(ctx, userID)
@@ -220,6 +227,18 @@ func GetUserPushRules(userID string, pushDataRepo *repos.PushDataRepo, forReques
 			currentClass -= 1
 		}
 		curKind, _ := pushapitypes.RevPriorityMap()[v.PriorityClass]
+		switch curKind {
+		case "underride":
+			global.UnderRideDefault = false
+		case "content":
+			global.ContentDefault = false
+		case "override":
+			global.OverrideDefault = false
+		case "room":
+			global.RoomDefault = false
+		case "sender":
+			global.SenderDefault = false
+		}
 		curRule, _ := ConvertPushRule(v, false)
 		global = AddRules(curKind, curRule, global)
 	}

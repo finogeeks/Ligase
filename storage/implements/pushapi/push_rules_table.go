@@ -17,11 +17,12 @@ package pushapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/model/pushapitypes"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const pushrulesSchema = `
@@ -83,10 +84,10 @@ func (s *pushRulesStatements) prepare(d *DataBase) (err error) {
 	return
 }
 
-func (s *pushRulesStatements) loadPushRule(ctx context.Context) ([]pushapitypes.PushRuleData, error){
+func (s *pushRulesStatements) loadPushRule(ctx context.Context) ([]pushapitypes.PushRuleData, error) {
 	offset := 0
 	limit := 1000
-	result :=[]pushapitypes.PushRuleData{}
+	result := []pushapitypes.PushRuleData{}
 	for {
 		rules := []pushapitypes.PushRuleData{}
 		rows, err := s.recoverPushRuleStmt.QueryContext(ctx, limit, offset)
@@ -99,8 +100,8 @@ func (s *pushRulesStatements) loadPushRule(ctx context.Context) ([]pushapitypes.
 			if err := rows.Scan(&pushRule.UserName, &pushRule.RuleId, &pushRule.PriorityClass, &pushRule.Priority, &pushRule.Conditions, &pushRule.Actions); err != nil {
 				log.Errorf("load push rule scan rows error:%v", err)
 				return nil, err
-			}else{
-				rules = append(rules,pushRule)
+			} else {
+				rules = append(rules, pushRule)
 			}
 		}
 		result = append(result, rules...)

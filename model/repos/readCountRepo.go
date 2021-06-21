@@ -104,18 +104,18 @@ func (tl *ReadCountRepo) UpdateRoomReadCountFromCache(roomID, userID string) {
 }
 
 func (tl *ReadCountRepo) UpdateRoomReadCount(roomID, eventID, userID, updateType string) {
-	log.Infof("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s", roomID, eventID, userID, updateType)
+	log.Debugf("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s", roomID, eventID, userID, updateType)
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 
 	switch updateType {
 	case "reset":
 		tl.readCount.Store(key, int64(0))
 		tl.hlCount.Store(key, int64(0))
-		log.Infof("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d hlCount:%d", roomID, eventID, userID, updateType, 0, 0)
+		log.Debugf("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d hlCount:%d", roomID, eventID, userID, updateType, 0, 0)
 	case "increase":
 		if val, ok := tl.readCount.Load(key); ok {
 			tl.readCount.Store(key, val.(int64)+1)
-			log.Infof("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d", roomID, eventID, userID, updateType, val.(int64)+1)
+			log.Debugf("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d", roomID, eventID, userID, updateType, val.(int64)+1)
 		} else {
 			tl.UpdateRoomReadCountFromCache(roomID, userID)
 			if val, ok := tl.readCount.Load(key); ok {
@@ -129,7 +129,7 @@ func (tl *ReadCountRepo) UpdateRoomReadCount(roomID, eventID, userID, updateType
 	case "increase_hl":
 		if val, ok := tl.hlCount.Load(key); ok {
 			tl.hlCount.Store(key, val.(int64)+1)
-			log.Infof("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s hlCount:%d", roomID, eventID, userID, updateType, val.(int64)+1)
+			log.Debugf("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s hlCount:%d", roomID, eventID, userID, updateType, val.(int64)+1)
 		} else {
 			tl.UpdateRoomReadCountFromCache(roomID, userID)
 			if val, ok := tl.hlCount.Load(key); ok {
@@ -145,7 +145,7 @@ func (tl *ReadCountRepo) UpdateRoomReadCount(roomID, eventID, userID, updateType
 			count := val.(int64)
 			if count > 0 {
 				tl.readCount.Store(key, count-1)
-				log.Infof("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d", roomID, eventID, userID, updateType, count-1)
+				log.Debugf("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d", roomID, eventID, userID, updateType, count-1)
 				if val1, ok := tl.hlCount.Load(key); ok {
 					hlCount := val1.(int64)
 					if hlCount >= count {
@@ -161,7 +161,7 @@ func (tl *ReadCountRepo) UpdateRoomReadCount(roomID, eventID, userID, updateType
 				count := val.(int64)
 				if count > 0 {
 					tl.readCount.Store(key, count-1)
-					log.Infof("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d", roomID, eventID, userID, updateType, count-1)
+					log.Debugf("UpdateRoomReadCount roomID:%s eventID:%s userID:%s updateType:%s readCount:%d", roomID, eventID, userID, updateType, count-1)
 					if val1, ok := tl.hlCount.Load(key); ok {
 						hlCount := val1.(int64)
 						if hlCount >= count {
