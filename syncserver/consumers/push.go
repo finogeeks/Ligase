@@ -60,7 +60,7 @@ type HelperSignalContent struct {
 type HelperContent struct {
 	Body    string              `json:"body"`
 	MsgType string              `json:"msgtype"`
-	Signals HelperSignalContent `json:"signals"`
+	Signals []HelperSignalContent `json:"signals"`
 }
 
 type HelperEvent struct {
@@ -685,9 +685,7 @@ func (s *PushConsumer) updateReadCountAndNotify(
 }
 
 func (s *PushConsumer) isSignalRule(userID *string, helperEvent *HelperEvent) bool {
-	return helperEvent.Content.MsgType == "m.alert" &&
-		(strings.Contains(helperEvent.Content.Signals.Val, "@all") ||
-			strings.Contains(helperEvent.Content.Signals.Val, *userID))
+	return helperEvent.Content.MsgType == "m.alert" && s.signal(userID, helperEvent)
 }
 
 func (s *PushConsumer) processOverrideRules(
@@ -909,8 +907,17 @@ func (s *PushConsumer) signal(
 	userID *string,
 	helperEvent *HelperEvent,
 ) bool {
-	return userID != nil &&
-		(strings.Contains(helperEvent.Content.Signals.Val, "@all") || strings.Contains(helperEvent.Content.Signals.Val, *userID))
+	if userID == nil {
+		return false
+	}
+
+	for _, v := range helperEvent.Content.Signals {
+		if v.Val == *userID || strings.Contains(v.Val, "@all") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *PushConsumer) eventMatch(
