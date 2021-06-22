@@ -608,40 +608,24 @@ func (s *PushConsumer) processMessageEvent(
 	pushContents *push.PushPubContents,
 	static *push.StaticObj,
 ) {
+	var rule string
 	if global.Default {
 		highlight := s.isSignalRule(userID, helperEvent)
 		if highlight {
 			s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase_hl")
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.signals", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.signals", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.signals"
 		} else if memCount == 2 {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.room_one_to_one", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.room_one_to_one", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.room_one_to_one"
 		} else if helperEvent.Type == "m.room.message" {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.message", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.message", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.message"
 		} else if helperEvent.Type == "m.room.encrypted" {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.encrypted", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.encrypted", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.encrypted"
 		} else {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.video", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.video", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.video"
 		}
+
+		log.Debugw("PushConsumer.processMessageEvent, global is default",
+			log.KeysAndValues{"roomID", helperEvent.RoomID, "eventID", helperEvent.EventID, "userID", *userID, "rule", rule})
 
 		action := s.getDefaultAction(highlight)
 		s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, action, true, true, static)
@@ -676,30 +660,17 @@ func (s *PushConsumer) processMessageEvent(
 
 	if global.UnderRideDefault {
 		if memCount == 2 {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.room_one_to_one", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.room_one_to_one", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.room_one_to_one"
 		} else if helperEvent.Type == "m.room.message" {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.message", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.message", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.message"
 		} else if helperEvent.Type == "m.room.encrypted" {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.encrypted", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.encrypted", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.encrypted"
 		} else {
-			if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-				log.Infof("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.video", helperEvent.RoomID, helperEvent.EventID, *userID)
-			} else {
-				log.Debugf("roomID:%s eventID:%s userID:%s, global is default, match rule:.m.rule.video", helperEvent.RoomID, helperEvent.EventID, *userID)
-			}
+			rule = ".m.rule.video"
 		}
+
+		log.Debugw("PushConsumer.processMessageEvent, global is default",
+			log.KeysAndValues{"roomID", helperEvent.RoomID, "eventID", helperEvent.EventID, "userID", *userID, "rule", rule})
 
 		action := s.getDefaultAction(false)
 		s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, action, true, true, static)
@@ -855,18 +826,10 @@ func (s *PushConsumer) processCommonRule(
 	atomic.AddInt64(&static.RuleCount, 1)
 	if s.checkCondition(&rule.Conditions, userID, memCount, eventJson, helperEvent, static) {
 		atomic.AddInt64(&static.EffectedRuleCount, 1)
-		if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-			log.Infof("roomID:%s eventID:%s userID:%s match rule:%s", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
-		} else {
-			log.Debugf("roomID:%s eventID:%s userID:%s match rule:%s", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
-		}
+		log.Debugf("roomID:%s eventID:%s userID:%s match rule:%s", helperEvent.RoomID, helperEvent.EventID, *userID, rule.RuleId)
 		action := s.getActions(rule.Actions)
 		if action.HighLight && (helperEvent.Type == "m.room.message" || helperEvent.Type == "m.room.encrypted") {
 			s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase_hl")
-		}
-
-		if helperEvent.RoomID == "!392412752934600704:qa.sumscope.cloud.com" {
-			log.Infof("======================action: %v\n", action)
 		}
 
 		increase := helperEvent.Type == "m.room.encrypted" || (helperEvent.Type == "m.room.message" && helperEvent.Content.MsgType != "m.shake")
