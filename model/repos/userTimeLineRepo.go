@@ -231,13 +231,17 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 	tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "LoadUserFriendShip").Add(1)
 }
 
-func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) {
+func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) error {
 	batchIdInt64, _ := tl.Idg.Next()
 	batchId := strconv.FormatInt(batchIdInt64, 10)
 	segmens := common.SplitStringArray(rooms, 500)
 	for _, vals := range segmens {
-		tl.loadRoomLatestByPage(batchId, user, vals)
+		err := tl.loadRoomLatestByPage(batchId, user, vals)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (tl *UserTimeLineRepo) loadRoomLatestByPage(batchId, user string, rooms []string) error {
@@ -256,13 +260,17 @@ func (tl *UserTimeLineRepo) loadRoomLatestByPage(batchId, user string, rooms []s
 	return nil
 }
 
-func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map) {
+func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map) error {
 	batchIdInt64, _ := tl.Idg.Next()
 	batchId := strconv.FormatInt(batchIdInt64, 10)
 	segmens := common.SplitStringArray(events, 500)
 	for _, vals := range segmens {
-		tl.loadJoinRoomOffsetsByPage(batchId, user, vals, res)
+		err := tl.loadJoinRoomOffsetsByPage(batchId, user, vals, res)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (tl *UserTimeLineRepo) loadJoinRoomOffsetsByPage(batchId, user string, events []string, res *sync.Map) error {
@@ -317,10 +325,16 @@ func (tl *UserTimeLineRepo) LoadJoinRooms(user string) error {
 			loadEvents = append(loadEvents, events[idx])
 		}
 		if len(loadrooms) > 0 {
-			tl.loadRoomLatest(user, loadrooms)
+			err := tl.loadRoomLatest(user, loadrooms)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if len(loadEvents) > 0 {
-			tl.loadJoinRoomOffsets(user, loadEvents, res)
+			err := tl.loadJoinRoomOffsets(user, loadEvents, res)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		tl.queryHitCounter.WithLabelValues("db", "UserTimeLineRepo", "GetJoinRooms").Add(1)
