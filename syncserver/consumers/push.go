@@ -608,11 +608,24 @@ func (s *PushConsumer) processMessageEvent(
 	pushContents *push.PushPubContents,
 	static *push.StaticObj,
 ) {
+	var rule string
 	if global.Default {
 		highlight := s.isSignalRule(userID, helperEvent)
 		if highlight {
 			s.countRepo.UpdateRoomReadCount(helperEvent.RoomID, helperEvent.EventID, *userID, "increase_hl")
+			rule = ".m.rule.signals"
+		} else if memCount == 2 {
+			rule = ".m.rule.room_one_to_one"
+		} else if helperEvent.Type == "m.room.message" {
+			rule = ".m.rule.message"
+		} else if helperEvent.Type == "m.room.encrypted" {
+			rule = ".m.rule.encrypted"
+		} else {
+			rule = ".m.rule.video"
 		}
+
+		log.Debugw("PushConsumer.processMessageEvent, global is default",
+			log.KeysAndValues{"roomID", helperEvent.RoomID, "eventID", helperEvent.EventID, "userID", *userID, "rule", rule})
 
 		action := s.getDefaultAction(highlight)
 		s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, action, true, true, static)
@@ -646,6 +659,19 @@ func (s *PushConsumer) processMessageEvent(
 	}
 
 	if global.UnderRideDefault {
+		if memCount == 2 {
+			rule = ".m.rule.room_one_to_one"
+		} else if helperEvent.Type == "m.room.message" {
+			rule = ".m.rule.message"
+		} else if helperEvent.Type == "m.room.encrypted" {
+			rule = ".m.rule.encrypted"
+		} else {
+			rule = ".m.rule.video"
+		}
+
+		log.Debugw("PushConsumer.processMessageEvent, global is default",
+			log.KeysAndValues{"roomID", helperEvent.RoomID, "eventID", helperEvent.EventID, "userID", *userID, "rule", rule})
+
 		action := s.getDefaultAction(false)
 		s.updateReadCountAndNotify(pushers, helperEvent, userID, pushContents, action, true, true, static)
 		return
