@@ -1,0 +1,444 @@
+version: 0
+
+matrix:
+    # Server name list support multi-tenant, specify only one element most of time. 
+    server_name: [finogeeks.club]
+    homeserver_url: http://127.0.0.1:8008
+    identity_server_url: https://vector.im
+    instance_id: 0
+    # (Optional) Shared secret for registration.
+    registration_shared_secret: "<your registration shared secret>"
+    trusted_third_party_id_servers:
+        - vector.im
+        - matrix.org
+        - riot.im
+    server_from_db: false
+
+media:
+    # To be implemented.
+    netdisk_url: netdisk_url_prefix
+    upload_url: upload_url_prefix?type=%s&thumbnail=%s
+    download_url: download_url_prefix/%s
+    thumbnail_url: thumbnail_url_prefix/%s?type=%s
+    mediainfo_url: mediainfo_url_prefix/%s
+
+# (Optional) Specify these configs if you have built your own turn server.
+turn:
+    turn_allow_guests: true
+    turn_user_lifetime: 1h
+
+    turn_uris:
+        - "<your turn uri>"
+
+    # Hardcoded.
+    turn_shared_secret: "<your turn shared secret>"
+    turn_username: "<your turn username>"
+    turn_password: "<your turn password>"
+
+# Specify your host, port for kafka connection.
+transport_configs:
+    - addresses: kafka:9092
+      underlying: kafka
+      name: kafka
+
+# Only kafka underlying avaliable, nats is not supported any more.
+kafka:
+    statistics:
+        producer_interval: 2000
+        consumer_interval: 2000
+    common_cfg:
+        enable_idempotence: true
+        force_async_send: false
+        replica_factor: 1
+        num_partitions: 3
+        num_producers: 3
+    producers:
+        output_room_event:
+            topic: roomserverOutput
+            underlying: kafka
+            name: roomserverOutputProd
+            inst: 3
+            linger_ms: 0.1
+        input_room_event:
+            topic: roomserverInput
+            underlying: kafka
+            name: roomserverInputProd
+            inst: 3
+            linger_ms: 0.1
+        output_client_data:
+            topic: clientapiOutput
+            underlying: kafka
+            name: clientapiOutputProd
+        output_profile_data:
+            topic: clientapiProfile
+            underlying: kafka
+            name: clientapiProfileProd
+        db_updates:
+            topic: dbUpdates
+            underlying: kafka
+            name: dbUpdatesProd
+        get_visibility_range:
+            topic: getVisibilityRange
+            underlying: kafka
+            name: getVisibilityRangeProd
+        output_room_fed_event:
+            topic: fed
+            underlying: kafka
+            name: fedProd
+            inst: 3
+            linger_ms: 0.1
+        fed_edu_update:
+            topic: fedEduOut
+            underlying: kafka
+            name: fedEduProd
+        output_room_event_recover:
+            topic: roomserverOutputRecoverES
+            underlying: kafka
+            name: recoverProd
+        fed_bridge_out:
+            topic: fedapi-in
+            underlying: kafka
+            name: fedBridgeOutProd
+        fed_bridge_out_hs:
+            topic: req.hs.conn
+            underlying: kafka
+            name: fedBridgeOutHsProd
+        fed_bridge_out_res:
+            topic: fedapi-out
+            underlying: kafka
+            name: fedBridgeOutResProd
+        output_device_state_update:
+            topic: deviceStateUpdate
+            underlying: kafka
+            name: deviceStateUpdateProd
+        setting_update:
+            topic: settingUpdate
+            underlying: kafka
+            name: settingUpdateProd
+        user_info_update:
+            topic: userInfoUpdate
+            underlying: kafka
+            name: userInfoUpdateProd
+        dismiss_room:
+            topic: dismissRoom
+            underlying: kafka
+            name: dismissRoomProd
+        output_static_data:
+            topic: outputStatic
+            underlying: kafka
+            name: outputStaticProd
+    consumers:
+        output_room_event_publicroom:
+            topic: roomserverOutput
+            group: public-rooms
+            underlying: kafka
+            name: roomserverOutputPBCons
+        output_room_event_appservice:
+            topic: roomserverOutput
+            group: applicationService
+            underlying: kafka
+            name: roomserverOutputASCons
+        output_room_event_syncserver:
+            topic: roomserverOutput
+            group: sync-server
+            underlying: kafka
+            name: roomserverOutputSYNCCons
+        output_room_event_syncwriter:
+            topic: roomserverOutput
+            group: sync-writer
+            underlying: kafka
+            name: roomserverOutputSYNCWRCons
+        output_room_event_syncaggregate:
+            topic: roomserverOutput
+            group: sync-aggregate
+            underlying: kafka
+            name: roomserverOutputSYNCAGCons
+        input_room_event:
+            topic: roomserverInput
+            group: roomserver
+            underlying: kafka
+            name: roomserverInputCons
+        output_client_data:
+            topic: clientapiOutput
+            group: sync-api
+            underlying: kafka
+            name: clientapiOutputCons
+        output_profile_syncaggregate:
+            topic: clientapiProfile
+            group: sync-aggregate
+            underlying: kafka
+            name: clientapiProfileSYNCAGCons
+        output_profile_syncserver:
+            topic: clientapiProfile
+            group: sync-server
+            underlying: kafka
+            name: clientapiProfileSYNCCons
+        cache_updates:
+            topic: dbUpdates
+            group: persist-cache
+            underlying: kafka
+            name: dbUpdatesCacheCons
+        db_updates:
+            topic: dbUpdates
+            group: persist-db
+            underlying: kafka
+            name: dbUpdatesPersistCons
+        fed_bridge_out:
+            topic: fedapi-in
+            group: fedapi
+            underlying: kafka
+            name: fedBridgeOutProd
+        fed_bridge_out_hs:
+            topic: req.hs.conn
+            group: fedapi
+            underlying: kafka
+            name: fedBridgeOutHsProd
+        fed_bridge_out_res:
+            topic: fedapi-out
+            group: fedapi
+            underlying: kafka
+            name: fedBridgeOutResProd
+        setting_update_syncserver:
+            topic: settingUpdate
+            group: settingUpdate-syncserver
+            underlying: kafka
+            name: settingupdatesyncserverCons
+        setting_update_syncaggregate:
+            topic: settingUpdate
+            group: settingUpdate-syncaggregate
+            underlying: kafka
+            name: settingupdatesyncaggregateCons
+        setting_update_proxy:
+            topic: settingUpdate
+            group: settingUpdate-proxy
+            underlying: kafka
+            name: settingupdateproxyCons
+        setting_update_content:
+            topic: settingUpdate
+            group: settingUpdate-content
+            underlying: kafka
+            name: settingupdatecontentCons
+        download_media:
+            topic: downloadmedia
+            group: downloadmedia-fed
+            underlying: kafka
+            name: fedDownloadMediaCons
+        dismiss_room:
+            topic: dismissRoom
+            group: dismissRoom-front
+            underlying: kafka
+            name: dismissRoomCons
+rpc:
+    rs_qry_topic: roomserver_query
+    alias_topic: roomserver_alias
+    room_input_topic: roomserver_input
+    fed_topic: fed
+    fed_alias_topic: fed.roomserver_alias
+    fed_profile_topic: fed.profile
+    fed_avatar_topic: fed.avatar
+    fed_displayname_topic: fed.displayname
+    fed_rs_qry_topic: fed.roomstate
+    fed_download_topic: fed.download
+    fed_invite_topic: fed.invite
+    fed_user_info_topic: fed.user_info
+    fed_make_join_topic: fed.makejoin
+    fed_send_join_topic: fed.sendjoin
+    fed_make_leave_topic: fed.makeleave
+    fed_send_leave_topic: fed.sendleave
+    proxy_client_api_topic: proxyClientApi
+    proxy_encrypto_api_topic: proxyEncryptoApi
+    proxy_publicroom_api_topic: proxyPublicRoomApi
+    proxy_push_api_topic: proxyPushApi
+    proxy_sync_api_topic: proxySyncApi
+    proxy_syncaggregate_api_topic: proxySyncAggregateApi
+    proxy_fed_api_topic: proxyFedApi
+    proxy_bgmgr_api_topic: proxyBgmgrApi
+    proxy_rcsserver_api_topic: proxyRCSServerApi
+
+# Specify your host, port, username and password for redis, nats and database connection.
+# If you run by steps in INSTALL.md, just change the ip below to your own host.
+redis:
+    uris:
+        - redis://user:finochat@redis1:6379/0
+
+nats:
+    uri: nats://nats:4222
+
+database:
+    create_db:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/postgres?sslmode=disable
+    account:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_account?sslmode=disable
+    device:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_device?sslmode=disable
+    sync_api:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_syncapi?sslmode=disable
+    room_server:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_roomserver?sslmode=disable
+    server_key:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_serverkey?sslmode=disable
+    public_rooms_api:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_publicroomsapi?sslmode=disable
+    push_api:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_pushapi?sslmode=disable
+    application_service:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_applicationservice?sslmode=disable
+    encrypt_api:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_encryptapi?sslmode=disable
+    presence:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_presence?sslmode=disable
+    server_conf:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_serverconf?sslmode=disable
+    content:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_content?sslmode=disable
+    rcs_server:
+        driver: postgres
+        addresses: postgres://postgres:postgres@pg-master:15432/dendrite_rcsserver?sslmode=disable
+    use_sync: false
+
+listen:
+    room_server: localhost:7770
+    client_api: localhost:7771
+    federation_api: localhost:7772
+    sync_api: localhost:7773
+    media_api: localhost:7774
+    public_rooms_api: localost:7775
+    federation_sender: localhost:7776
+    push_api: localhost:7777
+
+tracing:
+    jaeger:
+        disabled: true
+
+authorization:
+    login_authorize_mode: provider
+    # Only used for admin login.
+    login_authorize_code: "<your hardcoded authorize code>"
+
+# (Optional) Application service is only supported by config files.
+application_services:
+    config_files: []
+
+# (Optional) Specify these configs if you have built your push server.
+push_service:
+    remove_fail_times: 3
+    push_server_url: "<your push server url>"
+    android_push_server_url: "<your android push server url>"
+
+log:
+    level: info
+    files: [./log/ligase.log]
+    underlying: zap
+    redirect_stderr: false
+    write_to_stdout: true
+    zap_config:
+        max_size: 100
+        max_backups: 100
+        localtime: true
+        compress: true
+        json_format: false
+        bt_enabled: true
+        bt_level: error
+        field_separator: space
+
+cache:
+    durationDefault: 900
+    durationRefresh: 900
+
+# Required: macaroon root key, identifier and location used for access_token.
+macaroon:
+    macaroonKey: "<your macaroon key>"
+    macaroonId: "<your macaroon id>"
+    macaroonLoc: "<your macaroon loc>"
+
+# (Optional) Skip these items in aplication services.
+eventskip:
+    skip_item_list: [{ patten: "(^m\\.modular\\.).*", is_reg: true }]
+
+compress_length: 0
+
+lru:
+    max_entries: 30720
+    gc_per_num: 100
+
+flush_delay: 120000
+
+sync_mng_chan_num: 64
+
+recover_path: /opt/ligase
+
+send_member_event: true
+
+use_message_filter: true
+
+calculate_read_count: true
+
+retry_flush_db: true
+
+pub_login_info: false
+
+use_encrypt: true
+
+debug_level: prod
+
+default_avatar:
+
+token_rewrite:
+    staff_domain:
+    retail_domain:
+    staff_db:
+    retail_db:
+
+multi_instance:
+    instance: 0
+    total: 1
+    multi_write: false
+    sync_server_total: 1
+
+device_mng:
+    scan_unactive: 600000
+    kick_unactive: 2592000000
+
+state_mgr:
+    state_notify: true
+    state_offline: 120
+    state_report: 10
+
+encryption:
+    mirror: true
+
+dist_lock_custom:
+    instance:
+        timeout: 5
+        wait: 0
+        force: false
+    room_state:
+        timeout: 15
+        wait: 0
+        force: false
+    room_state_ext:
+        timeout: 15
+        wait: 0
+        force: false
+
+token_expire: 604800
+utl_expire: 608400
+latest_token: 3
+receipt_delay: 5000
+check_receipt: 3000
+online_spec: "0 0 17 * * ?"
+online_detail_spec: "59 59 15 * * ?"
+license: '{"organ_name":"community","expire_time":1627920000000,"total_users":100,"total_rooms":1,"room_members":1,"desc":"community","organ_domain":"community","reg_organ":"community","encryption":false,"secret":"pTRiLIHpGVgT0jsk"}'
