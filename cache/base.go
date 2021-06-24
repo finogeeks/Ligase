@@ -150,23 +150,8 @@ func (rc *RedisCache) HScan(key, match string, cursor uint64, count int) (result
 	}
 }
 
-func (rc *RedisCache) HGetAll(key string) (map[string]interface{}, error) {
-	result, err := redis.Values(rc.SafeDo("HGETALL", key))
-	if err != nil {
-		return nil, err
-	} else {
-		if len(result) <= 0 {
-			return nil, nil
-		}
-		res := make(map[string]interface{})
-		length := len(result) / 2
-		for i := 0; i < length; i++ {
-			key := result[2*i]
-			val := result[2*i+1]
-			res[string(key.([]byte))] = val
-		}
-		return res, nil
-	}
+func (rc *RedisCache) HGetAll(key string) ([]interface{}, error) {
+	return redis.Values(rc.SafeDo("HGETALL", key))
 }
 
 func (rc *RedisCache) HDelMulti(key string, fields []interface{}) error {

@@ -42,12 +42,12 @@ func (rc *RedisCache) GetToken(userID, device string, utl int64) (map[string]int
 	if err != nil {
 		return nil, err
 	} else {
-		if result == nil {
+		if len(result) == 0 {
 			return nil, nil
 		}
 		r := make(map[string]int64)
-		for k, v := range result {
-			r[k], _ = Int64(v, nil)
+		for i := 0; i < len(result); i += 2 {
+			r[string(result[i].([]byte))], _ = Int64(result[i+1], nil)
 		}
 		e := rc.Expire(key, adapter.GetTokenExpire())
 		if e != nil {
@@ -87,11 +87,12 @@ func (rc *RedisCache) AddTokenUtl(userID, device string, utl int64) error {
 func (rc *RedisCache) GetTokenUtls(userID, device string) (utls []int64, err error) {
 	key := fmt.Sprintf("allutl:%s:%s", userID, device)
 	us, err := rc.HGetAll(key)
-	if err != nil || us == nil {
+	if err != nil || len(us) == 0 {
 		return []int64{}, err
 	}
-	for k, _ := range us {
-		utl, err := strconv.ParseInt(k, 10, 64)
+
+	for i := 0; i < len(us); i += 2 {
+		utl, err := Int64(us[i], nil)
 		if err == nil {
 			utls = append(utls, utl)
 		}
