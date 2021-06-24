@@ -336,58 +336,68 @@ func (sm *SyncMng) OnSyncRequest(
 	}
 
 	//wait process ready
-	for request.checkNoWait() == false {
-		time.Sleep(time.Millisecond * 200)
-
-		now := time.Now().UnixNano() / 1000000
-		if now > request.latest { //超时
-			log.Infof("SyncMng request ready timeout, break wait traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, request.latest)
-			break
-		}
-		hasEventUpdate, curUtl := sm.userTimeLine.ExistsUserEventUpdate(request.marks.utlRecv, device.UserID, device.ID, req.TraceId)
-		if curUtl != request.marks.utlRecv {
-			log.Warnf("SyncMng ExistsUserEventUpdate update oldUtl:%d to newUtl:%d", request.marks.utlRecv, curUtl)
-			request.marks.utlRecv = curUtl
-		}
-		if hasEventUpdate && now-start > 500 {
-			log.Infof("SyncMng break has user event traceid:%s user:%s dev:%s now:%d latest:%d utlRecv:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.utlRecv)
-			break
+	if request.checkNoWait() == false {
+		hasEventUpdate := false
+		curUtl, token, err := sm.userTimeLine.LoadToken(device.UserID, device.ID, request.marks.utlRecv)
+		//load token from redis err
+		if err != nil {
+			log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", req.TraceId, device.UserID, device.ID, request.marks.utlRecv, err)
+			curUtl = request.marks.utlRecv
 		}
 
-		if sm.clientDataStreamRepo.ExistsAccountDataUpdate(request.marks.accRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
-			log.Infof("SyncMng break has account data traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, start)
-			break
-		}
+		for request.checkNoWait() == false {
+			time.Sleep(time.Millisecond * 200)
 
-		if sm.typingConsumer.ExistsTyping(device.UserID, device.ID, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)) && now-start > 500 && request.device.IsHuman == true {
-			log.Infof("SyncMng break has typing traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
-			break
-		}
-
-		hasReceiptUpdate, lastReceipt := sm.userTimeLine.ExistsUserReceiptUpdate(request.marks.recpRecv, device.UserID)
-		if hasReceiptUpdate && now-start > sm.cfg.CheckReceipt && request.device.IsHuman == true {
-			log.Infof("SyncMng break has receipt traceid:%s user:%s dev:%s now:%d latest:%d recpRecv:%d lastReceipt:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.recpRecv, lastReceipt)
-			break
-		}
-
-		if sm.cfg.UseEncrypt {
-			if common.IsActualDevice(device.DeviceType) && sm.keyChangeRepo.ExistsKeyChange(request.marks.kcRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
-				log.Infof("SyncMng break has key change traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
+			now := time.Now().UnixNano() / 1000000
+			if now > request.latest { //超时
+				log.Infof("SyncMng request ready timeout, break wait traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, request.latest)
 				break
 			}
-		}
+			hasEventUpdate = sm.userTimeLine.ExistsUserEventUpdate(request.marks.utlRecv, token, device.UserID, device.ID, req.TraceId)
+			if curUtl != request.marks.utlRecv {
+				log.Warnf("SyncMng ExistsUserEventUpdate update oldUtl:%d to newUtl:%d", request.marks.utlRecv, curUtl)
+				request.marks.utlRecv = curUtl
+			}
+			if hasEventUpdate && now-start > 500 {
+				log.Infof("SyncMng break has user event traceid:%s user:%s dev:%s now:%d latest:%d utlRecv:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.utlRecv)
+				break
+			}
 
-		if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(request.marks.stdRecv, device.UserID, device.ID) && now-start > 500 && request.device.IsHuman == true {
-			log.Infof("SyncMng break has send to device messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
-			break
-		}
+			if sm.clientDataStreamRepo.ExistsAccountDataUpdate(request.marks.accRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
+				log.Infof("SyncMng break has account data traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, start)
+				break
+			}
 
-		//if sm.cfg.SendMemberEvent == false {
-		if sm.presenceStreamRepo.ExistsPresence(request.device.UserID, request.marks.preRecv) && now-start > 500 && request.device.IsHuman == true {
-			log.Infof("SyncMng break has presence messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
-			break
+			if sm.typingConsumer.ExistsTyping(device.UserID, device.ID, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)) && now-start > 500 && request.device.IsHuman == true {
+				log.Infof("SyncMng break has typing traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
+				break
+			}
+
+			hasReceiptUpdate, lastReceipt := sm.userTimeLine.ExistsUserReceiptUpdate(request.marks.recpRecv, device.UserID)
+			if hasReceiptUpdate && now-start > sm.cfg.CheckReceipt && request.device.IsHuman == true {
+				log.Infof("SyncMng break has receipt traceid:%s user:%s dev:%s now:%d latest:%d recpRecv:%d lastReceipt:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.recpRecv, lastReceipt)
+				break
+			}
+
+			if sm.cfg.UseEncrypt {
+				if common.IsActualDevice(device.DeviceType) && sm.keyChangeRepo.ExistsKeyChange(request.marks.kcRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
+					log.Infof("SyncMng break has key change traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
+					break
+				}
+			}
+
+			if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(request.marks.stdRecv, device.UserID, device.ID) && now-start > 500 && request.device.IsHuman == true {
+				log.Infof("SyncMng break has send to device messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
+				break
+			}
+
+			//if sm.cfg.SendMemberEvent == false {
+			if sm.presenceStreamRepo.ExistsPresence(request.device.UserID, request.marks.preRecv) && now-start > 500 && request.device.IsHuman == true {
+				log.Infof("SyncMng break has presence messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
+				break
+			}
+			//}
 		}
-		//}
 	}
 
 	var res *syncapitypes.Response
