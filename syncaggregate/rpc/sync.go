@@ -17,9 +17,9 @@ package rpc
 import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/model/types"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/syncaggregate/sync"
 	"github.com/nats-io/nats.go"
 )
@@ -101,7 +101,7 @@ func (s *SyncRpcConsumer) callSync(data *types.SyncContent) {
 	if msgSize > s.compressLength {
 		contentBytes = common.DoCompress(contentBytes)
 		result.Compressed = true
-		log.Infof("nats pub message with content, before compress %d after compress %d", msgSize, len(contentBytes))
+		log.Debugf("nats pub message with content, before compress %d after compress %d", msgSize, len(contentBytes))
 	}
 	result.Content = contentBytes
 	s.rpcClient.PubObj(data.Reply, result)

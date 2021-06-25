@@ -24,10 +24,10 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -125,7 +125,7 @@ func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
 	if !ok {
 		return true
 	}
-	log.Infof("update base user:%s server status is:%s last presence:%s set presence:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
+	log.Debugf("update base user:%s server status is:%s last presence:%s set presence:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
 	//other base prop has change, update presence
 	if output.Presence.LastStatusMsg != output.Presence.StatusMsg || output.Presence.LastExtStatusMsg != output.Presence.ExtStatusMsg {
 		if output.Presence.Presence == "offline" && presence.ServerStatus != "offline" {
@@ -143,12 +143,12 @@ func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
 		return false
 	}
 	s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
-	log.Infof("user:%s server status is:%s set precense from:%s to:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
+	log.Debugf("user:%s server status is:%s set precense from:%s to:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
 	return true
 }
 
 func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
-	log.Infof("recv Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
+	log.Debugf("recv Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
 
 	if !s.checkUpdate(output) {
 		return

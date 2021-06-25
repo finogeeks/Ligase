@@ -27,7 +27,7 @@ import (
 )
 
 func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
-	log.Infof("traceid:%s begin buildIncreamSyncRequset", req.traceId)
+	log.Debugf("traceid:%s begin buildIncreamSyncRequset", req.traceId)
 	joinRooms, err := sm.userTimeLine.GetJoinRoomsMap(req.device.UserID)
 	if err != nil {
 		req.remoteReady = false
@@ -91,7 +91,7 @@ func (sm *SyncMng) buildIncreamSyncRequset(req *request) error {
 }
 
 func (sm *SyncMng) buildReqRoom(traceId string, start, end int64, roomID, roomState, source string) *syncapitypes.SyncRoom {
-	log.Infof("traceid:%s roomID:%s start:%d end:%d roomState:%s source:%s", traceId, roomID, start, end, roomState, source)
+	log.Debugf("traceid:%s roomID:%s start:%d end:%d roomState:%s source:%s", traceId, roomID, start, end, roomState, source)
 	return &syncapitypes.SyncRoom{
 		RoomID:    roomID,
 		RoomState: roomState,
@@ -101,7 +101,7 @@ func (sm *SyncMng) buildReqRoom(traceId string, start, end int64, roomID, roomSt
 }
 
 func (sm *SyncMng) buildFullSyncRequest(req *request) error {
-	log.Infof("traceid:%s begin buildFullSyncRequest", req.traceId)
+	log.Debugf("traceid:%s begin buildFullSyncRequest", req.traceId)
 	req.limit = 10
 	if !req.device.IsHuman {
 		return nil
@@ -172,14 +172,14 @@ func (sm *SyncMng) callSyncLoad(req *request) {
 
 func (sm *SyncMng) processSyncLoad(req *request) {
 	user := req.device.UserID
-	log.Infof("traceid:%s SyncMng processRequest begin", req.traceId)
+	log.Debugf("traceid:%s SyncMng processRequest begin", req.traceId)
 	bs := time.Now().UnixNano() / 1000000
 	defer func(bs int64) {
 		spend := time.Now().UnixNano()/1000000 - bs
 		if spend > 1000 {
 			log.Warnf("trace:%s SyncMng processRequest spend:%d", req.traceId, spend)
 		} else {
-			log.Infof("trace:%s SyncMng processRequest spend:%d", req.traceId, spend)
+			log.Debugf("trace:%s SyncMng processRequest spend:%d", req.traceId, spend)
 		}
 	}(bs)
 	sm.userTimeLine.LoadHistory(user, req.device.IsHuman)
@@ -221,7 +221,7 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 					if spend > types.DB_EXCEED_TIME {
 						log.Warnf("SyncMng processRequest load exceed %d ms traceid:%s slot:%d user:%s device:%s spend:%d ms", types.DB_EXCEED_TIME, req.traceId, req.slot, user, req.device.ID, spend)
 					} else {
-						log.Infof("SyncMng processRequest load succ traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, user, req.device.ID, spend)
+						log.Debugf("SyncMng processRequest load succ traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, user, req.device.ID, spend)
 					}
 					break
 				}
@@ -237,7 +237,7 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 			req.ready = true
 		}
 	} else {
-		log.Infof("SyncMng processRequest not load ready traceid:%s slot:%d user:%s device:%s", req.traceId, req.slot, user, req.device.ID)
+		log.Warnf("SyncMng processRequest not load ready traceid:%s slot:%d user:%s device:%s", req.traceId, req.slot, user, req.device.ID)
 		req.ready = false
 	}
 }
@@ -276,7 +276,7 @@ func (sm *SyncMng) buildLoadRequest(req *request) {
 		}
 		request.JoinedRooms = append(request.JoinedRooms, roomID)
 	}
-	log.Infof("SyncMng.callSyncLoad remote load request start traceid:%s slot:%d user:%s device:%s utl:%d fullstate:%t joins:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, req.isFullSync, len(req.joinRooms))
+	log.Debugf("SyncMng.callSyncLoad remote load request start traceid:%s slot:%d user:%s device:%s utl:%d fullstate:%t joins:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, req.isFullSync, len(req.joinRooms))
 	sm.sendSyncLoadReqAndHandle(req, requestMap)
 }
 
@@ -309,14 +309,14 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 				} else {
 					timeout = int(sm.cfg.Sync.RpcTimeout)
 				}
-				log.Infof("SyncMng.callSyncLoad load traceid:%s slot:%d user %s device %s instance:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, instance)
+				log.Debugf("SyncMng.callSyncLoad load traceid:%s slot:%d user %s device %s instance:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, instance)
 				data, err := sm.rpcClient.Request(types.SyncServerTopicDef, bytes, timeout)
 
 				spend := time.Now().UnixNano()/1000000 - bs
 				//only for debug
 				if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 					delay := utils.GetRandomSleepSecondsForDebug()
-					log.Infof("SyncMng.callSyncLoad random sleep %fs", delay)
+					log.Debugf("SyncMng.callSyncLoad random sleep %fs", delay)
 					time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 				}
 				if err == nil {
@@ -327,7 +327,7 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 						req.remoteReady = false
 						syncReq.LoadReady = false
 					} else if result.Ready == true {
-						log.Infof("SyncMng.callSyncLoad traceid:%s slot:%d spend:%d ms user %s device %s instance %d response true", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance)
+						log.Debugf("SyncMng.callSyncLoad traceid:%s slot:%d spend:%d ms user %s device %s instance %d response true", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance)
 						syncReq.LoadReady = true
 					} else {
 						log.Warnf("SyncMng.callSyncLoad traceid:%s slot:%d spend:%d ms user %s device %s instance %d response false", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance)
@@ -370,6 +370,5 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 		req.remoteReady = false
 	}
 	es := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng.callSyncLoad remote load request end traceid:%s slot:%d user:%s device:%s spend:%d ms remoteReady:%t remoteFinished:%t len(requestMap):%d", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs, req.remoteReady, req.remoteFinished, len(requestMap))
-
+	log.Infof("SyncLoad.sendSyncLoadReqAndHandle traceid:%s slot:%d user:%s device:%s spend:%d ms remoteReady:%t remoteFinished:%t", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs, req.remoteReady, req.remoteFinished)
 }
