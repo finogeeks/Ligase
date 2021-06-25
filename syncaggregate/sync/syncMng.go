@@ -121,7 +121,7 @@ func (sm *SyncMng) sendStateChange(state *types.NotifyDeviceState) {
 	if err != nil {
 		log.Errorf("OnStateChange publish kafka topic:%s err:%v userID:%s,deviceID:%s", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, err, state.UserID, state.DeviceID)
 	} else {
-		log.Infof("OnStateChange publish kafka topic:%s succ userID:%s,deviceID:%s,laststate:%d,curstate:%d,pushkeys:%v", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, state.UserID, state.DeviceID, state.LastState, state.CurState, state.Pushkeys)
+		log.Debugf("OnStateChange publish kafka topic:%s succ userID:%s,deviceID:%s,laststate:%d,curstate:%d,pushkeys:%v", sm.cfg.Kafka.Producer.DeviceStateUpdate.Topic, state.UserID, state.DeviceID, state.LastState, state.CurState, state.Pushkeys)
 	}
 }
 
@@ -142,7 +142,7 @@ func (sm *SyncMng) OnBatchStateChange(batch []*types.NotifyDeviceState) {
 }
 
 func (sm *SyncMng) OnUserOnlineDetail(batch []*types.NotifyOnlineDetail) {
-	log.Infof("cron notify online detail len:%d", len(batch))
+	log.Debugf("cron notify online detail len:%d", len(batch))
 	data := new(types.StaticItem)
 	data.Type = types.STATIC_ONLINE
 	onlineInfo := &types.StaticOnlineItem{
@@ -236,7 +236,7 @@ func (sm *SyncMng) stateChangePresent(state *types.NotifyUserState) {
 	data.UserID = state.UserID
 	data.Presence = content
 	data.Ts = time.Now().UnixNano() / 1000000
-	log.Infof("state change presence user:%s ", state.UserID)
+	log.Debugf("state change presence user:%s ", state.UserID)
 	common.GetTransportMultiplexer().SendWithRetry(
 		sm.cfg.Kafka.Producer.OutputProfileData.Underlying,
 		sm.cfg.Kafka.Producer.OutputProfileData.Name,
@@ -337,12 +337,12 @@ func (sm *SyncMng) startWorker(channel chan *request) {
 func (sm *SyncMng) dispatch(uid string, req *request) {
 	hash := common.CalcStringHashCode(uid)
 	req.slot = hash % sm.slot
-	log.Infof("traceid:%s dispatch slot:%d len:%d", req.traceId, req.slot, len(sm.msgChan[req.slot]))
+	log.Debugf("traceid:%s dispatch slot:%d len:%d", req.traceId, req.slot, len(sm.msgChan[req.slot]))
 	sm.msgChan[req.slot] <- req
 }
 
 func (sm *SyncMng) reBuildIncreamSyncReqRoom(req *request) {
-	log.Infof("traceid:%s begin reBuildIncreamSyncReqRoom", req.traceId)
+	log.Debugf("traceid:%s begin reBuildIncreamSyncReqRoom", req.traceId)
 	joinRooms, err := sm.userTimeLine.GetJoinRoomsArr(req.device.UserID)
 	if err != nil {
 		log.Warnf("traceid:%s reBuildIncreamSyncReqRoom.GetJoinRooms err:%v", req.traceId, err)
@@ -454,7 +454,7 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 		request.JoinedRooms = append(request.JoinedRooms, roomID)
 	}
 	bs := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms), maxReceiptOffset)
+	log.Debugf("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms), maxReceiptOffset)
 	var wg sync.WaitGroup
 	for instance, syncReq := range requestMap {
 		wg.Add(1)
@@ -494,7 +494,7 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			//only for debug
 			if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 				delay := utils.GetRandomSleepSecondsForDebug()
-				log.Infof("SyncMng.buildSyncData random sleep %fs", delay)
+				log.Debugf("SyncMng.buildSyncData random sleep %fs", delay)
 				time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 			}
 
@@ -521,7 +521,7 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 				syncReq.SyncReady = false
 				return
 			}
-			log.Infof("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
+			log.Debugf("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
 			if response.AllLoaded {
 				syncReq.SyncReady = true
 				sm.addSyncData(req, res, &response)
@@ -532,7 +532,8 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 	}
 	wg.Wait()
 	es := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng.buildSyncData remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
+	spend := es - bs
+	log.Debugf("SyncMng.buildSyncData remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
 	finished := true
 	if req.isFullSync {
 		for _, syncReq := range requestMap {
@@ -566,10 +567,10 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			req.marks.kcProcess = 1
 		}
 		sm.freshToken(req, res)
-		log.Infof("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t", req.traceId, req.slot, req.device.UserID, req.device.ID, finished)
+		log.Infof("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, finished, spend)
 		return true
 	} else {
-		log.Warnf("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t", req.traceId, req.slot, req.device.UserID, req.device.ID, finished)
+		log.Warnf("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, finished, spend)
 		return false
 	}
 }
@@ -985,7 +986,7 @@ func (sm *SyncMng) addOneTimeKeyCountInfo(req *request, res *syncapitypes.Respon
 func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 	maxPos := int64(-1)
 	if sm.presenceStreamRepo.ExistsPresence(req.device.UserID, req.marks.preRecv) {
-		log.Infof("add presence for %s", req.device.UserID)
+		log.Debugf("add presence for %s", req.device.UserID)
 		friendShipMap := sm.userTimeLine.GetFriendShip(req.device.UserID, true)
 		if friendShipMap != nil {
 			var presenceEvent gomatrixserverlib.ClientEvent
@@ -1000,7 +1001,7 @@ func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 
 					response.Presence.Events = append(response.Presence.Events, presenceEvent)
 					data, _ := json.Marshal(presenceEvent)
-					log.Infof("add presence for %s %d %d %s", req.device.UserID, feed.GetOffset(), req.marks.preRecv, data)
+					log.Debugf("add presence for %s %d %d %s", req.device.UserID, feed.GetOffset(), req.marks.preRecv, data)
 
 					if maxPos < feed.GetOffset() {
 						maxPos = feed.GetOffset()
@@ -1016,7 +1017,7 @@ func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 	}
 
 	req.marks.preProcess = maxPos
-	log.Infof("process precense user:%s cur:%d", req.device.UserID, req.marks.preProcess)
+	log.Debugf("process precense user:%s cur:%d", req.device.UserID, req.marks.preProcess)
 	return
 }
 

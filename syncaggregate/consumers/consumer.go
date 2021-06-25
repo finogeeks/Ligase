@@ -105,7 +105,7 @@ func (s *EventFeedConsumer) SetPresenceStreamRepo(presenceRepo *repos.PresenceDa
 func (s *EventFeedConsumer) startWorker(msgChan chan *UtlEvent) {
 	for data := range msgChan {
 		timespend := common.NewTimeSpend()
-		log.Infof("EventFeedConsumer start handler")
+		log.Debugf("EventFeedConsumer start handler")
 		s.onNewRoomEvent(context.TODO(), data)
 		timespend.Logf(1000, "EventFeedConsumer end handler")
 	}
@@ -131,7 +131,7 @@ func (s *EventFeedConsumer) dispthInsertUserTimeLine(ev *gomatrixserverlib.Clien
 func (s *EventFeedConsumer) onInsertUserTimeLine(data *UtlContent) {
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 		delay := utils.GetRandomSleepSecondsForDebug()
-		log.Infof("roomId:%s event_id:%s user:%s sleep %fs", data.ev.RoomID, data.ev.EventID, data.user, delay)
+		log.Debugf("roomId:%s event_id:%s user:%s sleep %fs", data.ev.RoomID, data.ev.EventID, data.user, delay)
 		time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 	}
 	s.userTimeLine.AddP2PEv(data.ev, data.user)
@@ -154,7 +154,7 @@ func (s *EventFeedConsumer) Start() error {
 
 func (s *EventFeedConsumer) OnMessage(topic string, partition int32, data []byte) {
 	timespend := common.NewTimeSpend()
-	log.Infof("EventFeedConsumer onMessage start")
+	log.Debugf("EventFeedConsumer onMessage start")
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("sync aggregate: message parse failure", log.KeysAndValues{"error", err})
@@ -179,11 +179,11 @@ func (s *EventFeedConsumer) OnMessage(topic string, partition int32, data []byte
 			}
 		}
 		if len(utlEvent.RelateJoined) > 0 || (len(utlEvent.RelateJoined) <= 0 && utlEvent.Event.Type == "m.room.member") {
-			log.Infof("sync aggregate received data instance:%d IsRelatedRequest event_id:%s room:%s RelateJoined len:%d", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, len(utlEvent.RelateJoined))
+			log.Debugf("sync aggregate received data instance:%d IsRelatedRequest event_id:%s room:%s RelateJoined len:%d", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, len(utlEvent.RelateJoined))
 			idx := common.CalcStringHashCode(utlEvent.Event.RoomID) % s.chanSize
 			s.msgChan[idx] <- utlEvent
 		} else {
-			log.Infof("sync aggregate received data instance:%d not IsRelatedRequest and not m.room.member event_id:%s room:%s joined:%v", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, output.NewRoomEvent.Joined)
+			log.Debugf("sync aggregate received data instance:%d not IsRelatedRequest and not m.room.member event_id:%s room:%s joined:%v", s.cfg.MultiInstance.Instance, utlEvent.Event.EventID, utlEvent.Event.RoomID, output.NewRoomEvent.Joined)
 		}
 	default:
 		log.Debugw("sync aggregate: ignoring unknown output type", log.KeysAndValues{"type", output.Type})
@@ -217,7 +217,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ev *gomatrixserverlib.ClientEve
 				bs := time.Now().UnixNano() / 1000000
 				s.dispthInsertUserTimeLine(ev, *ev.StateKey)
 				spend := time.Now().UnixNano()/1000000 - bs
-				log.Infof("m.room.member not join add to timeline roomId:%s event_id:%s user_id:%s spend:%dms", ev.RoomID, ev.EventID, *ev.StateKey, spend)
+				log.Debugf("m.room.member not join add to timeline roomId:%s event_id:%s user_id:%s spend:%dms", ev.RoomID, ev.EventID, *ev.StateKey, spend)
 			}
 		} else {
 			bs := time.Now().UnixNano() / 1000000
@@ -251,7 +251,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ev *gomatrixserverlib.ClientEve
 				}
 			}
 			spend := time.Now().UnixNano()/1000000 - bs
-			log.Infof("addUserTimeLineEvent update friends ship roomID:%s eventID:%s spend:%d", ev.RoomID, ev.EventID, spend)
+			log.Debugf("addUserTimeLineEvent update friends ship roomID:%s eventID:%s spend:%d", ev.RoomID, ev.EventID, spend)
 		}
 	}
 	bs := time.Now().UnixNano() / 1000000
@@ -259,7 +259,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ev *gomatrixserverlib.ClientEve
 		s.dispthInsertUserTimeLine(ev, user)
 	}
 	spend := time.Now().UnixNano()/1000000 - bs
-	log.Infof("update relateUsers roomID:%s eventID:%s len(relateUsers):%d spend:%d", ev.RoomID, ev.EventID, len(relateUsers), spend)
+	log.Debugf("update relateUsers roomID:%s eventID:%s len(relateUsers):%d spend:%d", ev.RoomID, ev.EventID, len(relateUsers), spend)
 	if updateProfileUser != nil {
 		bs := time.Now().UnixNano() / 1000000
 		for domain, users := range updateProfileUser {
@@ -286,7 +286,7 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ev *gomatrixserverlib.ClientEve
 						State:       presenceContent.State,
 					}
 					content, _ := json.Marshal(fedProfile)
-					log.Infof("send profile to new domain, user:%s, domain:%s, profile:%s", user, domain, content)
+					log.Debugf("send profile to new domain, user:%s, domain:%s, profile:%s", user, domain, content)
 					edu := gomatrixserverlib.EDU{
 						Type:        "profile",
 						Origin:      senderDomain,
@@ -304,6 +304,6 @@ func (s *EventFeedConsumer) addUserTimeLineEvent(ev *gomatrixserverlib.ClientEve
 			}
 		}
 		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("update updateProfileUser roomID:%s eventID:%s spend:%d", ev.RoomID, ev.EventID, spend)
+		log.Debugf("update updateProfileUser roomID:%s eventID:%s spend:%d", ev.RoomID, ev.EventID, spend)
 	}
 }

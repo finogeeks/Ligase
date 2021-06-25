@@ -311,7 +311,7 @@ func (sm *SyncMng) OnSyncRequest(
 	device *authtypes.Device,
 ) (int, *syncapitypes.Response) {
 	start := time.Now().UnixNano() / 1000000
-	log.Infof("SyncMng request start traceid:%s user:%s dev:%s start:%d", req.TraceId, device.UserID, device.ID, start)
+	log.Debugf("SyncMng request start traceid:%s user:%s dev:%s start:%d", req.TraceId, device.UserID, device.ID, start)
 	lastPos := sm.onlineRepo.GetLastPos(device.UserID, device.ID)
 	request := sm.buildRequest(req, device, start, lastPos)
 	sm.onlineRepo.Pet(device.UserID, device.ID, request.marks.utlRecv, request.timeout)
@@ -407,7 +407,7 @@ func (sm *SyncMng) OnSyncRequest(
 		bs := time.Now().UnixNano() / 1000000
 		ok := sm.buildSyncData(request, res)
 		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("traceid:%s buildSyncData spend:%d", request.traceId, spend)
+		log.Debugf("traceid:%s buildSyncData spend:%d", request.traceId, spend)
 		if !ok {
 			res = syncapitypes.NewResponse(0)
 			res.NextBatch = request.token
