@@ -50,8 +50,8 @@ type UserTimeLineRepo struct {
 
 	receiptLatest sync.Map //user latest receipt offset
 
-	friendShip        sync.Map //user friend ship
-	friendshipReverse sync.Map //user friend ship reverse mapping(for the users who is not in this syncaggregate instance)
+	friendShip sync.Map //user friend ship
+	// friendshipReverse sync.Map //user friend ship reverse mapping(for the users who is not in this syncaggregate instance)
 
 	receiptMutex cas.Mutex
 
@@ -102,11 +102,6 @@ func (tl *UserTimeLineRepo) addFriendShip(userID, friend string) (hasFriendship 
 	if !v.(bool) {
 		friendMap.(*sync.Map).Store(friend, true)
 	}
-	friendReverseMap, ok := tl.friendshipReverse.Load(friend)
-	if !ok {
-		friendReverseMap, _ = tl.friendshipReverse.LoadOrStore(friend, new(sync.Map))
-	}
-	friendReverseMap.(*sync.Map).Store(userID, true)
 	return v.(bool) && loaded
 }
 
