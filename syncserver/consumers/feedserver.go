@@ -168,7 +168,7 @@ func (s *RoomEventFeedConsumer) OnMessage(topic string, partition int32, data []
 	case roomserverapi.OutputTypeNewRoomEvent:
 		if common.IsRelatedRequest(output.NewRoomEvent.Event.RoomID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, s.cfg.MultiInstance.MultiWrite) {
 			bytes, _ := json.Marshal(output.NewRoomEvent.Event)
-			log.Infow("sync server received event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID, "instance", s.cfg.MultiInstance.Instance, "data", string(bytes)})
+			log.Debugw("sync server received event from room server", log.KeysAndValues{"type", output.NewRoomEvent.Event.Type, "event_id", output.NewRoomEvent.Event.EventID, "room_id", output.NewRoomEvent.Event.RoomID, "instance", s.cfg.MultiInstance.Instance, "data", string(bytes)})
 			idx := common.CalcStringHashCode(output.NewRoomEvent.Event.RoomID) % s.chanSize
 			s.msgChan[idx] <- output
 		}
@@ -255,7 +255,7 @@ func (s *RoomEventFeedConsumer) processRedactEv(ev *gomatrixserverlib.ClientEven
 		log.Errorf("redact redact Marshal:%s evs:%v, err:%v", ev.Redacts, unsigned, err)
 	}
 	redactEv.Unsigned = unsignedBytes
-	log.Infof("syncserver, edactEv.Hint: %s", redactEv.Hint)
+	log.Debugf("syncserver, edactEv.Hint: %s", redactEv.Hint)
 
 	if stream != nil {
 		stream.Ev = &redactEv //更新timeline
@@ -323,7 +323,7 @@ func (s *RoomEventFeedConsumer) updateReactionEvent(roomID string, reaction *typ
 	if stream != nil {
 		stream.Ev = &originEv
 	}
-	log.Infof("updateReactionEvent eventID:%s  succ", originEv.EventID)
+	log.Debugf("updateReactionEvent eventID:%s  succ", originEv.EventID)
 }
 
 func (s *RoomEventFeedConsumer) parseRelatesContent(redactEv gomatrixserverlib.ClientEvent) (reaction *types.ReactionContent) {
@@ -415,7 +415,7 @@ func (s *RoomEventFeedConsumer) processMessageEv(ev *gomatrixserverlib.ClientEve
 	if stream != nil {
 		stream.Ev = &originEv
 	}
-	log.Infof("eventID:%s InRelayTo origin eventID:%s succ", ev.EventID, originEventID)
+	log.Debugf("eventID:%s InRelayTo origin eventID:%s succ", ev.EventID, originEventID)
 }
 
 func (s *RoomEventFeedConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent) {
@@ -513,7 +513,7 @@ func (s *RoomEventFeedConsumer) processReactionEv(ev *gomatrixserverlib.ClientEv
 	if stream != nil {
 		stream.Ev = &originEv
 	}
-	log.Infof("eventID:%s annotation origin eventID:%s succ", ev.EventID, originEventID)
+	log.Debugf("eventID:%s annotation origin eventID:%s succ", ev.EventID, originEventID)
 }
 
 func (s *RoomEventFeedConsumer) onNewRoomEvent(
@@ -541,7 +541,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 			s.roomHistoryTimeLine.SetRoomMinStream(ev.RoomID, ev.EventOffset)
 		}
 		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("feedserver onNewRoomEvent load room state roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%dms", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
+		log.Debugf("feedserver onNewRoomEvent load room state roomID:%s eventID:%s sender:%s type:%s eventoffset:%d spend:%dms", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset, spend)
 	}
 	s.roomHistoryTimeLine.SetDomainMaxStream(ev.RoomID, domain, ev.DomainOffset)
 
@@ -550,7 +550,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)
 	}
-	log.Infof("feedserver onNewRoomEvent update unsigned roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
+	log.Debugf("feedserver onNewRoomEvent update unsigned roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
 	transId := ""
 	if msg.TransactionID != nil {
 		transId = msg.TransactionID.TransactionID
@@ -580,7 +580,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 
 	membership := ""
 	if common.IsStateClientEv(&ev) == true { //state ev
-		log.Infof("feedserver onNewRoomEvent update state event roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
+		log.Debugf("feedserver onNewRoomEvent update state event roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
 		s.roomStateTimeLine.AddEv(&ev, ev.EventOffset, true)       //state 也会更新
 		s.roomStateTimeLine.AddStreamEv(&ev, ev.EventOffset, true) //保留state stream
 
