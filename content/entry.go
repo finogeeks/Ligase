@@ -211,6 +211,9 @@ func Entry() {
 
 	startContentService(base, cmdLine)
 
+	transportMultiplexer := common.GetTransportMultiplexer()
+	transportMultiplexer.Start()
+
 	httpHandler := common.WrapHandlerInCORS(base.APIMux)
 	http.Handle("/", hm.Wrap2(httpHandler))
 
