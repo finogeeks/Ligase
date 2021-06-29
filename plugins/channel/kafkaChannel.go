@@ -133,6 +133,7 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 	}
 
 	numPartitions := adapter.GetKafkaNumPartitions()
+	log.Infow("==================================================================", log.KeysAndValues{"numPartitions", numPartitions, "topic", topic})
 	replicationFactor := adapter.GetKafkaReplicaFactor()
 
 	if topicInfo, ok := md.Topics[topic]; ok && len(topicInfo.Partitions) > 0 {
