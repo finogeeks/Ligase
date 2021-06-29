@@ -233,6 +233,8 @@ func startContentService(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
 
+	addProducer(transportMultiplexer, kafka.Producer.FavoriteInfo)
+
 	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdateContent, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.DownloadMedia, base.Cfg.MultiInstance.Instance)
 
