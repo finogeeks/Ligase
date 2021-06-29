@@ -23,12 +23,12 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
@@ -37,10 +37,10 @@ func init() {
 
 type ReqGetUserUnread struct{}
 
-func (ReqGetUserUnread) GetRoute() string       { return "/unread/{userID}" }
+func (ReqGetUserUnread) GetRoute() string       { return "/unread" }
 func (ReqGetUserUnread) GetMetricsName() string { return "unread" }
 func (ReqGetUserUnread) GetMsgType() int32      { return internals.MSG_GET_UNREAD }
-func (ReqGetUserUnread) GetAPIType() int8       { return apiconsumer.APITypeExternal }
+func (ReqGetUserUnread) GetAPIType() int8       { return apiconsumer.APITypeAuth }
 func (ReqGetUserUnread) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }
@@ -64,9 +64,9 @@ func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *au
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
-	req := msg.(*external.GetUserUnread)
+	//req := msg.(*external.GetUserUnread)
 
-	userID := req.UserID
+	userID := device.UserID
 	joinMap, err := c.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown(err.Error())

@@ -623,7 +623,7 @@ func (s *PushConsumer) processPush(
 			}
 
 			if action.Notify == "notify" {
-				if s.rpcClient != nil && len(pushers.Pushers) > 0 {
+				if s.rpcClient != nil && (len(pushers.Pushers) > 0 || s.cfg.PushService.CustomPushServerUrl != "")  {
 					var pubContent push.PushPubContent
 					pubContent.UserID = *userID
 					pubContent.Pushers = pushers
