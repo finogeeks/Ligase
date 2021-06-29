@@ -163,6 +163,7 @@ type Dendrite struct {
 			UserInfoUpdate     ProducerConf `yaml:"user_info_update"`
 			DismissRoom        ProducerConf `yaml:"dismiss_room"`
 			OutputStatic       ProducerConf `yaml:"output_static_data"`
+			FavoriteInfo       ProducerConf `yaml:"favorite_info"`
 		} `yaml:"producers"`
 		Consumer struct {
 			OutputRoomEventPublicRooms   ConsumerConf `yaml:"output_room_event_publicroom"`    // OutputRoomEventPublicRooms "public-rooms",
