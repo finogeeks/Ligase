@@ -37,10 +37,10 @@ func init() {
 
 type ReqGetUserUnread struct{}
 
-func (ReqGetUserUnread) GetRoute() string       { return "/unread" }
+func (ReqGetUserUnread) GetRoute() string       { return "/unread/{userID}" }
 func (ReqGetUserUnread) GetMetricsName() string { return "unread" }
 func (ReqGetUserUnread) GetMsgType() int32      { return internals.MSG_GET_UNREAD }
-func (ReqGetUserUnread) GetAPIType() int8       { return apiconsumer.APITypeAuth }
+func (ReqGetUserUnread) GetAPIType() int8       { return apiconsumer.APITypeExternal }
 func (ReqGetUserUnread) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }
@@ -61,12 +61,11 @@ func (ReqGetUserUnread) NewResponse(code int) core.Coder {
 }
 func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+	req := msg.(*external.GetUserUnread)
+	if !common.IsRelatedRequest(req.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
-	//req := msg.(*external.GetUserUnread)
-
-	userID := device.UserID
+	userID := req.UserID
 	joinMap, err := c.userTimeLine.GetJoinRooms(userID)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown(err.Error())
