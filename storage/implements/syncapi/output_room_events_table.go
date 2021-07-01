@@ -405,14 +405,14 @@ func (s *outputRoomEventsStatements) selectHistoryEvents(
 	ctx context.Context,
 	roomID string,
 	limit int,
-) (events []gomatrixserverlib.ClientEvent, offset []int64, err error) {
+) (events []*gomatrixserverlib.ClientEvent, offset []int64, err error) {
 	rows, err := s.selectHistoryEventStmt.QueryContext(ctx, roomID, limit)
 	if err != nil {
 		log.Errorf("outputRoomEventsStatements.selectHistoryEvents err: %v", err)
 		return
 	}
 
-	var evs []gomatrixserverlib.ClientEvent
+	var evs []*gomatrixserverlib.ClientEvent
 	var pos []int64
 	defer rows.Close()
 	for rows.Next() {
@@ -437,7 +437,7 @@ func (s *outputRoomEventsStatements) selectHistoryEvents(
 			return nil, nil, err
 		}
 
-		evs = append(evs, ev)
+		evs = append(evs, &ev)
 		pos = append(pos, streamPos)
 	}
 
@@ -753,14 +753,14 @@ func rowsToStreamEvents(rows *sql.Rows) ([]streamEvent, error) {
 // CurrentState returns all the current state events for the given room.
 func (s *outputRoomEventsStatements) selectRoomStateStream(
 	ctx context.Context, roomID string, pos int64,
-) ([]gomatrixserverlib.ClientEvent, []int64, error) {
+) ([]*gomatrixserverlib.ClientEvent, []int64, error) {
 	rows, err := s.selectRoomStateStreamStmt.QueryContext(ctx, roomID, pos)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close() // nolint: errcheck
 
-	result := []gomatrixserverlib.ClientEvent{}
+	result := []*gomatrixserverlib.ClientEvent{}
 	offsets := []int64{}
 	for rows.Next() {
 		var eventBytes []byte
@@ -783,7 +783,7 @@ func (s *outputRoomEventsStatements) selectRoomStateStream(
 			return nil, nil, err
 		}
 
-		result = append(result, ev)
+		result = append(result, &ev)
 		offsets = append(offsets, offset)
 	}
 	return result, offsets, nil

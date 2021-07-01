@@ -134,23 +134,12 @@ func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
 	} else {
 		log.Infof("load db succ RoomHistoryTimeLineRepo.loadHistory finished room:%s spend:%d ms", roomID, spend)
 	}
-	length := len(evs)
-	for i := 0; i < length/2; i++ {
-		ev := evs[i]
-		evs[i] = evs[length-1-i]
-		evs[length-1-i] = ev
 
-		off := offsets[i]
-		offsets[i] = offsets[length-1-i]
-		offsets[length-1-i] = off
-	}
-
-	for idx := range evs {
-		tl.AddEv(&evs[idx], offsets[idx], false)
+	for idx := len(evs) - 1; idx >= 0; idx-- {
+		tl.AddEv(evs[idx], offsets[idx], false)
 	}
 
 	tl.ready.Store(roomID, true)
-
 }
 
 func (tl *RoomHistoryTimeLineRepo) LoadHistory(roomID string, sync bool) {
@@ -311,7 +300,7 @@ func (tl *RoomHistoryTimeLineRepo) LoadRoomMinStream(roomID string) int64 {
 }
 
 func (tl *RoomHistoryTimeLineRepo) GetRoomMinStream(roomID string) int64 {
-	return tl.LoadRoomMinStream(roomID)	
+	return tl.LoadRoomMinStream(roomID)
 }
 
 func (tl *RoomHistoryTimeLineRepo) SetRoomMinStream(roomID string, minStream int64) {

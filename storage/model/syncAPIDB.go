@@ -68,13 +68,13 @@ type SyncAPIDatabase interface {
 	) error
 	GetStateEventsForRoom(
 		ctx context.Context, roomID string,
-	) (stateEvents []gomatrixserverlib.ClientEvent, offset []int64, err error)
+	) (stateEvents []*gomatrixserverlib.ClientEvent, offset []int64, err error)
 	GetStateEventsStreamForRoom(
 		ctx context.Context, roomID string,
-	) (stateEvents []gomatrixserverlib.ClientEvent, offset []int64, err error)
+	) (stateEvents []*gomatrixserverlib.ClientEvent, offset []int64, err error)
 	GetStateEventsStreamForRoomBeforePos(
 		ctx context.Context, roomID string, pos int64,
-	) (stateEvents []gomatrixserverlib.ClientEvent, offset []int64, err error)
+	) (stateEvents []*gomatrixserverlib.ClientEvent, offset []int64, err error)
 	UpdateEvent(
 		ctx context.Context, event gomatrixserverlib.ClientEvent, eventID string, eventType string,
 		RoomID string,
@@ -144,7 +144,7 @@ type SyncAPIDatabase interface {
 		ctx context.Context,
 		roomid string,
 		limit int,
-	) (events []gomatrixserverlib.ClientEvent, offsets []int64, err error)
+	) (events []*gomatrixserverlib.ClientEvent, offsets []int64, err error)
 	GetRoomLastOffsets(
 		ctx context.Context,
 		roomIDs []string,
