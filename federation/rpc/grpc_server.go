@@ -65,7 +65,7 @@ func (s *Server) Start() error {
 	if s.grpcServer != nil {
 		return errors.New("fed grpc server already start")
 	}
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.Rpc.SyncServer.Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.Rpc.Fed.Port))
 	if err != nil {
 		return errors.New("fed grpc server start err: " + err.Error())
 	}

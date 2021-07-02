@@ -27,5 +27,5 @@ func StartPushSender(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 	transportMultiplexer.PreStart()
 
-	pushsender.SetupPushSenderComponent(base, nil)
+	pushsender.SetupPushSenderComponent(base)
 }

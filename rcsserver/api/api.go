@@ -27,7 +27,7 @@ import (
 )
 
 func init() {
-	apiconsumer.SetServices("sync_aggregate_api")
+	apiconsumer.SetServices("front_rcs_api")
 	apiconsumer.SetAPIProcessor(ReqGetFriendships{})
 	apiconsumer.SetAPIProcessor(ReqGetRoomID{})
 }

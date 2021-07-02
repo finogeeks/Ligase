@@ -94,6 +94,9 @@ type RpcClient interface {
 	MakeLeaveToRemote(ctx context.Context, req *external.GetMakeLeaveRequest, targetDomain string) (*gomatrixserverlib.RespMakeLeave, error)
 	SendLeaveToRemote(ctx context.Context, req *external.PutSendLeaveRequest, targetDomain string) (*gomatrixserverlib.RespSendLeave, error)
 	SendInviteToRemote(ctx context.Context, event *gomatrixserverlib.Event, targetDomain string) (*gomatrixserverlib.RespInvite, error)
+
+	// to pushsender
+	PushData(ctx context.Context, req *pushapitypes.PushPubContents) error
 }
 
 var (

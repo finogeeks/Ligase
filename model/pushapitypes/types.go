@@ -15,6 +15,7 @@
 package pushapitypes
 
 import (
+	jsonRaw "encoding/json"
 	"sync"
 
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
@@ -327,19 +328,19 @@ type Notify struct {
 }
 
 type Notification struct {
-	EventId           string      `json:"event_id,omitempty"`
-	RoomId            string      `json:"room_id,omitempty"`
-	Type              string      `json:"type,omitempty"`
-	Sender            string      `json:"sender,omitempty"`
-	SenderDisplayName string      `json:"sender_display_name,omitempty"`
-	RoomName          string      `json:"room_name,omitempty"`
-	RoomAlias         string      `json:"room_alias,omitempty"`
-	UserIsTarget      bool        `json:"user_is_target,omitempty"`
-	Priority          string      `json:"prio,omitempty"`
-	Content           interface{} `json:"content,omitempty"`
-	Counts            Counts      `json:"counts,omitempty"`
-	Devices           []Device    `json:"devices,omitempty"`
-	CreateEvent       interface{} `json:"create_event,omitempty"`
+	EventId           string             `json:"event_id,omitempty"`
+	RoomId            string             `json:"room_id,omitempty"`
+	Type              string             `json:"type,omitempty"`
+	Sender            string             `json:"sender,omitempty"`
+	SenderDisplayName string             `json:"sender_display_name,omitempty"`
+	RoomName          string             `json:"room_name,omitempty"`
+	RoomAlias         string             `json:"room_alias,omitempty"`
+	UserIsTarget      bool               `json:"user_is_target,omitempty"`
+	Priority          string             `json:"prio,omitempty"`
+	Content           interface{}        `json:"content,omitempty"`
+	Counts            Counts             `json:"counts,omitempty"`
+	Devices           []Device           `json:"devices,omitempty"`
+	CreateEvent       jsonRaw.RawMessage `json:"create_event,omitempty"`
 }
 
 type Counts struct {
@@ -372,7 +373,7 @@ type PushPubContents struct {
 	RoomName          string                         `json:"roomName,omitempty"`
 	RoomAlias         string                         `json:"roomAlias,omitempty"`
 	Contents          []*PushPubContent              `json:"contents,omitempty"`
-	CreateContent     *interface{}                   `json:"create_content"`
+	CreateContent     []byte                         `json:"create_content"`
 	Slot              uint32                         `json:"slot"`
 	TraceId           string                         `json:"trace_id"`
 }

@@ -82,7 +82,6 @@ type PushConsumer struct {
 	roomCurState *repos.RoomCurStateRepo
 	rsTimeline   *repos.RoomStateTimeLineRepo
 	roomHistory  *repos.RoomHistoryTimeLineRepo
-	pubTopic     string
 	complexCache *common.ComplexCache
 	msgChan      []chan *PushEvent
 	chanSize     uint32
@@ -113,7 +112,6 @@ func NewPushConsumer(
 		pushDataRepo: pushDataRepo,
 		cfg:          cfg,
 	}
-	s.pubTopic = push.PushTopicDef
 
 	return s
 }
@@ -519,7 +517,7 @@ func (s *PushConsumer) getRoomName(roomID string) string {
 	return name
 }
 
-func (s *PushConsumer) getCreateContent(roomID string) interface{} {
+func (s *PushConsumer) getCreateContent(roomID string) []byte {
 	states := s.rsTimeline.GetStates(roomID)
 
 	if states != nil {
@@ -564,17 +562,15 @@ func (s *PushConsumer) pubPushContents(pushContents *push.PushPubContents, event
 	pushContents.RoomName = s.getRoomName(pushContents.Input.RoomID)
 	createContent := s.getCreateContent(pushContents.Input.RoomID)
 	if createContent != nil {
-		pushContents.CreateContent = &createContent
+		pushContents.CreateContent = createContent
 	}
 
-	// 看代码，应该已经不需要了
-	// bytes, err := json.Marshal(pushContents)
-	// if err == nil {
-	// 	log.Infof("EventDataConsumer.pubPushContents %s", string(bytes))
-	// 	s.rpcClient.Pub(s.pubTopic, bytes)
-	// } else {
-	// 	log.Errorf("EventDataConsumer.pubPushContents marsh err %v", err)
-	// }
+	err := s.rpcCli.PushData(context.Background(), pushContents)
+	if err != nil {
+		log.Errorf("EventDataConsumer.pubPushContents err %v", err)
+	} else {
+		log.Infof("EventDataConsumer.pubPushContents %v", pushContents)
+	}
 }
 
 func (s *PushConsumer) processMessageEvent(

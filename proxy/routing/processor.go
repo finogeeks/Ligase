@@ -285,7 +285,8 @@ func (w *HttpProcessor) ProcessInput(req *http.Request, coder core.Coder, proces
 		}
 	}
 
-	outputMsg, err := w.send(req.Context(), topic, input, processor.GetMsgType(), instance)
+	ctx := context.Background() // dont use req.Context()
+	outputMsg, err := w.send(ctx, topic, input, processor.GetMsgType(), instance)
 	if err != nil {
 		return util.JSONResponse{
 			Code: http.StatusInternalServerError,

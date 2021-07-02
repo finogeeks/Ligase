@@ -242,6 +242,7 @@ type Dendrite struct {
 		PublicRoom    RpcConf `yaml:"public_room"`
 		RoomServer    RpcConf `yaml:"room_server"`
 		Fed           RpcConf `yaml:"fed"`
+		Push          RpcConf `yaml:"push"`
 
 		FrontClientApiApi  RpcConf `yaml:"front_clientapi_api"`
 		FrontBgMngApi      RpcConf `yaml:"front_bgmng_api"`
@@ -787,6 +788,7 @@ func (config *Dendrite) derive() error {
 			&config.Rpc.PublicRoom,
 			&config.Rpc.RoomServer,
 			&config.Rpc.Fed,
+			&config.Rpc.Push,
 			&config.Rpc.FrontClientApiApi,
 			&config.Rpc.FrontBgMngApi,
 			&config.Rpc.FrontEncryptoApi,
@@ -809,7 +811,7 @@ func (config *Dendrite) derive() error {
 				return errors.New("yaml rpc.sync_server.addresses is empty in grpc mode")
 			}
 			if hasHostName {
-				v.AddressesStr = strings.Replace(v.AddressesStr, hostnameSl[0], "127.0.0.1", -1)
+				v.AddressesStr = strings.Replace(v.AddressesStr, hostnameSl[0]+":", "127.0.0.1:", -1)
 			}
 			v.Addresses = strings.Split(v.AddressesStr, ",")
 		}
@@ -1015,6 +1017,8 @@ func (config *Dendrite) GetRpcConfig(service string) (*RpcConf, bool) {
 		return &config.Rpc.RoomServer, true
 	case config.Rpc.Fed.ServerName:
 		return &config.Rpc.Fed, true
+	case config.Rpc.Push.ServerName:
+		return &config.Rpc.Push, true
 	case config.Rpc.FrontClientApiApi.ServerName:
 		return &config.Rpc.FrontClientApiApi, true
 	case config.Rpc.FrontBgMngApi.ServerName:

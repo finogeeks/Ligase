@@ -39,8 +39,10 @@ type ReqGetLRUSendToDevice struct{}
 
 func (ReqGetLRUSendToDevice) GetRoute() string       { return "/lru/syncaggregate/sendtodevice" }
 func (ReqGetLRUSendToDevice) GetMetricsName() string { return "get_lru_syncaggregate_sendtodevice" }
-func (ReqGetLRUSendToDevice) GetMsgType() int32      { return internals.MSG_GET_LRU_SYNC_AGGREGATE_SENDTODEVICE }
-func (ReqGetLRUSendToDevice) GetAPIType() int8       { return apiconsumer.APITypeAuth }
+func (ReqGetLRUSendToDevice) GetMsgType() int32 {
+	return internals.MSG_GET_LRU_SYNC_AGGREGATE_SENDTODEVICE
+}
+func (ReqGetLRUSendToDevice) GetAPIType() int8 { return apiconsumer.APITypeAuth }
 func (ReqGetLRUSendToDevice) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }
@@ -56,6 +58,10 @@ func (ReqGetLRUSendToDevice) FillRequest(coder core.Coder, req *http.Request, va
 }
 func (ReqGetLRUSendToDevice) NewResponse(code int) core.Coder {
 	return new(external.GetLRUSendToDeviceResponse)
+}
+func (ReqGetLRUSendToDevice) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.GetLRUSendToDeviceRequest)
+	return []uint32{common.CalcStringHashCode(req.Timestamp) % cfg.MultiInstance.Total}
 }
 func (ReqGetLRUSendToDevice) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -77,8 +83,10 @@ type ReqPutLRUSendToDevice struct{}
 
 func (ReqPutLRUSendToDevice) GetRoute() string       { return "/lru/syncaggregate/sendtodevice" }
 func (ReqPutLRUSendToDevice) GetMetricsName() string { return "put_lru_syncaggregate_sendtodevice" }
-func (ReqPutLRUSendToDevice) GetMsgType() int32      { return internals.MSG_PUT_LRU_SYNC_AGGREGATE_SENDTODEVICE }
-func (ReqPutLRUSendToDevice) GetAPIType() int8       { return apiconsumer.APITypeInternal }
+func (ReqPutLRUSendToDevice) GetMsgType() int32 {
+	return internals.MSG_PUT_LRU_SYNC_AGGREGATE_SENDTODEVICE
+}
+func (ReqPutLRUSendToDevice) GetAPIType() int8 { return apiconsumer.APITypeInternal }
 func (ReqPutLRUSendToDevice) GetMethod() []string {
 	return []string{http.MethodPut, http.MethodOptions}
 }
@@ -97,6 +105,10 @@ func (ReqPutLRUSendToDevice) FillRequest(coder core.Coder, req *http.Request, va
 func (ReqPutLRUSendToDevice) NewResponse(code int) core.Coder {
 	return new(external.PutLRUSendToDeviceResponse)
 }
+func (ReqPutLRUSendToDevice) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.PutLRUSendToDeviceRequest)
+	return []uint32{common.CalcStringHashCode(req.UserID) % cfg.MultiInstance.Total}
+}
 func (ReqPutLRUSendToDevice) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutLRUSendToDeviceRequest)
@@ -107,7 +119,7 @@ func (ReqPutLRUSendToDevice) Process(consumer interface{}, msg core.Coder, devic
 	c.stdEventTimeline.LoadHistory(req.UserID, req.DeviceID, false)
 
 	return http.StatusOK, &external.PutLRUSendToDeviceResponse{
-		UserID: req.UserID,
+		UserID:   req.UserID,
 		DeviceID: req.DeviceID,
 	}
 }

@@ -355,6 +355,11 @@ rpc:
         port: 8078
         consul_tag_prefix: fed
         addresses: federation:8078
+    push:
+        server_name: push
+        port: 8079
+        consul_tag_prefix: push
+        addresses: push:8079
 
     front_clientapi_api:
         server_name: front_clientapi_api

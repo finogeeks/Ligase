@@ -93,6 +93,7 @@ func (s *Server) UpdateOneTimeKey(ctx context.Context, req *pb.UpdateOneTimeKeyR
 }
 
 func (s *Server) UpdateDeviceKey(ctx context.Context, req *pb.UpdateDeviceKeyReq) (*pb.Empty, error) {
+	log.Infof("============ UpdateDeviceKey %s", req.String())
 	if req.EventNID > 0 {
 		if s.keyFilter.Lookup([]byte(strconv.FormatInt(req.EventNID, 10))) {
 			return &pb.Empty{}, nil

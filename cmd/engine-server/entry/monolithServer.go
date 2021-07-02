@@ -29,6 +29,7 @@ import (
 	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/proxy"
 	"github.com/finogeeks/ligase/publicroomsapi"
+	"github.com/finogeeks/ligase/pushsender"
 	"github.com/finogeeks/ligase/rcsserver"
 	"github.com/finogeeks/ligase/roomserver"
 	"github.com/finogeeks/ligase/roomserver/consumers"
@@ -108,8 +109,7 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcCli, cache, newFederation)
 	dbwriter.SetupDBWriterComponent(base)
 
-	// 看代码，应该已经不需要了
-	// pushsender.SetupPushSenderComponent(base, rpcClient)
+	pushsender.SetupPushSenderComponent(base)
 
 	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcCli, federation, idg)
 

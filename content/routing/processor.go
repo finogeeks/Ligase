@@ -428,7 +428,7 @@ func (p *Processor) respDownload(w http.ResponseWriter, header http.Header, stat
 	w.WriteHeader(statusCode)
 	n, err := io.Copy(w, body)
 	if err != nil {
-		log.Errorf("download io.Copy error: %#v, copyN %d", err, n)
+		log.Errorf("download io.Copy error: %s, copyN %d", err, n)
 	}
 }
 

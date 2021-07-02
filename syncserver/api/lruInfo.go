@@ -109,6 +109,10 @@ func (ReqPutLRURoom) FillRequest(coder core.Coder, req *http.Request, vars map[s
 func (ReqPutLRURoom) NewResponse(code int) core.Coder {
 	return new(external.PutLRURoomResponse)
 }
+func (ReqPutLRURoom) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.PutLRURoomRequest)
+	return []uint32{common.CalcStringHashCode(req.RoomID) % cfg.MultiInstance.SyncServerTotal}
+}
 func (ReqPutLRURoom) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutLRURoomRequest)

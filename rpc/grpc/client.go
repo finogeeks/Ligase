@@ -213,10 +213,13 @@ func (r *Client) OnReceipt(ctx context.Context, req *types.ReceiptContent) error
 		return err
 	}
 	c := pb.NewSyncServerClient(conn)
-	_, err = c.OnReceipt(ctx, helper.ToOnReceiptReq(req))
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.OnReceipt(ctx, helper.ToOnReceiptReq(req))
+		if err != nil {
+			log.Error("OnReceipt err %s", err)
+			return
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -229,10 +232,13 @@ func (r *Client) OnTyping(ctx context.Context, req *types.TypingContent) error {
 		return err
 	}
 	c := pb.NewSyncServerClient(conn)
-	_, err = c.OnTyping(ctx, helper.ToOnTypingReq(req))
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.OnTyping(ctx, helper.ToOnTypingReq(req))
+		if err != nil {
+			log.Error("OnReceipt err %s", err)
+			return
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -261,10 +267,13 @@ func (r *Client) UpdateOneTimeKey(ctx context.Context, req *types.KeyUpdateConte
 		return err
 	}
 	c := pb.NewSyncAggregateClient(conn)
-	_, err = c.UpdateOneTimeKey(ctx, helper.ToUpdateOneTimeKeyReq(req))
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.UpdateOneTimeKey(ctx, helper.ToUpdateOneTimeKeyReq(req))
+		if err != nil {
+			log.Error("UpdateOneTimeKey err %s", err)
+			return
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -280,11 +289,14 @@ func (r *Client) UpdateDeviceKey(ctx context.Context, req *types.KeyUpdateConten
 		}
 
 		c := pb.NewSyncAggregateClient(conn)
-		_, err = c.UpdateDeviceKey(ctx, helper.ToUpdateDeviceKeyReq(req))
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
+		go func(c pb.SyncAggregateClient, req *types.KeyUpdateContent) {
+			_, err = c.UpdateDeviceKey(ctx, helper.ToUpdateDeviceKeyReq(req))
+			if err != nil {
+				log.Error("UpdateDeviceKey err %s", err)
+				//errs = append(errs, err)
+				//continue
+			}
+		}(c, req)
 	}
 	if len(errs) > 0 {
 		return errs[0]
@@ -331,11 +343,12 @@ func (r *Client) SetReceiptLatest(ctx context.Context, req *syncapitypes.Receipt
 				continue
 			}
 			c := pb.NewSyncAggregateClient(conn)
-			_, err = c.SetReceiptLatest(ctx, helper.ToSetReceiptLatestReq(req))
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
+			go func(c pb.SyncAggregateClient, req *syncapitypes.ReceiptUpdate) {
+				_, err = c.SetReceiptLatest(ctx, helper.ToSetReceiptLatestReq(req))
+				if err != nil {
+					log.Errorf("SetReceiptLatest err %s", err)
+				}
+			}(c, req)
 		}
 	}
 	if len(errs) > 0 {
@@ -368,11 +381,12 @@ func (r *Client) AddTyping(ctx context.Context, req *syncapitypes.TypingUpdate) 
 				continue
 			}
 			c := pb.NewSyncAggregateClient(conn)
-			_, err = c.AddTyping(ctx, helper.ToUpdateTypingReq(updateTyping))
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
+			go func(c pb.SyncAggregateClient, updateTyping *syncapitypes.TypingUpdate) {
+				_, err = c.AddTyping(ctx, helper.ToUpdateTypingReq(updateTyping))
+				if err != nil {
+					log.Errorf("AddTyping err %s", err)
+				}
+			}(c, updateTyping)
 		}
 	}
 	if len(errs) > 0 {
@@ -405,11 +419,12 @@ func (r *Client) RemoveTyping(ctx context.Context, req *syncapitypes.TypingUpdat
 				continue
 			}
 			c := pb.NewSyncAggregateClient(conn)
-			_, err = c.RemoveTyping(ctx, helper.ToUpdateTypingReq(req))
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
+			go func(c pb.SyncAggregateClient, req *syncapitypes.TypingUpdate) {
+				_, err = c.RemoveTyping(ctx, helper.ToUpdateTypingReq(req))
+				if err != nil {
+					log.Errorf("RemoveTyping err %s", err)
+				}
+			}(c, req)
 		}
 	}
 	if len(errs) > 0 {
@@ -426,23 +441,25 @@ func (r *Client) UpdateProfile(ctx context.Context, req *types.ProfileContent) e
 		return err
 	}
 	c := pb.NewClientapiClient(conn)
-	_, err = c.UpdateProfile(ctx, &pb.UpdateProfileReq{
-		UserID:       req.UserID,
-		DisplayName:  req.DisplayName,
-		AvatarUrl:    req.AvatarUrl,
-		Presence:     req.Presence,
-		StatusMsg:    req.StatusMsg,
-		ExtStatusMsg: req.ExtStatusMsg,
-		UserName:     req.UserName,
-		JobNumber:    req.JobNumber,
-		Mobile:       req.Mobile,
-		Landline:     req.Landline,
-		Email:        req.Email,
-		State:        int32(req.State),
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.UpdateProfile(ctx, &pb.UpdateProfileReq{
+			UserID:       req.UserID,
+			DisplayName:  req.DisplayName,
+			AvatarUrl:    req.AvatarUrl,
+			Presence:     req.Presence,
+			StatusMsg:    req.StatusMsg,
+			ExtStatusMsg: req.ExtStatusMsg,
+			UserName:     req.UserName,
+			JobNumber:    req.JobNumber,
+			Mobile:       req.Mobile,
+			Landline:     req.Landline,
+			Email:        req.Email,
+			State:        int32(req.State),
+		})
+		if err != nil {
+			log.Errorf("UpdateProfile err %s", err)
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -454,13 +471,15 @@ func (r *Client) AddFilterToken(ctx context.Context, req *types.FilterTokenConte
 		return err
 	}
 	c := pb.NewProxyClient(conn)
-	_, err = c.AddFilterToken(ctx, &pb.AddFilterTokenReq{
-		UserID:   req.UserID,
-		DeviceID: req.DeviceID,
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.AddFilterToken(ctx, &pb.AddFilterTokenReq{
+			UserID:   req.UserID,
+			DeviceID: req.DeviceID,
+		})
+		if err != nil {
+			log.Errorf("AddFilterToken err %s", err)
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -472,13 +491,15 @@ func (r *Client) DelFilterToken(ctx context.Context, req *types.FilterTokenConte
 		return err
 	}
 	c := pb.NewProxyClient(conn)
-	_, err = c.DelFilterToken(ctx, &pb.DelFilterTokenReq{
-		UserID:   req.UserID,
-		DeviceID: req.DeviceID,
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.DelFilterToken(ctx, &pb.DelFilterTokenReq{
+			UserID:   req.UserID,
+			DeviceID: req.DeviceID,
+		})
+		if err != nil {
+			log.Errorf("DelFilterToken err %s", err)
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -531,16 +552,18 @@ func (r *Client) UpdateToken(ctx context.Context, req *types.LoginInfoContent) e
 		return err
 	}
 	c := pb.NewTokenWriterClient(conn)
-	_, err = c.UpdateToken(ctx, &pb.UpdateTokenReq{
-		UserID:      req.UserID,
-		DeviceID:    req.DeviceID,
-		Token:       req.Token,
-		DisplayName: req.DisplayName,
-		Identifier:  req.Identifier,
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.UpdateToken(ctx, &pb.UpdateTokenReq{
+			UserID:      req.UserID,
+			DeviceID:    req.DeviceID,
+			Token:       req.Token,
+			DisplayName: req.DisplayName,
+			Identifier:  req.Identifier,
+		})
+		if err != nil {
+			log.Errorf("UpdateToken err %s", err)
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -840,15 +863,17 @@ func (r *Client) SendEduToRemote(ctx context.Context, req *gomatrixserverlib.EDU
 		return err
 	}
 	c := pb.NewFederationClient(conn)
-	_, err = c.SendEDU(ctx, &pb.SendEDUReq{
-		Type:        req.Type,
-		Origin:      req.Origin,
-		Destination: req.Destination,
-		Content:     req.Content,
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		_, err = c.SendEDU(ctx, &pb.SendEDUReq{
+			Type:        req.Type,
+			Origin:      req.Origin,
+			Destination: req.Destination,
+			Content:     req.Content,
+		})
+		if err != nil {
+			log.Errorf("SendEduToRemote err %v", err)
+		}
+	}()
 	cl.end(nil)
 	return nil
 }
@@ -1182,4 +1207,31 @@ func (r *Client) SendInviteToRemote(ctx context.Context, event *gomatrixserverli
 		Code:  int(rsp.Code),
 		Event: *helper.ToEvent(rsp.Event),
 	}, nil
+}
+
+func (r *Client) PushData(ctx context.Context, req *pushapitypes.PushPubContents) error {
+	cl := newCallLog("PushData", req)
+	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Push, 0)
+	if err != nil {
+		return err
+	}
+	contents, _ := json.Marshal(req.Contents)
+	c := pb.NewPushClient(conn)
+	go func() {
+		_, err = c.PushData(ctx, &pb.PushDataReq{
+			Input:             helper.ToClientEvent(req.Input),
+			SenderDisplayName: req.SenderDisplayName,
+			RoomName:          req.RoomName,
+			RoomAlias:         req.RoomAlias,
+			Contents:          contents,
+			CreateContent:     req.CreateContent,
+			Slot:              req.Slot,
+			TraceId:           req.TraceId,
+		})
+		if err != nil {
+			log.Errorf("PushData err %s", err)
+		}
+	}()
+	cl.end(nil)
+	return nil
 }

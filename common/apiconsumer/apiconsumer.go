@@ -171,7 +171,7 @@ func (c *APIConsumer) Init(name string, ud interface{}, topic string, rcpConf *c
 }
 
 func (c *APIConsumer) Start() {
-	c.startWorkder(c.msgChan)
+	//c.startWorkder(c.msgChan)
 }
 
 func (c *APIConsumer) SetupTransport() {
@@ -251,15 +251,42 @@ func (c *APIConsumer) ApiRequest(ctx context.Context, req *pb.ApiRequestReq) (*p
 	}
 
 	cd := v.(ConsumerData)
-	ch := make(chan Result, 1)
-	cd.c.msgChan <- APIEvent{
+	//ch := make(chan Result, 1)
+	ev := APIEvent{
 		topic:     req.Topic,
 		partition: -1,
 		data:      req.Data,
-		result:    ch,
+		//result:    ch,
 	}
-	result := <-ch
-	return result.resp, result.err
+	// cd.c.msgChan <- APIEvent{
+	// 	topic:     req.Topic,
+	// 	partition: -1,
+	// 	data:      req.Data,
+	// 	result:    ch,
+	// }
+	var resp *pb.ApiRequestRsp
+	var err error
+	func(c *APIConsumer, ev APIEvent) {
+		data := c.OnMessage(ev.topic, ev.partition, ev.data)
+		output := &internals.OutputMsg{}
+		err := output.Decode(data)
+		if err != nil {
+			log.Warnf("output msg decode err:%s", err.Error())
+			output := &internals.OutputMsg{
+				MsgType: internals.MSG_RESP_ERROR,
+				Code:    http.StatusInternalServerError,
+			}
+			output.Body, _ = jsonerror.Unknown("output msg decode err").Encode()
+			data, _ := output.Encode()
+			// ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
+			resp = &pb.ApiRequestRsp{Data: data}
+			return
+		}
+		// ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
+		resp = &pb.ApiRequestRsp{Data: data}
+	}(cd.c, ev)
+	//result := <-ch
+	return resp, err
 }
 
 func (c *APIConsumer) startWorkder(msgChan chan APIEvent) {
