@@ -16,6 +16,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -44,7 +45,6 @@ type Server struct {
 	receiptConsumer *consumers.ReceiptConsumer
 	readCountRepo   *repos.ReadCountRepo
 	roomCurState    *repos.RoomCurStateRepo
-	rpcClient       *common.RpcClient
 	rpcCli          rpc.RpcClient
 	grpcServer      *grpc.Server
 }
@@ -56,7 +56,6 @@ func NewServer(
 	receiptConsumer *consumers.ReceiptConsumer,
 	readCountRepo *repos.ReadCountRepo,
 	roomCurState *repos.RoomCurStateRepo,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) *Server {
 	return &Server{
@@ -66,7 +65,6 @@ func NewServer(
 		receiptConsumer: receiptConsumer,
 		readCountRepo:   readCountRepo,
 		roomCurState:    roomCurState,
-		rpcClient:       rpcClient,
 		rpcCli:          rpcCli,
 	}
 }

@@ -47,24 +47,15 @@ var (
 func SetupProxy(
 	base *basecomponent.BaseDendrite,
 	cache service.Cache,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI,
 	tokenFilter *filter.SimpleFilter,
 ) {
 	bridge.SetupBridge(base.Cfg)
 
-	if base.Cfg.Rpc.Driver == "nats" {
-		tokenFilterConsumer := consumers.NewFilterTokenConsumer(rpcCli, tokenFilter)
-		tokenFilterConsumer.Start()
-
-		verifyTokenConsumer := consumers.NewVerifyTokenConsumer(rpcCli, tokenFilter, cache, base.Cfg)
-		verifyTokenConsumer.Start()
-	} else {
-		grpcServer := consumers.NewServer(base.Cfg, tokenFilter, cache)
-		if err := grpcServer.Start(); err != nil {
-			log.Panicf("failed to start proxy rpc server err:%v", err)
-		}
+	grpcServer := consumers.NewServer(base.Cfg, tokenFilter, cache)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start proxy rpc server err:%v", err)
 	}
 
 	if base.Cfg.Rpc.Driver == "grpc_with_consul" {
@@ -94,7 +85,7 @@ func SetupProxy(
 	//}
 
 	routing.Setup(
-		base.APIMux, *base.Cfg, cache, rpcCli, rpcClient, rsRpcCli, tokenFilter, feddomains, keyDB,
+		base.APIMux, *base.Cfg, cache, rpcClient, rsRpcCli, tokenFilter, feddomains, keyDB,
 	)
 }
 

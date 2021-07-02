@@ -75,7 +75,6 @@ type HelperEvent struct {
 }
 
 type PushConsumer struct {
-	rpcClient    *common.RpcClient
 	rpcCli       rpc.RpcClient
 	cache        service.Cache
 	eventRepo    *repos.EventReadStreamRepo
@@ -100,7 +99,6 @@ type PushEvent struct {
 
 func NewPushConsumer(
 	cache service.Cache,
-	client *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	complexCache *common.ComplexCache,
 	pushDataRepo *repos.PushDataRepo,
@@ -108,7 +106,6 @@ func NewPushConsumer(
 ) *PushConsumer {
 	s := &PushConsumer{
 		cache:        cache,
-		rpcClient:    client,
 		rpcCli:       rpcCli,
 		complexCache: complexCache,
 		chanSize:     20480,
@@ -318,7 +315,7 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	static.MemCount = len(members)
 	static.MemSpend = time.Now().UnixNano()/1000 - bs
 	//将需要推送的消息聚合一次推送
-	if s.rpcClient != nil && len(pushContents.Contents) > 0 {
+	if len(pushContents.Contents) > 0 {
 		pushContents.Input = input
 		pushContents.RoomAlias = ""
 		go s.pubPushContents(&pushContents, &eventJson)
@@ -681,7 +678,7 @@ func (s *PushConsumer) updateReadCountAndNotify(
 	bs := time.Now().UnixNano() / 1000
 	count, _ := s.countRepo.GetRoomReadCount(helperEvent.RoomID, *userID)
 	atomic.AddInt64(&static.ReadUnreadSpend, time.Now().UnixNano()/1000-bs)
-	if notify && s.rpcClient != nil && len(pushers.Pushers) > 0 {
+	if notify && len(pushers.Pushers) > 0 {
 		var pubContent push.PushPubContent
 		pubContent.UserID = *userID
 		pubContent.Pushers = new(pushapitypes.PushersWitchInterfaceData)

@@ -42,12 +42,10 @@ type InternalMsgConsumer struct {
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
 	publicRoomsDB model.PublicRoomAPIDatabase,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
 	c.RpcClient = rpcClient
 	c.publicRoomsDB = publicRoomsDB
 	return c

@@ -50,7 +50,6 @@ var (
 	joinRoomsRepo  *repos.JoinRoomsRepo
 	backfillProc   backfilltypes.BackFillProcessor
 	publicroomsAPI publicroomsapi.PublicRoomsQueryAPI
-	rpcClient      *common.RpcClient
 	rpcCli         rpc.RpcClient
 	encryptionDB   dbmodel.EncryptorAPIDatabase
 	complexCache   *common.ComplexCache
@@ -110,10 +109,6 @@ func SetJoinRoomsRepo(repo *repos.JoinRoomsRepo) {
 
 func SetPublicRoomsAPI(api publicroomsapi.PublicRoomsQueryAPI) {
 	publicroomsAPI = api
-}
-
-func SetRpcClient(rpcCli *common.RpcClient) {
-	rpcClient = rpcCli
 }
 
 func SetRpcCli(rpcClient rpc.RpcClient) {

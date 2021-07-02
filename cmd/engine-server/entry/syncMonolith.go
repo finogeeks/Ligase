@@ -49,8 +49,6 @@ func StartSyncMonolith(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	cache := base.PrepareCache()
 
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(false)
 
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
@@ -65,7 +63,7 @@ func StartSyncMonolith(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 
-	syncwriter.SetupSyncWriterComponent(base, rpcClient, rpcCli)
-	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, rpcCli, idg)
-	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, rpcCli, idg, complexCache)
+	syncwriter.SetupSyncWriterComponent(base, rpcCli)
+	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcCli, idg)
+	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcCli, idg, complexCache)
 }

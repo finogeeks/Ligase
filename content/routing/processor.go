@@ -57,7 +57,6 @@ type Processor struct {
 	cfg       *config.Dendrite
 	histogram mon.LabeledHistogram
 	repo      *repos.DownloadStateRepo
-	rpcCli    *common.RpcClient
 	consumer  *download.DownloadConsumer
 	idg       *uid.UidGenerator
 	httpCli   *http.Client
@@ -68,7 +67,6 @@ func NewProcessor(
 	cfg *config.Dendrite,
 	histogram mon.LabeledHistogram,
 	repo *repos.DownloadStateRepo,
-	rpcCli *common.RpcClient,
 	consumer *download.DownloadConsumer,
 	idg *uid.UidGenerator,
 	mediaURI []string,
@@ -84,7 +82,6 @@ func NewProcessor(
 		cfg:       cfg,
 		histogram: histogram,
 		repo:      repo,
-		rpcCli:    rpcCli,
 		consumer:  consumer,
 		idg:       idg,
 		httpCli:   httpCli,

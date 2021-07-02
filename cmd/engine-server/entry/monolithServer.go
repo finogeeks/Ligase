@@ -45,8 +45,6 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	kafka := base.Cfg.Kafka
 
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(true)
 
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
@@ -87,12 +85,6 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	transportMultiplexer.PreStart()
 	cache := base.PrepareCache()
 
-	/*
-		idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-		rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
-		rpcClient.Start(true)
-	*/
-
 	serverConfDB := base.CreateServerConfDB()
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
 	base.CheckDomainCfg()
@@ -113,13 +105,13 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	newFederation := fed.NewFederation(base.Cfg, rpcCli)
 
-	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcClient, rpcCli, cache, newFederation)
+	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcCli, cache, newFederation)
 	dbwriter.SetupDBWriterComponent(base)
 
 	// 看代码，应该已经不需要了
 	// pushsender.SetupPushSenderComponent(base, rpcClient)
 
-	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, rpcCli, federation, idg)
+	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcCli, federation, idg)
 
 	settings := common.NewSettings(cache)
 	settingConsumer := common.NewSettingConsumer(
@@ -135,25 +127,25 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 
-	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, rpcCli, tokenFilter, idg, settings, feddomains, complexCache)
+	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcCli, tokenFilter, idg, settings, feddomains, complexCache)
 
-	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, rpcCli, idg)
+	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcCli, idg)
 	//federationapi.SetupFederationAPIComponent(base, accountDB, federation, &keyRing, alias, input, query, cache)
 	//federationsender.SetupFederationSenderComponent(base, federation, query)
 
 	publicRoomsDB := base.CreatePublicRoomApiDB()
-	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcClient, rpcCli, rsRpcCli, publicRoomsDB)
+	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcCli, rsRpcCli, publicRoomsDB)
 	appservice.SetupApplicationServiceComponent(base)
 	StartCacheLoader(base, cmd)
 	//pushDB := base.CreatePushApiDB()
 	//roomServerDB := base.CreateRoomDB()
 	//migration.SetupMigrationComponent(base, accountDB, deviceDB, pushDB, roomServerDB, idg, syncDB)
 	//tokenrewrite.SetupTokenRewrite(rpcClient, base.Cfg)
-	syncwriter.SetupSyncWriterComponent(base, rpcClient, rpcCli)
-	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, rpcCli, idg, complexCache)
-	proxy.SetupProxy(base, cache, rpcClient, rpcCli, rsRpcCli, newTokenFilter)
-	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
-	rcsserver.SetupRCSServerComponent(base, rpcClient, rpcCli)
+	syncwriter.SetupSyncWriterComponent(base, rpcCli)
+	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcCli, idg, complexCache)
+	proxy.SetupProxy(base, cache, rpcCli, rsRpcCli, newTokenFilter)
+	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
+	rcsserver.SetupRCSServerComponent(base, rpcCli)
 	consumer := consumers.NewDismissRoomConsumer(
 		kafka.Consumer.DismissRoom.Underlying,
 		kafka.Consumer.DismissRoom.Name,

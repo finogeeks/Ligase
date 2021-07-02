@@ -30,29 +30,26 @@ import (
 )
 
 type FederationRpcClient struct {
-	cfg       *config.Dendrite
-	rpcClient *common.RpcClient
-	rpcCli    rpc.RpcClient
-	aliase    roomserverapi.RoomserverAliasAPI
-	qry       roomserverapi.RoomserverQueryAPI
-	input     roomserverapi.RoomserverInputAPI
+	cfg    *config.Dendrite
+	rpcCli rpc.RpcClient
+	aliase roomserverapi.RoomserverAliasAPI
+	qry    roomserverapi.RoomserverQueryAPI
+	input  roomserverapi.RoomserverInputAPI
 }
 
 func NewFederationRpcClient(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	aliase roomserverapi.RoomserverAliasAPI,
 	qry roomserverapi.RoomserverQueryAPI,
 	input roomserverapi.RoomserverInputAPI,
 ) *FederationRpcClient {
 	fed := &FederationRpcClient{
-		cfg:       cfg,
-		rpcClient: rpcClient,
-		rpcCli:    rpcCli,
-		aliase:    aliase,
-		qry:       qry,
-		input:     input,
+		cfg:    cfg,
+		rpcCli: rpcCli,
+		aliase: aliase,
+		qry:    qry,
+		input:  input,
 	}
 
 	return fed

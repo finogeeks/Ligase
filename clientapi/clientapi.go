@@ -49,7 +49,6 @@ func SetupClientAPIComponent(
 	syncDB model.SyncAPIDatabase,
 	presenceDB model.PresenceDatabase,
 	roomDB model.RoomServerDatabase,
-	rpcCli *common.RpcClient,
 	rpcClient rpcService.RpcClient,
 	tokenFilter *filter.Filter,
 	idg *uid.UidGenerator,
@@ -57,14 +56,9 @@ func SetupClientAPIComponent(
 	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
 ) {
-	if base.Cfg.Rpc.Driver == "nats" {
-		profileRpcConsumer := rpc.NewProfileRpcConsumer(rpcCli, base.Cfg, rsRpcCli, idg, accountsDB, presenceDB, cache, complexCache)
-		profileRpcConsumer.Start()
-	} else {
-		grpcServer := rpc.NewServer(base.Cfg, idg, accountsDB, presenceDB, cache, complexCache, rsRpcCli)
-		if err := grpcServer.Start(); err != nil {
-			log.Panicf("failed to start front rpc server err:%v", err)
-		}
+	grpcServer := rpc.NewServer(base.Cfg, idg, accountsDB, presenceDB, cache, complexCache, rsRpcCli)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start front rpc server err:%v", err)
 	}
 
 	if base.Cfg.Rpc.Driver == "grpc_with_consul" {
@@ -81,7 +75,7 @@ func SetupClientAPIComponent(
 		rsRpcCli, accountsDB, deviceDB,
 		federation, *keyRing,
 		cache, encryptDB, syncDB, presenceDB,
-		roomDB, rpcCli, rpcClient, tokenFilter, settings, fedDomians, complexCache,
+		roomDB, rpcClient, tokenFilter, settings, fedDomians, complexCache,
 	)
 	apiConsumer.Start()
 }

@@ -41,7 +41,6 @@ func DirectoryRoom(
 	federation *fed.Federation,
 	cfg *config.Dendrite,
 	rpcCli roomserverapi.RoomserverRPCAPI,
-	// rpcClient *common.RpcClient,
 ) (int, core.Coder) {
 	/*
 		domain, err := common.DomainFromID(roomAlias)

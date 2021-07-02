@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/service"
@@ -40,14 +39,13 @@ func Logout(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	// if req.Method != http.MethodPost {
 	// 	return http.StatusMethodNotAllowed, jsonerror.NotFound("Bad method")
 	// }
 
-	LogoutDevice(userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "logout")
+	LogoutDevice(userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "logout")
 
 	return http.StatusOK, nil
 }
@@ -60,7 +58,6 @@ func LogoutDevice(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	source string,
 ) {
@@ -121,14 +118,13 @@ func LogoutAll(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	log.Infof("logout all user %s device %s", userID, deviceID)
 
 	devs := cache.GetDevicesByUserID(userID)
 	for _, dev := range *devs {
-		LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "logout_all")
+		LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "logout_all")
 	}
 
 	return http.StatusOK, nil

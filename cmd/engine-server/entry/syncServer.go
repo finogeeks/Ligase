@@ -41,8 +41,6 @@ func StartSyncServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
 	base.CheckDomainCfg()
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(false)
 
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
@@ -51,7 +49,7 @@ func StartSyncServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	accountDB := base.CreateAccountsDB()
 
-	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, rpcCli, idg)
+	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcCli, idg)
 }
 
 func StartFixSyncDBServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {

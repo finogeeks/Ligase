@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/clientapi/routing"
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/rpc"
@@ -32,7 +31,6 @@ type DeviceMng struct {
 	cache        service.Cache
 	encryptDB    model.EncryptorAPIDatabase
 	syncDB       model.SyncAPIDatabase
-	rpcClient    *common.RpcClient
 	rpcCli       rpc.RpcClient
 	tokenFilter  *filter.Filter
 	scanUnActive int64
@@ -44,7 +42,6 @@ func NewDeviceMng(
 	cache service.Cache,
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	tokenFilter *filter.Filter,
 	scanUnActive int64,
@@ -55,7 +52,6 @@ func NewDeviceMng(
 	dm.cache = cache
 	dm.encryptDB = encryptDB
 	dm.syncDB = syncDB
-	dm.rpcClient = rpcClient
 	dm.rpcCli = rpcCli
 	dm.tokenFilter = tokenFilter
 	dm.scanUnActive = scanUnActive
@@ -103,7 +99,7 @@ func (dm *DeviceMng) scanUnActionDevice() {
 		}
 		for idx := range dids {
 			log.Infof("kick out userId:%s,deviceId:%s", uids[idx], devids[idx])
-			go routing.LogoutDevice(uids[idx], devids[idx], dm.deviceDB, dm.cache, dm.encryptDB, dm.syncDB, dm.tokenFilter, dm.rpcClient, dm.rpcCli, "token_expire")
+			go routing.LogoutDevice(uids[idx], devids[idx], dm.deviceDB, dm.cache, dm.encryptDB, dm.syncDB, dm.tokenFilter, dm.rpcCli, "token_expire")
 		}
 
 		if total < limit {

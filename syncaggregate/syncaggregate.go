@@ -35,7 +35,6 @@ import (
 func SetupSyncAggregateComponent(
 	base *basecomponent.BaseDendrite,
 	cacheIn service.Cache,
-	rpcClient *common.RpcClient,
 	rpcCli rpcService.RpcClient,
 	idg *uid.UidGenerator,
 	complexCache *common.ComplexCache,
@@ -115,56 +114,9 @@ func SetupSyncAggregateComponent(
 	typingConsumer := consumers.NewTypingConsumer(50, 10, 50)
 	typingConsumer.StartCalculate()
 
-	if base.Cfg.Rpc.Driver == "nats" {
-		eventRpcConsumer := rpc.NewEventRpcConsumer(rpcClient, userTimeLine, syncDB, base.Cfg)
-		if err := eventRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync event rpc consumer err:%v", err)
-		}
-
-		joinedRoomRpcConsumer := rpc.NewJoinedRoomRpcConsumer(rpcClient, userTimeLine, base.Cfg)
-		if err := joinedRoomRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync joined room rpc consumer err:%v", err)
-		}
-
-		keyChangeRpcConsumer := rpc.NewKeyChangeRpcConsumer(kcRepo, userTimeLine, rpcClient, base.Cfg)
-		if err := keyChangeRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync key change rpc consumer err:%v", err)
-		}
-
-		keyUpdateRpcConsumer := rpc.NewKeyUpdateRpcConsumer(kcRepo, rpcClient, base.Cfg)
-		if err := keyUpdateRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync key update rpc consumer err:%v", err)
-		}
-
-		receiptUpdateRpcConsumer := rpc.NewReceiptUpdateRpcConsumer(userTimeLine, rpcClient, base.Cfg)
-		if err := receiptUpdateRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync receipt update rpc consumer err:%v", err)
-		}
-
-		stdRpcConsumer := rpc.NewStdRpcConsumer(rpcClient, stdEventStreamRepo, cacheIn, syncDB, base.Cfg)
-		if err := stdRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync send to device rpc consumer err:%v", err)
-		}
-
-		typingRpcConsumer := rpc.NewTypingRpcConsumer(typingConsumer, rpcClient, base.Cfg)
-		if err := typingRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync typing rpc consumer err:%v", err)
-		}
-
-		unReadRpcConsumer := rpc.NewUnReadRpcConsumer(rpcClient, rpcCli, userTimeLine, base.Cfg)
-		if err := unReadRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync unread rpc consumer err:%v", err)
-		}
-
-		presenceRpcConsumer := rpc.NewPresenceRpcConsumer(rpcClient, onlineRepo, presenceStreamRepo, base.Cfg)
-		if err := presenceRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync presence rpc consumer err:%v", err)
-		}
-	} else {
-		grpcServer := rpc.NewServer(base.Cfg, kcRepo, presenceStreamRepo, userTimeLine, typingConsumer)
-		if err := grpcServer.Start(); err != nil {
-			log.Panicf("failed to start sync aggregate rpc server err:%v", err)
-		}
+	grpcServer := rpc.NewServer(base.Cfg, kcRepo, presenceStreamRepo, userTimeLine, typingConsumer)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start sync aggregate rpc server err:%v", err)
 	}
 	if base.Cfg.Rpc.Driver == "grpc_with_consul" {
 		if base.Cfg.Rpc.ConsulURL == "" {
@@ -175,7 +127,7 @@ func SetupSyncAggregateComponent(
 		c.Init()
 	}
 
-	syncMng := sync.NewSyncMng(syncDB, syncMngChanNum, 1024, base.Cfg, rpcClient, rpcCli)
+	syncMng := sync.NewSyncMng(syncDB, syncMngChanNum, 1024, base.Cfg, rpcCli)
 	syncMng.SetCache(cacheIn)
 	syncMng.SetComplexCache(complexCache)
 	syncMng.SetOnlineRepo(onlineRepo)
@@ -188,11 +140,6 @@ func SetupSyncAggregateComponent(
 	syncMng.SetUserDeviceActiveTsRepo(userDevActiveRepo)
 	syncMng.Start()
 
-	syncRpcConsumer := rpc.NewSyncRpcConsumer(rpcClient, syncMng, base.Cfg)
-	if err := syncRpcConsumer.Start(); err != nil {
-		log.Panicf("failed to start sync rpc consumer err:%v", err)
-	}
-
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, rpcCli, idg, syncMng, userTimeLine, kcRepo, stdEventStreamRepo, syncDB, cacheIn)
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcCli, idg, syncMng, userTimeLine, kcRepo, stdEventStreamRepo, syncDB, cacheIn)
 	apiConsumer.Start()
 }

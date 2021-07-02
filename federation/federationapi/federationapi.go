@@ -63,7 +63,6 @@ func NewFederationAPIComponent(
 	joinRoomsRepo *fedrepos.JoinRoomsRepo,
 	backfillProc backfilltypes.BackFillProcessor,
 	publicroomsAPI publicroomsapi.PublicRoomsQueryAPI,
-	rpcClient *common.RpcClient,
 	rpcCli rpcService.RpcClient,
 	encryptionDB dbmodel.EncryptorAPIDatabase,
 	c *cert.Cert,
@@ -78,7 +77,6 @@ func NewFederationAPIComponent(
 	entry.SetBackFillProcessor(backfillProc)
 	entry.SetJoinRoomsRepo(joinRoomsRepo)
 	entry.SetPublicRoomsAPI(publicroomsAPI)
-	entry.SetRpcClient(rpcClient)
 	entry.SetRpcCli(rpcCli)
 	entry.SetEncryptionDB(encryptionDB)
 	entry.SetComplexCache(complexCache)

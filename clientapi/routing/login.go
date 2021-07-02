@@ -57,7 +57,6 @@ func providerLogin(
 	admin bool,
 	idg *uid.UidGenerator,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	if admin == true {
@@ -185,7 +184,6 @@ func LoginPost(
 	admin bool,
 	idg *uid.UidGenerator,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	// var r external.PostLoginRequest
@@ -210,7 +208,7 @@ func LoginPost(
 	}
 
 	if strings.EqualFold(cfg.Authorization.AuthorizeMode, "provider") {
-		return providerLogin(req.User, ctx, *req, cfg, deviceDB, accountDB, encryptDB, syncDB, admin, idg, tokenFilter, rpcClient, rpcCli)
+		return providerLogin(req.User, ctx, *req, cfg, deviceDB, accountDB, encryptDB, syncDB, admin, idg, tokenFilter, rpcCli)
 	}
 
 	return http.StatusServiceUnavailable, jsonerror.Unknown("Internal Server Error")
@@ -227,7 +225,6 @@ func LoginGet(
 	admin bool,
 	idg *uid.UidGenerator,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
 ) (int, core.Coder) {
 	// TODO: support other forms of login other than password, depending on config options
 	return http.StatusOK, passwordLogin()

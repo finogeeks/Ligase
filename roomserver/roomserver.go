@@ -43,7 +43,6 @@ import (
 func SetupRoomServerComponent(
 	base *basecomponent.BaseDendrite,
 	processEvent bool,
-	rpcClient *common.RpcClient,
 	rpcCli rpcService.RpcClient,
 	repoCache service.Cache,
 	federation *fed.Federation,
@@ -80,7 +79,6 @@ func SetupRoomServerComponent(
 		UmsRepo:    umsRepo,
 		Cfg:        base.Cfg,
 		Idg:        idg,
-		RpcClient:  rpcClient,
 		RpcCli:     rpcCli,
 		Federation: federation,
 	}
@@ -116,16 +114,16 @@ func SetupRoomServerComponent(
 	inputAPI.Start()
 	if processEvent {
 		consumer := consumers.NewInputRoomEventConsumer(
-			base.Cfg, &inputAPI, rpcClient,
+			base.Cfg, &inputAPI,
 		)
 		if err := consumer.Start(); err != nil {
 			log.Panicw("failed to start api server consumer", log.KeysAndValues{"error", err})
 		}
 	}
 
-	rsRpcCli := rpc.NewRoomserverRpcClient(base.Cfg, rpcClient, rpcCli, &aliasAPI, &queryAPI, &inputAPI)
+	rsRpcCli := rpc.NewRoomserverRpcClient(base.Cfg, rpcCli, &aliasAPI, &queryAPI, &inputAPI)
 
-	rpcConsumer := consumers.NewQueryConsumer(base.Cfg, roomserverDB, repo, umsRepo, rpcClient, &aliasAPI, &queryAPI, &inputAPI)
+	rpcConsumer := consumers.NewQueryConsumer(base.Cfg, roomserverDB, repo, umsRepo, &aliasAPI, &queryAPI, &inputAPI)
 	rpcConsumer.Start()
 
 	return &inputAPI, rsRpcCli, roomserverDB

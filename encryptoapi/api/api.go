@@ -54,14 +54,12 @@ func NewInternalMsgConsumer(
 	syncDB model.SyncAPIDatabase,
 	idg *uid.UidGenerator,
 	cache service.Cache,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	federation *gomatrixserverlib.FederationClient,
 	serverName []string,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
 	c.RpcClient = rpcClient
 	c.encryptionDB = encryptionDB
 	c.syncDB = syncDB

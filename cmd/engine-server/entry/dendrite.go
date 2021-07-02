@@ -50,8 +50,6 @@ func StartClientAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	cache := base.PrepareCache()
 
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(true)
 
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
@@ -72,7 +70,7 @@ func StartClientAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	presenceDB := base.CreatePresenceDB()
 	roomDB := base.CreateRoomDB()
 
-	rsRpcCli := base.CreateRsRPCCli(rpcClient, rpcCli)
+	rsRpcCli := base.CreateRsRPCCli(rpcCli)
 
 	federation := fed.NewFederation(base.Cfg, rpcCli)
 
@@ -95,7 +93,7 @@ func StartClientAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	clientapi.SetupClientAPIComponent(
 		base, deviceDB, cache, accountDB, federation, nil,
-		rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, rpcCli, tokenFilter, idg, settings, feddomains, complexCache,
+		rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcCli, tokenFilter, idg, settings, feddomains, complexCache,
 	)
 
 	base.SetupAndServeHTTP(string(base.Cfg.Listen.ClientAPI))
@@ -120,22 +118,18 @@ func StartFederationAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPa
 }
 
 func StartPublicRoomAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(true)
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
 		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
 	}
 	publicRoomsDB := base.CreatePublicRoomApiDB()
-	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcClient, rpcCli, nil, publicRoomsDB)
+	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcCli, nil, publicRoomsDB)
 
 	base.SetupAndServeHTTP(string(base.Cfg.Listen.PublicRoomsAPI))
 }
 
 func StartPushAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	cache := base.PrepareCache()
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(true)
 	pushDB := base.CreatePushApiDB()
 	pushDataRepo := repos.NewPushDataRepo(pushDB, base.Cfg)
 	pushDataRepo.LoadHistory(context.TODO())
@@ -144,12 +138,10 @@ func StartPushAPIServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
 	}
 
-	pushapi.SetupPushAPIComponent(base, cache, rpcClient, rpcCli, pushDataRepo)
+	pushapi.SetupPushAPIComponent(base, cache, rpcCli, pushDataRepo)
 }
 
 func StartRoomServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(false)
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
 		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
@@ -157,7 +149,7 @@ func StartRoomServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	cache := base.PrepareCache()
 	newFederation := fed.NewFederation(base.Cfg, rpcCli)
-	roomserver.SetupRoomServerComponent(base, true, rpcClient, rpcCli, cache, newFederation)
+	roomserver.SetupRoomServerComponent(base, true, rpcCli, cache, newFederation)
 	base.SetupAndServeHTTP(string(base.Cfg.Listen.RoomServer))
 }
 
@@ -194,13 +186,11 @@ func StartBgMng(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	encryptDB := base.CreateEncryptApiDB()
 	serverConfDB := base.CreateServerConfDB()
 	cache := base.PrepareCache()
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(true)
 	tokenFilter := filter.GetFilterMng().Register("device", deviceDB)
 	tokenFilter.Load()
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
 		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
 	}
-	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
+	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
 }

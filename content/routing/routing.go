@@ -37,7 +37,6 @@ func Setup(
 	cacheIn service.Cache,
 	feddomains *common.FedDomains,
 	repo *repos.DownloadStateRepo,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	consumer *download.DownloadConsumer,
 	idg *uid.UidGenerator,
@@ -55,48 +54,48 @@ func Setup(
 	muxR0 := apiMux.PathPrefix(prefixR0).Subrouter()
 	muxV1 := apiMux.PathPrefix(prefixV1).Subrouter()
 
-	processor := NewProcessor(cfg, histogram, repo, rpcCli, consumer, idg, []string{prefixR0, prefixV1})
+	processor := NewProcessor(cfg, histogram, repo, consumer, idg, []string{prefixR0, prefixV1})
 
-	makeMediaAPI(muxR0, true, "/upload", processor.Upload, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/upload", processor.Upload, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/upload", processor.Upload, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/upload", processor.Upload, rpcClient, http.MethodPost, http.MethodOptions)
 
-	makeMediaAPI(muxR0, false, "/download/{serverName}/{mediaId}", processor.Download, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
-	makeMediaAPI(muxV1, false, "/download/{serverName}/{mediaId}", processor.Download, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxR0, false, "/download/{serverName}/{mediaId}", processor.Download, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, false, "/download/{serverName}/{mediaId}", processor.Download, rpcClient, http.MethodGet, http.MethodOptions)
 
-	makeMediaAPI(muxR0, false, "/thumbnail/{serverName}/{mediaId}", processor.Thumbnail, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
-	makeMediaAPI(muxV1, false, "/thumbnail/{serverName}/{mediaId}", processor.Thumbnail, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxR0, false, "/thumbnail/{serverName}/{mediaId}", processor.Thumbnail, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, false, "/thumbnail/{serverName}/{mediaId}", processor.Thumbnail, rpcClient, http.MethodGet, http.MethodOptions)
 
-	makeMediaAPI(muxR0, true, "/favorite", processor.Favorite, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/favorite", processor.Favorite, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/favorite", processor.Favorite, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/favorite", processor.Favorite, rpcClient, http.MethodPost, http.MethodOptions)
 
-	makeMediaAPI(muxR0, true, "/unfavorite/{netdiskID}", processor.Unfavorite, rpcCli, rpcClient, http.MethodDelete, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/unfavorite/{netdiskID}", processor.Unfavorite, rpcCli, rpcClient, http.MethodDelete, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/unfavorite/{netdiskID}", processor.Unfavorite, rpcClient, http.MethodDelete, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/unfavorite/{netdiskID}", processor.Unfavorite, rpcClient, http.MethodDelete, http.MethodOptions)
 
-	makeMediaAPI(muxR0, true, "/forward/room/{roomID}", processor.SingleForward, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/forward/room/{roomID}", processor.SingleForward, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/forward/room/{roomID}", processor.SingleForward, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/forward/room/{roomID}", processor.SingleForward, rpcClient, http.MethodPost, http.MethodOptions)
 
-	makeMediaAPI(muxR0, true, "/multi-forward", processor.MultiForward, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/multi-forward", processor.MultiForward, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/multi-forward", processor.MultiForward, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/multi-forward", processor.MultiForward, rpcClient, http.MethodPost, http.MethodOptions)
 
-	makeMediaAPI(muxR0, true, "/multi-forward-res", processor.MultiResForward, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/multi-forward-res", processor.MultiResForward, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/multi-forward-res", processor.MultiResForward, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/multi-forward-res", processor.MultiResForward, rpcClient, http.MethodPost, http.MethodOptions)
 
 	//emote
 	//wait eif emote upload finish
-	makeMediaAPI(muxR0, true, "/wait/emote", processor.WaitEmote, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/wait/emote", processor.WaitEmote, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/wait/emote", processor.WaitEmote, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/wait/emote", processor.WaitEmote, rpcClient, http.MethodGet, http.MethodOptions)
 	//check emote is exsit
-	makeMediaAPI(muxR0, true, "/check/emote/{serverName}/{mediaId}", processor.CheckEmote, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/check/emote/{serverName}/{mediaId}", processor.CheckEmote, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/check/emote/{serverName}/{mediaId}", processor.CheckEmote, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/check/emote/{serverName}/{mediaId}", processor.CheckEmote, rpcClient, http.MethodGet, http.MethodOptions)
 	//favorite emote
-	makeMediaAPI(muxR0, true, "/favorite/emote/{serverName}/{mediaId}", processor.FavoriteEmote, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/favorite/emote/{serverName}/{mediaId}", processor.FavoriteEmote, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/favorite/emote/{serverName}/{mediaId}", processor.FavoriteEmote, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/favorite/emote/{serverName}/{mediaId}", processor.FavoriteEmote, rpcClient, http.MethodPost, http.MethodOptions)
 	//get emote list
-	makeMediaAPI(muxR0, true, "/list/emote", processor.ListEmote, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/list/emote", processor.ListEmote, rpcCli, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/list/emote", processor.ListEmote, rpcClient, http.MethodGet, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/list/emote", processor.ListEmote, rpcClient, http.MethodGet, http.MethodOptions)
 	//favorite file to emote
-	makeMediaAPI(muxR0, true, "/favorite/fileemote/{serverName}/{mediaId}", processor.FavoriteFileEmote, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
-	makeMediaAPI(muxV1, true, "/favorite/fileemote/{serverName}/{mediaId}", processor.FavoriteFileEmote, rpcCli, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxR0, true, "/favorite/fileemote/{serverName}/{mediaId}", processor.FavoriteFileEmote, rpcClient, http.MethodPost, http.MethodOptions)
+	makeMediaAPI(muxV1, true, "/favorite/fileemote/{serverName}/{mediaId}", processor.FavoriteFileEmote, rpcClient, http.MethodPost, http.MethodOptions)
 
 	fedV1 := apiMux.PathPrefix("/_matrix/federation/v1/media").Subrouter()
 	makeFedAPI(fedV1, "/download/{serverName}/{mediaId}/{fileType}", processor.FedDownload, http.MethodGet, http.MethodOptions)
@@ -135,7 +134,7 @@ func verifyToken(rw http.ResponseWriter, req *http.Request, rpcCli rpc.RpcClient
 	return &device, true
 }
 
-func makeMediaAPI(r *mux.Router, atuh bool, url string, handler func(http.ResponseWriter, *http.Request, *authtypes.Device), rpcCli *common.RpcClient, rpcClient rpc.RpcClient, method ...string) {
+func makeMediaAPI(r *mux.Router, atuh bool, url string, handler func(http.ResponseWriter, *http.Request, *authtypes.Device), rpcClient rpc.RpcClient, method ...string) {
 	r.HandleFunc(url, func(rw http.ResponseWriter, req *http.Request) {
 		defer func() {
 			if e := recover(); e != nil {

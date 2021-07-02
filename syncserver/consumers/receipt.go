@@ -43,7 +43,6 @@ type ReceiptConsumer struct {
 	receiptRepo     *repos.ReceiptDataStreamRepo
 	userReceiptRepo *repos.UserReceiptRepo
 	roomHistory     *repos.RoomHistoryTimeLineRepo
-	rpcClient       *common.RpcClient
 	rpcCli          rpc.RpcClient
 	roomCurState    *repos.RoomCurStateRepo
 	cfg             *config.Dendrite
@@ -51,7 +50,6 @@ type ReceiptConsumer struct {
 }
 
 func NewReceiptConsumer(
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	cfg *config.Dendrite,
 	idg *uid.UidGenerator,
@@ -60,7 +58,6 @@ func NewReceiptConsumer(
 	s.container = new(goSync.Map)
 	s.notifyRoom = new(goSync.Map)
 	s.delay = cfg.ReceiptDelay
-	s.rpcClient = rpcClient
 	s.rpcCli = rpcCli
 	s.cfg = cfg
 	s.idg = idg

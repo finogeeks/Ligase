@@ -15,7 +15,6 @@
 package syncwriter
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/model/repos"
 	rpcService "github.com/finogeeks/ligase/rpc"
@@ -27,7 +26,6 @@ import (
 
 func SetupSyncWriterComponent(
 	base *basecomponent.BaseDendrite,
-	rpcClient *common.RpcClient,
 	rpcCli rpcService.RpcClient,
 ) {
 	syncDB := base.CreateSyncDB()
@@ -62,6 +60,6 @@ func SetupSyncWriterComponent(
 		log.Panicf("failed to start sync room server consumer err:%v", err)
 	}
 
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, rpcCli, rsCurState, rsTimeline, roomHistory)
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcCli, rsCurState, rsTimeline, roomHistory)
 	apiConsumer.Start()
 }

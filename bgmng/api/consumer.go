@@ -15,7 +15,6 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
@@ -36,14 +35,12 @@ type InternalMsgConsumer struct {
 
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	db model.ConfigDatabase,
 	cache service.Cache,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
 	c.RpcClient = rpcClient
 	c.idg, _ = uid.NewDefaultIdGenerator(cfg.Matrix.InstanceId)
 	c.db = db

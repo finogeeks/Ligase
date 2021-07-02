@@ -16,6 +16,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/finogeeks/ligase/common"
@@ -30,7 +31,6 @@ import (
 
 type RoomserverRpcClient struct {
 	cfg           *config.Dendrite
-	rpcClient     *common.RpcClient
 	rpcCli        rpc.RpcClient
 	aliase        roomserverapi.RoomserverAliasAPI
 	qry           roomserverapi.RoomserverQueryAPI
@@ -41,7 +41,6 @@ type RoomserverRpcClient struct {
 
 func NewRoomserverRpcClient(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	aliase roomserverapi.RoomserverAliasAPI,
 	qry roomserverapi.RoomserverQueryAPI,
@@ -54,7 +53,6 @@ func NewRoomserverRpcClient(
 	}
 	s := &RoomserverRpcClient{
 		cfg:           cfg,
-		rpcClient:     rpcClient,
 		rpcCli:        rpcCli,
 		aliase:        aliase,
 		qry:           qry,

@@ -21,7 +21,6 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
@@ -31,14 +30,10 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/finogeeks/ligase/syncserver/extra"
 )
 
 type SyncServer struct {
 	db             model.SyncAPIDatabase
-	slot           uint32
-	chanSize       int
-	msgChan        []chan *syncapitypes.SyncServerRequest
 	cfg            *config.Dendrite
 	compressLength int64
 
@@ -50,23 +45,16 @@ type SyncServer struct {
 	readCountRepo         *repos.ReadCountRepo
 	displayNameRepo       *repos.DisplayNameRepo
 	cache                 service.Cache
-	rpcClient             *common.RpcClient
 	settings              *common.Settings
 }
 
 func NewSyncServer(
 	db model.SyncAPIDatabase,
-	slot uint32,
-	chanSize int,
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
 ) *SyncServer {
 	ss := new(SyncServer)
 	ss.db = db
-	ss.slot = slot
-	ss.chanSize = chanSize
 	ss.cfg = cfg
-	ss.rpcClient = rpcClient
 
 	if cfg.CompressLength != 0 {
 		ss.compressLength = cfg.CompressLength
@@ -121,28 +109,6 @@ func (s *SyncServer) SetSettings(settings *common.Settings) {
 	s.settings = settings
 }
 
-func (s *SyncServer) Start() {
-	s.msgChan = make([]chan *syncapitypes.SyncServerRequest, s.slot)
-	for i := uint32(0); i < s.slot; i++ {
-		s.msgChan[i] = make(chan *syncapitypes.SyncServerRequest, s.chanSize)
-		go s.startWorker(s.msgChan[i])
-	}
-}
-
-func (s *SyncServer) startWorker(channel chan *syncapitypes.SyncServerRequest) {
-	for msg := range channel {
-		s.processSync(msg)
-	}
-}
-
-func (s *SyncServer) OnSyncRequest(
-	req *syncapitypes.SyncServerRequest,
-) {
-	hash := common.CalcStringHashCode(req.UserID)
-	slot := hash % s.slot
-	s.msgChan[slot] <- req
-}
-
 func (s *SyncServer) SyncLoad(req *syncapitypes.SyncServerRequest) (*syncapitypes.SyncServerResponse, error) {
 	ready := false
 	if req.IsFullSync {
@@ -176,44 +142,6 @@ func (s *SyncServer) SyncProcess(req *syncapitypes.SyncServerRequest) (*syncapit
 		result = s.processIncrementSync(req)
 	}
 	return result, nil
-}
-
-func (s *SyncServer) processSync(req *syncapitypes.SyncServerRequest) {
-	defer func() {
-		if e := recover(); e != nil {
-			stack := common.PanicTrace(4)
-			log.Panicf("%v\n%s\n", e, stack)
-		}
-	}()
-	//bytes, _ := json.Marshal(*req)
-	log.Infof("SyncServer.processSync received request traceid:%s slot:%d rslot:%d user %s device %s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID)
-	ready := false
-	if req.IsFullSync {
-		ready = s.fullSyncLoading(req)
-	} else {
-		ready = s.incrementSyncLoading(req)
-	}
-
-	if ready {
-		switch req.RequestType {
-		case "load":
-			s.responseLoad(req, true)
-		case "sync":
-			var result *syncapitypes.SyncServerResponse
-			if req.IsFullSync { //full sync
-				result = s.processFullSync(req)
-			} else {
-				result = s.processIncrementSync(req)
-			}
-			s.responseSync(req, result)
-		}
-
-	} else {
-		switch req.RequestType {
-		case "load":
-			s.responseLoad(req, false)
-		}
-	}
 }
 
 func (s *SyncServer) processFullSync(req *syncapitypes.SyncServerRequest) *syncapitypes.SyncServerResponse {
@@ -306,38 +234,6 @@ func (s *SyncServer) processIncrementSync(req *syncapitypes.SyncServerRequest) *
 	}
 
 	return &response
-}
-
-func (s *SyncServer) responseLoad(req *syncapitypes.SyncServerRequest, ready bool) {
-	res := syncapitypes.SyncServerResponse{
-		Ready: ready,
-	}
-	log.Debugf("SyncServer.responseLoad traceid:%s slot:%d rslot:%d user %s device %s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID)
-	s.rpcClient.PubObj(req.Reply, res)
-}
-
-func (s *SyncServer) responseSync(req *syncapitypes.SyncServerRequest, resp *syncapitypes.SyncServerResponse) {
-	device := authtypes.Device{
-		UserID:  req.UserID,
-		IsHuman: req.IsHuman,
-	}
-	timespend := common.NewTimeSpend()
-	extra.ExpandSyncData(s.rsCurState, &device, s.displayNameRepo, resp)
-	timespend.Logf(types.DB_EXCEED_TIME, "responseSync expand hint traceid:%s", req.TraceID)
-	contentBytes, _ := json.Marshal(*resp)
-	log.Debugf("SyncServer.responseSync traceid:%s slot:%d rslot:%d user %s device %s AllLoaded:%t maxroomoffset:%v", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, resp.AllLoaded, resp.MaxRoomOffset)
-	msgSize := int64(len(contentBytes))
-
-	result := types.CompressContent{
-		Compressed: false,
-	}
-	if msgSize > s.compressLength {
-		contentBytes = common.DoCompress(contentBytes)
-		result.Compressed = true
-		log.Debugf("nats pub message with content traceid:%s slot:%d rslot:%d, before compress %d after compress %d", req.TraceID, req.Slot, req.RSlot, msgSize, len(contentBytes))
-	}
-	result.Content = contentBytes
-	s.rpcClient.PubObj(req.Reply, result)
 }
 
 func (s *SyncServer) fullSyncLoading(req *syncapitypes.SyncServerRequest) bool {

@@ -55,7 +55,6 @@ type RoomEventFeedConsumer struct {
 	displayNameRepo       *repos.DisplayNameRepo
 	pushConsumer          *PushConsumer
 	cfg                   *config.Dendrite
-	rpcClient             *common.RpcClient
 	rpcCli                rpc.RpcClient
 	chanSize              uint32
 	msgChan               []chan roomserverapi.OutputEvent
@@ -67,7 +66,6 @@ func NewRoomEventFeedConsumer(
 	cfg *config.Dendrite,
 	store model.SyncAPIDatabase,
 	pushConsumer *PushConsumer,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	idg *uid.UidGenerator,
 ) *RoomEventFeedConsumer {
@@ -82,7 +80,6 @@ func NewRoomEventFeedConsumer(
 			db:           store,
 			pushConsumer: pushConsumer,
 			cfg:          cfg,
-			rpcClient:    rpcClient,
 			rpcCli:       rpcCli,
 			chanSize:     64,
 			idg:          idg,

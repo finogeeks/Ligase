@@ -15,7 +15,6 @@
 package consumers
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/roomserver/processors"
@@ -25,9 +24,7 @@ import (
 
 // consumes events that originated in the client api server.
 type QueryConsumer struct {
-	aliasConsumer *rpc.RoomAliasRpcConsumer
-	rsConsumer    *rpc.RoomserverRpcConsumer
-	grpcServer    *rpc.Server
+	grpcServer *rpc.Server
 }
 
 func NewQueryConsumer(
@@ -35,29 +32,17 @@ func NewQueryConsumer(
 	db model.RoomServerDatabase,
 	repo *repos.RoomServerCurStateRepo,
 	umsRepo *repos.RoomServerUserMembershipRepo,
-	rpcClient *common.RpcClient,
 	alias *processors.AliasProcessor,
 	rs *processors.RoomQryProcessor,
 	input *processors.EventsProcessor,
 ) *QueryConsumer {
 	consumer := new(QueryConsumer)
-	if cfg.Rpc.Driver == "nats" {
-		consumer.aliasConsumer = rpc.NewRoomAliasRpcConsumer(cfg, rpcClient, db, repo, umsRepo, alias)
-		consumer.rsConsumer = rpc.NewRoomserverRpcConsumer(cfg, rpcClient, db, repo, umsRepo, rs)
-	} else {
-		consumer.grpcServer = rpc.NewServer(cfg, rs, alias, input)
-	}
+	consumer.grpcServer = rpc.NewServer(cfg, rs, alias, input)
 
 	return consumer
 }
 
 func (s *QueryConsumer) Start() (err error) {
-	if s.aliasConsumer != nil {
-		s.aliasConsumer.Start()
-	}
-	if s.rsConsumer != nil {
-		s.rsConsumer.Start()
-	}
 	if s.grpcServer != nil {
 		err = s.grpcServer.Start()
 	}

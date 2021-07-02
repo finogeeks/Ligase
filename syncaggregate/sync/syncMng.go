@@ -51,7 +51,6 @@ type SyncMng struct {
 	chanSize     int
 	msgChan      []chan *request
 	cfg          *config.Dendrite
-	rpcClient    *common.RpcClient
 	rpcCli       rpc.RpcClient
 	cache        service.Cache
 	complexCache *common.ComplexCache
@@ -72,7 +71,6 @@ func NewSyncMng(
 	slot uint32,
 	chanSize int,
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) *SyncMng {
 	mng := new(SyncMng)
@@ -80,7 +78,6 @@ func NewSyncMng(
 	mng.slot = slot
 	mng.chanSize = chanSize
 	mng.cfg = cfg
-	mng.rpcClient = rpcClient
 	mng.rpcCli = rpcCli
 	return mng
 }

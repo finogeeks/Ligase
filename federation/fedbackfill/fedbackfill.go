@@ -66,12 +66,11 @@ func NewFederationBackFill(
 	feddomains *common.FedDomains,
 	repo *repos.BackfillRepo,
 ) *FederationBackFill {
-	rpcClient := common.NewRpcClient(cfg.Nats.Uri)
 	rpcCli, err := rpcService.NewRpcClient(cfg.Rpc.Driver, cfg)
 	if err != nil {
 		log.Panicf("failed to create rpc client, driver %s err:%v", cfg.Rpc.Driver, err)
 	}
-	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, rpcCli, nil, nil, nil)
+	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcCli, nil, nil, nil)
 
 	sender := &FederationBackFill{
 		cfg:          cfg,

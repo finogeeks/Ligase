@@ -63,8 +63,8 @@ type FederationSender struct {
 	sentCounter int64
 }
 
-func NewFederationSender(cfg *config.Dendrite, rpcClient *common.RpcClient, rpcCli rpcService.RpcClient, feddomains *common.FedDomains, db model.FederationDatabase) *FederationSender {
-	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, rpcCli, nil, nil, nil)
+func NewFederationSender(cfg *config.Dendrite, rpcCli rpcService.RpcClient, feddomains *common.FedDomains, db model.FederationDatabase) *FederationSender {
+	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcCli, nil, nil, nil)
 	sender := &FederationSender{
 		cfg:        cfg,
 		offset:     0,

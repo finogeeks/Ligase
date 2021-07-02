@@ -40,7 +40,6 @@ import (
 	"github.com/finogeeks/ligase/federation/federationapi/rpc"
 	"github.com/finogeeks/ligase/federation/fedmissing"
 	"github.com/finogeeks/ligase/federation/fedsender"
-	"github.com/finogeeks/ligase/federation/fedsync"
 	fedrepos "github.com/finogeeks/ligase/federation/model/repos"
 	fedrpc "github.com/finogeeks/ligase/federation/rpc"
 	_ "github.com/finogeeks/ligase/federation/storage/implements"
@@ -50,7 +49,6 @@ import (
 	rpcService "github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/rpc/consul"
 	_ "github.com/finogeeks/ligase/rpc/grpc"
-	_ "github.com/finogeeks/ligase/rpc/nats"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	_ "github.com/finogeeks/ligase/storage/implements"
@@ -178,15 +176,13 @@ func startFedMonolith() {
 	settings := common.NewSettings(cache)
 
 	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcClient := common.NewRpcClient(cfg.Nats.Uri)
-	rpcClient.Start(true)
 
 	rpcCli, err := rpcService.NewRpcClient(cfg.Rpc.Driver, cfg)
 	if err != nil {
 		log.Panicf("failed to create rpc client, driver %s err:%v", cfg.Rpc.Driver, err)
 	}
 
-	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcClient, rpcCli, nil, nil, nil)
+	fedRpcCli := rpc.NewFederationRpcClient(cfg, rpcCli, nil, nil, nil)
 
 	settingConsumer := common.NewSettingConsumer(
 		cfg.Kafka.Consumer.SettingUpdateFed.Underlying,
@@ -244,11 +240,11 @@ func startFedMonolith() {
 	}
 	encrytionDB := edb.(model.EncryptorAPIDatabase)
 
-	publicroomsAPI := rpc.NewFedPublicRoomsRpcClient(cfg, rpcClient, rpcCli)
+	publicroomsAPI := rpc.NewFedPublicRoomsRpcClient(cfg, rpcCli)
 
 	fedAPIEntry := federationapi.NewFederationAPIComponent(cfg, cache, fedClient, fedDB, keyDB,
 		feddomains, fedRpcCli, backfillRepo, joinRoomsRepo, backfill, publicroomsAPI,
-		rpcClient, rpcCli, encrytionDB, certInfo, idg, complexCache)
+		rpcCli, encrytionDB, certInfo, idg, complexCache)
 
 	//subject := fmt.Sprintf("%s.%s", fed.cfg.GetMsgBusReqTopic(), ">")
 	//fed.NatsBus.SubRegister(subject, "federation-msgbus")
@@ -286,19 +282,14 @@ func startFedMonolith() {
 
 	fedAPIEntry.SetRepo(repo)
 
-	sender := fedsender.NewFederationSender(cfg, rpcClient, rpcCli, feddomains, fedDB)
+	sender := fedsender.NewFederationSender(cfg, rpcCli, feddomains, fedDB)
 	sender.SetRepo(repo)
 	sender.Init()
 	sender.Start()
 
-	if cfg.Rpc.Driver == "nats" {
-		fedSync := fedsync.NewFederationSync(cfg, fedClient, feddomains, backfill)
-		_ = fedSync
-	} else {
-		grpcServer := fedrpc.NewServer(cfg, sender, fedClient, feddomains, backfill)
-		if err := grpcServer.Start(); err != nil {
-			log.Panicf("failed to start federation rpc server err:%v", err)
-		}
+	grpcServer := fedrpc.NewServer(cfg, sender, fedClient, feddomains, backfill)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start federation rpc server err:%v", err)
 	}
 	if cfg.Rpc.Driver == "grpc_with_consul" {
 		if cfg.Rpc.ConsulURL == "" {
@@ -314,7 +305,7 @@ func startFedMonolith() {
 	dispatch.SetSender(sender)
 	dispatch.Start()
 
-	eduSender := fedsender.NewEduSender(cfg, rpcClient)
+	eduSender := fedsender.NewEduSender(cfg)
 	eduSender.SetSender(sender)
 	eduSender.Start()
 

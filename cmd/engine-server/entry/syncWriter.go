@@ -32,13 +32,10 @@ func StartSyncWriter(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	transportMultiplexer.PreStart()
 
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(false)
-
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
 		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
 	}
 
-	syncwriter.SetupSyncWriterComponent(base, rpcClient, rpcCli)
+	syncwriter.SetupSyncWriterComponent(base, rpcCli)
 }

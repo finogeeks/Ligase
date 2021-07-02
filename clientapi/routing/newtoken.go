@@ -43,7 +43,6 @@ func GenNewToken(
 	cfg config.Dendrite,
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	ip string,
 ) (int, core.Coder) {
@@ -100,7 +99,6 @@ func GetSuperAdminToken(
 	cfg config.Dendrite,
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 	ip string,
 ) (int, core.Coder) {

@@ -17,27 +17,23 @@ package rpc
 import (
 	"context"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/service/publicroomsapi"
 	"github.com/finogeeks/ligase/rpc"
 )
 
 type FedPublicRoomsRpcClient struct {
-	cfg       *config.Dendrite
-	rpcClient *common.RpcClient
-	rpcCli    rpc.RpcClient
+	cfg    *config.Dendrite
+	rpcCli rpc.RpcClient
 }
 
 func NewFedPublicRoomsRpcClient(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) *FedPublicRoomsRpcClient {
 	fed := &FedPublicRoomsRpcClient{
-		cfg:       cfg,
-		rpcClient: rpcClient,
-		rpcCli:    rpcCli,
+		cfg:    cfg,
+		rpcCli: rpcCli,
 	}
 
 	return fed

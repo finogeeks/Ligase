@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
@@ -148,7 +147,6 @@ type APIConsumer struct {
 	handlers   sync.Map
 	msgChan    chan APIEvent
 	Cfg        config.Dendrite
-	RpcCli     *common.RpcClient
 	RpcClient  rpc.RpcClient
 	grpcServer *grpc.Server
 }
@@ -157,30 +155,12 @@ func (c *APIConsumer) GetCfg() config.Dendrite {
 	return c.Cfg
 }
 
-func (c *APIConsumer) GetRpcCli() *common.RpcClient {
-	return c.RpcCli
-}
-
 func (c *APIConsumer) Init(name string, ud interface{}, topic string, rcpConf *config.RpcConf) {
 	c.name = name
 	c.userData = ud
 	c.msgChan = make(chan APIEvent, 4096)
 	c.setupReply(topic, rcpConf)
 	consumers.Store(topic, ConsumerData{ud, c, topic})
-
-	ForeachAPIProcessor(func(p APIProcessor) bool {
-		if p.GetTopic(&c.Cfg) == topic {
-			c.RegisterHandler(p.GetMsgType(), p)
-		}
-		return true
-	})
-}
-
-func (c *APIConsumer) InitGroup(name string, ud interface{}, topic, grp string) {
-	c.name = name
-	c.userData = ud
-	c.msgChan = make(chan APIEvent, 4096)
-	c.setupGroupReply(topic, grp)
 
 	ForeachAPIProcessor(func(p APIProcessor) bool {
 		if p.GetTopic(&c.Cfg) == topic {
@@ -226,40 +206,32 @@ func (c *APIConsumer) RegisterHandler(msgType int32, p APIProcessor) {
 }
 
 func (c *APIConsumer) setupReply(topic string, rpcConf *config.RpcConf) {
-	if c.Cfg.Rpc.Driver == "nats" {
-		c.RpcCli.Reply(topic, c.onRpcMsg)
-	} else {
-		if c.grpcServer != nil || rpcConf == nil {
-			return
-		}
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", rpcConf.Port))
-		if err != nil {
-			return
-		}
-		log.Infof("start api grpc %s %d", rpcConf.ServerName, rpcConf.Port)
-		c.grpcServer = grpc.NewServer()
-		pb.RegisterApiServerServer(c.grpcServer, c)
-		reflection.Register(c.grpcServer)
-		go func() {
-			if err := c.grpcServer.Serve(lis); err != nil {
-				log.Errorf("apiconsumer grpc server Serve err: " + err.Error())
-				panic(err)
-			}
-		}()
-
-		if c.Cfg.Rpc.Driver == "grpc_with_consul" {
-			if c.Cfg.Rpc.ConsulURL == "" {
-				log.Panicf("grpc_with_consul consul url is null")
-			}
-			consulTag := rpcConf.ConsulTagPrefix + "_" + topic // TODO: cjw 这里不能用topic区分
-			c := consul.NewConsul(c.Cfg.Rpc.ConsulURL, consulTag, rpcConf.ServerName, rpcConf.Port)
-			c.Init()
-		}
+	if c.grpcServer != nil || rpcConf == nil {
+		return
 	}
-}
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", rpcConf.Port))
+	if err != nil {
+		return
+	}
+	log.Infof("start api grpc %s %d", rpcConf.ServerName, rpcConf.Port)
+	c.grpcServer = grpc.NewServer()
+	pb.RegisterApiServerServer(c.grpcServer, c)
+	reflection.Register(c.grpcServer)
+	go func() {
+		if err := c.grpcServer.Serve(lis); err != nil {
+			log.Errorf("apiconsumer grpc server Serve err: " + err.Error())
+			panic(err)
+		}
+	}()
 
-func (c *APIConsumer) setupGroupReply(topic, grp string) {
-	c.RpcCli.ReplyGrp(topic, grp, c.onRpcMsg)
+	if c.Cfg.Rpc.Driver == "grpc_with_consul" {
+		if c.Cfg.Rpc.ConsulURL == "" {
+			log.Panicf("grpc_with_consul consul url is null")
+		}
+		consulTag := rpcConf.ConsulTagPrefix + "_" + topic // TODO: cjw 这里不能用topic区分
+		c := consul.NewConsul(c.Cfg.Rpc.ConsulURL, consulTag, rpcConf.ServerName, rpcConf.Port)
+		c.Init()
+	}
 }
 
 func (c *APIConsumer) onRpcMsg(msg *nats.Msg) {
@@ -305,22 +277,10 @@ func (c *APIConsumer) startWorkder(msgChan chan APIEvent) {
 					}
 					output.Body, _ = jsonerror.Unknown("output msg decode err").Encode()
 					data, _ := output.Encode()
-					if c.Cfg.Rpc.Driver == "nats" {
-						c.RpcCli.Pub(ev.reply, data)
-					} else {
-						ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
-					}
+					ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
 					return
 				}
-				if c.Cfg.Rpc.Driver == "nats" {
-					if output.Code != internals.HTTP_RESP_DISCARD {
-						c.RpcCli.Pub(ev.reply, data)
-					} else {
-						//do not response to nats
-					}
-				} else {
-					ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
-				}
+				ev.result <- Result{resp: &pb.ApiRequestRsp{Data: data}}
 			}(ev)
 		}
 	}()

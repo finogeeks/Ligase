@@ -17,7 +17,6 @@ package api
 import (
 	"context"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
@@ -40,7 +39,6 @@ type InternalMsgConsumer struct {
 
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	idg *uid.UidGenerator,
 	db model.RCSServerDatabase,
@@ -48,7 +46,6 @@ func NewInternalMsgConsumer(
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
 	c.RpcClient = rpcClient
 	c.idg = idg
 	c.db = db

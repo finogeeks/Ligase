@@ -18,24 +18,18 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/nats-io/nats.go"
 )
 
 type EduSender struct {
-	sender    *FederationSender
-	cfg       *config.Dendrite
-	channel   core.IChannel
-	rpcClient *common.RpcClient
-	chanSize  uint32
-	msgChan   []chan *gomatrixserverlib.EDU
+	sender  *FederationSender
+	cfg     *config.Dendrite
+	channel core.IChannel
 }
 
 func NewEduSender(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
 ) *EduSender {
 	val, ok := common.GetTransportMultiplexer().GetChannel(
 		cfg.Kafka.Consumer.EduSenderInput.Underlying,
@@ -44,10 +38,8 @@ func NewEduSender(
 	if ok {
 		channel := val.(core.IChannel)
 		eduSender := &EduSender{
-			channel:   channel,
-			cfg:       cfg,
-			rpcClient: rpcClient,
-			chanSize:  4,
+			channel: channel,
+			cfg:     cfg,
 		}
 		channel.SetHandler(eduSender)
 		return eduSender
@@ -56,48 +48,12 @@ func NewEduSender(
 }
 
 func (e *EduSender) Start() error {
-	e.msgChan = make([]chan *gomatrixserverlib.EDU, e.chanSize)
-	for i := uint32(0); i < e.chanSize; i++ {
-		e.msgChan[i] = make(chan *gomatrixserverlib.EDU, 512)
-		go e.startWorker(e.msgChan[i])
-	}
-
-	e.rpcClient.Reply(e.GetTopic(), e.cb)
-
 	e.channel.Start()
 	return nil
 }
 
 func (e *EduSender) SetSender(sender *FederationSender) {
 	e.sender = sender
-}
-
-func (e *EduSender) GetCB() nats.MsgHandler {
-	return e.cb
-}
-
-func (e *EduSender) GetTopic() string {
-	return types.EduTopicDef
-}
-
-func (e *EduSender) Clean() {
-}
-
-func (e *EduSender) cb(msg *nats.Msg) {
-	var result gomatrixserverlib.EDU
-	if err := json.Unmarshal(msg.Data, &result); err != nil {
-		log.Errorf("rpc receipt cb error %v", err)
-		return
-	}
-
-	idx := common.CalcStringHashCode(result.Destination) % e.chanSize
-	e.msgChan[idx] <- &result
-}
-
-func (e *EduSender) startWorker(msgChan chan *gomatrixserverlib.EDU) {
-	for data := range msgChan {
-		e.sender.sendEdu(data)
-	}
 }
 
 func (e *EduSender) OnMessage(topic string, partition int32, data []byte) {

@@ -55,8 +55,6 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	transportMultiplexer.PreStart()
 	cache := base.PrepareCache()
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(true)
 	serverConfDB := base.CreateServerConfDB()
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
 	base.CheckDomainCfg()
@@ -75,7 +73,7 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	newFederation := fed.NewFederation(base.Cfg, rpcCli)
 
-	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcClient, rpcCli, cache, newFederation)
+	_, rsRpcCli, roomDB := roomserver.SetupRoomServerComponent(base, true, rpcCli, cache, newFederation)
 
 	tokenFilter := filter.GetFilterMng().Register("device", deviceDB)
 	tokenFilter.Load()
@@ -107,10 +105,10 @@ func StartFrontServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	if err := consumer.Start(); err != nil {
 		log.Panicf("failed to start settings consumer err:%v", err)
 	}
-	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcClient, rpcCli, federation, idg)
-	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcClient, rpcCli, tokenFilter, idg, settings, feddomains, complexCache)
+	encryptDB := encryptoapi.SetupEncryptApi(base, cache, rpcCli, federation, idg)
+	clientapi.SetupClientAPIComponent(base, deviceDB, cache, accountDB, newFederation, &keyRing, rsRpcCli, encryptDB, syncDB, presenceDB, roomDB, rpcCli, tokenFilter, idg, settings, feddomains, complexCache)
 	publicRoomsDB := base.CreatePublicRoomApiDB()
-	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcClient, rpcCli, rsRpcCli, publicRoomsDB)
-	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcClient, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
-	rcsserver.SetupRCSServerComponent(base, rpcClient, rpcCli)
+	publicroomsapi.SetupPublicRoomsAPIComponent(base, rpcCli, rsRpcCli, publicRoomsDB)
+	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
+	rcsserver.SetupRCSServerComponent(base, rpcCli)
 }

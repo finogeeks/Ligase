@@ -111,8 +111,8 @@ func (b *BaseDendrite) Close() error {
 
 // CreateRsRPCCli returns the AliasAPI and QueryAPI to hit
 // the roomserver over tcp.
-func (b *BaseDendrite) CreateRsRPCCli(rpcCli *common.RpcClient, rpcClient rpcService.RpcClient) roomserverapi.RoomserverRPCAPI {
-	return rpc.NewRoomserverRpcClient(b.Cfg, rpcCli, rpcClient, nil, nil, nil)
+func (b *BaseDendrite) CreateRsRPCCli(rpcClient rpcService.RpcClient) roomserverapi.RoomserverRPCAPI {
+	return rpc.NewRoomserverRpcClient(b.Cfg, rpcClient, nil, nil, nil)
 }
 
 // CreateDeviceDB creates a new instance of the device database. Should only be

@@ -15,7 +15,6 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/repos"
@@ -34,7 +33,6 @@ type InternalMsgConsumer struct {
 
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
-	rpcCli *common.RpcClient,
 	rpcClient rpcService.RpcClient,
 	rsCurState *repos.RoomCurStateRepo,
 	rsTimeline *repos.RoomStateTimeLineRepo,
@@ -42,7 +40,6 @@ func NewInternalMsgConsumer(
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
 	c.RpcClient = rpcClient
 	c.rsCurState = rsCurState
 	c.rsTimeline = rsTimeline

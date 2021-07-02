@@ -43,7 +43,6 @@ func Setup(
 	apiMux *mux.Router,
 	cfg config.Dendrite,
 	cacheIn service.Cache,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI,
 	tokenFilter *filter.SimpleFilter,
@@ -94,7 +93,7 @@ func Setup(
 	for k, v := range prefixMap {
 		m := apiMux.PathPrefix(v).Subrouter()
 		muxs[k] = m
-		proc := NewHttpProcessor(m, cfg, cacheIn, rpcCli, rpcClient, rsRpcCli, tokenFilter, idg, histogram, feddomains, keyDB /*, counter*/)
+		proc := NewHttpProcessor(m, cfg, cacheIn, rpcClient, rsRpcCli, tokenFilter, idg, histogram, feddomains, keyDB /*, counter*/)
 		procs[k] = proc
 	}
 

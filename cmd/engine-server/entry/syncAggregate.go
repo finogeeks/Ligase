@@ -45,9 +45,6 @@ func StartSyncAggregate(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	domain.GetDomainMngInstance(cache, serverConfDB, base.Cfg.Matrix.ServerName, base.Cfg.Matrix.ServerFromDB, idg)
 	base.CheckDomainCfg()
 
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(false)
-
 	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
 		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
@@ -57,5 +54,5 @@ func StartSyncAggregate(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 
-	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, rpcCli, idg, complexCache)
+	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcCli, idg, complexCache)
 }

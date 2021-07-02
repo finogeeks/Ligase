@@ -46,7 +46,6 @@ func SetupSyncServerComponent(
 	base *basecomponent.BaseDendrite,
 	accountDB model.AccountsDatabase,
 	cacheIn service.Cache,
-	rpcClient *common.RpcClient,
 	rpcCli rpcService.RpcClient,
 	idg *uid.UidGenerator,
 ) {
@@ -55,10 +54,6 @@ func SetupSyncServerComponent(
 	maxEntries := base.Cfg.Lru.MaxEntries
 	gcPerNum := base.Cfg.Lru.GcPerNum
 	flushDelay := base.Cfg.FlushDelay
-	syncMngChanNum := uint32(64)
-	if base.Cfg.SyncMngChanNum > 0 {
-		syncMngChanNum = base.Cfg.SyncMngChanNum
-	}
 
 	monitor := mon.GetInstance()
 	qureyHitCounter := monitor.NewLabeledCounter("syncserver_query_hit", []string{"target", "repo", "func"})
@@ -109,15 +104,15 @@ func SetupSyncServerComponent(
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 	pushDataRepo := repos.NewPushDataRepo(pushDB, base.Cfg)
 	pushDataRepo.LoadHistory(context.TODO())
-	pushConsumer := consumers.NewPushConsumer(cacheIn, rpcClient, rpcCli, complexCache, pushDataRepo, base.Cfg)
+	pushConsumer := consumers.NewPushConsumer(cacheIn, rpcCli, complexCache, pushDataRepo, base.Cfg)
 	pushConsumer.SetRoomHistory(roomHistory)
 	pushConsumer.SetCountRepo(readCountRepo)
 	pushConsumer.SetEventRepo(eventReadStreamRepo)
 	pushConsumer.SetRoomCurState(rsCurState)
 	pushConsumer.SetRsTimeline(rsTimeline)
 	pushConsumer.Start()
-	pushapi.SetupPushAPIComponent(base, cacheIn, rpcClient, rpcCli, pushDataRepo)
-	feedServer := consumers.NewRoomEventFeedConsumer(base.Cfg, syncDB, pushConsumer, rpcClient, rpcCli, idg)
+	pushapi.SetupPushAPIComponent(base, cacheIn, rpcCli, pushDataRepo)
+	feedServer := consumers.NewRoomEventFeedConsumer(base.Cfg, syncDB, pushConsumer, rpcCli, idg)
 	feedServer.SetRoomHistory(roomHistory)
 	feedServer.SetRsCurState(rsCurState)
 	feedServer.SetRsTimeline(rsTimeline)
@@ -133,7 +128,7 @@ func SetupSyncServerComponent(
 		log.Panicf("failed to start sync profile consumer err:%v", err)
 	}
 
-	receiptConsumer := consumers.NewReceiptConsumer(rpcClient, rpcCli, base.Cfg, idg)
+	receiptConsumer := consumers.NewReceiptConsumer(rpcCli, base.Cfg, idg)
 	receiptConsumer.SetCountRepo(readCountRepo)
 	receiptConsumer.SetReceiptRepo(receiptDataStreamRepo)
 	receiptConsumer.SetUserReceiptRepo(userReceiptRepo)
@@ -144,7 +139,7 @@ func SetupSyncServerComponent(
 		log.Panicf("failed to start sync receipt consumer err:%v", err)
 	}
 
-	syncServer := consumers.NewSyncServer(syncDB, syncMngChanNum, 1024, base.Cfg, rpcClient)
+	syncServer := consumers.NewSyncServer(syncDB, base.Cfg)
 	syncServer.SetCache(cacheIn)
 	syncServer.SetRoomHistory(roomHistory)
 	syncServer.SetRsTimeline(rsTimeline)
@@ -154,38 +149,14 @@ func SetupSyncServerComponent(
 	syncServer.SetReadCountRepo(readCountRepo)
 	syncServer.SetDisplayNameRepo(displayNameRepo)
 	syncServer.SetSettings(settings)
-	syncServer.Start()
 
-	if base.Cfg.Rpc.Driver == "nats" {
-		typingRpcConsumer := rpc.NewTypingRpcConsumer(rsCurState, rpcClient, rpcCli, base.Cfg)
-		if err := typingRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync typing rpc consumer err:%v", err)
-		}
-		receiptRpcConsumer := rpc.NewReceiptRpcConsumer(receiptConsumer, rpcClient, base.Cfg)
-		if err := receiptRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync receipt rpc consumer err:%v", err)
-		}
-		syncServerRpcConsumer := rpc.NewSyncServerRpcConsumer(rpcClient, syncServer, base.Cfg)
-		if err := syncServerRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync server rpc consumer err:%v", err)
-		}
-		syncUnreadRpcConsumer := rpc.NewSyncUnreadRpcConsumer(rpcClient, readCountRepo, base.Cfg)
-		if err := syncUnreadRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync unread rpc consumer err:%v", err)
-		}
-		syncPushRpcConsumer := rpc.NewPushDataConsumer(rpcClient, pushDataRepo, base.Cfg)
-		if err := syncPushRpcConsumer.Start(); err != nil {
-			log.Panicf("failed to start sync push rpc consumer err:%v", err)
-		}
-	} else {
-		grpcServer := rpc.NewServer(base.Cfg, syncServer, pushDataRepo, receiptConsumer, readCountRepo, rsCurState, rpcClient, rpcCli)
-		if err := grpcServer.Start(); err != nil {
-			log.Panicf("failed to start sync server rpc server err:%v", err)
-		}
+	grpcServer := rpc.NewServer(base.Cfg, syncServer, pushDataRepo, receiptConsumer, readCountRepo, rsCurState, rpcCli)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start sync server rpc server err:%v", err)
 	}
 
 	log.Infof("instance:%d,syncserver total:%d", base.Cfg.MultiInstance.Instance, base.Cfg.MultiInstance.SyncServerTotal)
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, rpcCli, idg, syncDB, rsCurState, rsTimeline, roomHistory, displayNameRepo, receiptConsumer, settings, cacheIn)
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcCli, idg, syncDB, rsCurState, rsTimeline, roomHistory, displayNameRepo, receiptConsumer, settings, cacheIn)
 	apiConsumer.Start()
 
 	if base.Cfg.Rpc.Driver == "grpc_with_consul" {

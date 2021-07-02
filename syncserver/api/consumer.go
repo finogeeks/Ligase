@@ -44,7 +44,6 @@ type InternalMsgConsumer struct {
 
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	idg *uid.UidGenerator,
 	db model.SyncAPIDatabase,
@@ -58,7 +57,6 @@ func NewInternalMsgConsumer(
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
 	c.RpcClient = rpcClient
 	c.idg = idg
 	c.db = db

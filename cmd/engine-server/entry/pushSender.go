@@ -27,8 +27,5 @@ func StartPushSender(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 	transportMultiplexer.PreStart()
 
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri)
-	rpcClient.Start(false)
-
-	pushsender.SetupPushSenderComponent(base, rpcClient)
+	pushsender.SetupPushSenderComponent(base, nil)
 }

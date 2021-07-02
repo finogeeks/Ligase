@@ -133,7 +133,6 @@ func DeleteDeviceByID(
 	tokenFilter *filter.Filter,
 	syncDB model.SyncAPIDatabase,
 	deviceDB model.DeviceDatabase,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	// var delReq external.DelDeviceRequest
@@ -163,7 +162,7 @@ func DeleteDeviceByID(
 		}
 	}
 
-	LogoutDevice(delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "del_device")
+	LogoutDevice(delReq.Auth.User, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "del_device")
 
 	return http.StatusOK, nil
 }
@@ -176,7 +175,6 @@ func DeleteDevices(
 	tokenFilter *filter.Filter,
 	syncDB model.SyncAPIDatabase,
 	deviceDB model.DeviceDatabase,
-	rpcClient *common.RpcClient,
 	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	if req.Devices == nil || len(req.Devices) == 0 {
@@ -192,7 +190,7 @@ func DeleteDevices(
 					cache.SetPwdChangeDevcie(dev.ID, device.UserID)
 					hasPwdDevice = true
 				}
-				LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "del_devices")
+				LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "del_devices")
 			}
 		}
 		if hasPwdDevice {
@@ -200,7 +198,7 @@ func DeleteDevices(
 		}
 	} else {
 		for _, deviceId := range req.Devices {
-			LogoutDevice(device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, rpcCli, "del_devices")
+			LogoutDevice(device.UserID, deviceId, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "del_devices")
 		}
 	}
 

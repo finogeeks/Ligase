@@ -29,7 +29,7 @@ import (
 )
 
 func SetupRCSServerComponent(
-	base *basecomponent.BaseDendrite, rpcClient *common.RpcClient, rpcCli rpcService.RpcClient,
+	base *basecomponent.BaseDendrite, rpcCli rpcService.RpcClient,
 ) {
 	dbIface, err := common.GetDBInstance("rcsserver", base.Cfg)
 	if err != nil {
@@ -64,6 +64,6 @@ func SetupRCSServerComponent(
 		c.Init()
 	}
 
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, rpcCli, idg, db, repo)
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcCli, idg, db, repo)
 	apiConsumer.Start()
 }

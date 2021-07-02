@@ -52,7 +52,6 @@ type EventsProcessor struct {
 	Fed        *FedProcessor
 	Cfg        *config.Dendrite
 	Idg        *uid.UidGenerator
-	RpcClient  *common.RpcClient
 	RpcCli     rpc.RpcClient
 	Federation *fed.Federation
 

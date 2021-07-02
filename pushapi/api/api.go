@@ -50,13 +50,11 @@ func NewInternalMsgConsumer(
 	cfg config.Dendrite,
 	pushDB model.PushAPIDatabase,
 	redisCache service.Cache,
-	rpcCli *common.RpcClient,
 	rpcClient rpc.RpcClient,
 	pushDataRepo *repos.PushDataRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
 	c.RpcClient = rpcClient
 	c.pushDB = pushDB
 	c.redisCache = redisCache

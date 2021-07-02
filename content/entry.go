@@ -46,7 +46,6 @@ import (
 	_ "github.com/finogeeks/ligase/plugins"
 	rpcService "github.com/finogeeks/ligase/rpc"
 	_ "github.com/finogeeks/ligase/rpc/grpc"
-	_ "github.com/finogeeks/ligase/rpc/nats"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -277,8 +276,6 @@ func startContentService(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	downloadStateRepo := repos.NewDownloadStateRepo()
 
 	idg, _ := uid.NewIdGenerator(0, 0)
-	rpcCli := common.NewRpcClient(cfg.Nats.Uri)
-	rpcCli.Start(true)
 
 	rpcClient, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
 	if err != nil {
@@ -327,7 +324,6 @@ func startContentService(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 		cache,
 		feddomains,
 		downloadStateRepo,
-		rpcCli,
 		rpcClient,
 		downloadConsumer,
 		idg,

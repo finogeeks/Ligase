@@ -55,7 +55,6 @@ type HttpProcessor struct {
 	router      *mux.Router
 	cfg         config.Dendrite
 	cacheIn     service.Cache
-	rpcCli      *common.RpcClient
 	rpcClient   rpc.RpcClient
 	tokenFilter *filter.SimpleFilter
 	idg         *uid.UidGenerator
@@ -72,7 +71,7 @@ type HttpProcessor struct {
 
 func NewHttpProcessor(
 	r *mux.Router, cfg config.Dendrite,
-	cacheIn service.Cache, rpcCli *common.RpcClient, rpcClient rpc.RpcClient,
+	cacheIn service.Cache, rpcClient rpc.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI, tokenFilter *filter.SimpleFilter,
 	idg *uid.UidGenerator,
 	histogram mon.LabeledHistogram,
@@ -88,7 +87,6 @@ func NewHttpProcessor(
 		cacheIn:     cacheIn,
 		tokenFilter: tokenFilter,
 		idg:         idg,
-		rpcCli:      rpcCli,
 		rpcClient:   rpcClient,
 		rsRpcCli:    rsRpcCli,
 		histogram:   histogram,
@@ -344,43 +342,36 @@ func (w *HttpProcessor) send(ctx context.Context, topic string, input *internals
 	}
 
 	var resp []byte
-	if w.cfg.Rpc.Driver == "nats" {
-		resp, err = w.rpcCli.Request(topic, bytes, 60000000)
+
+	service := apiconsumer.GetAPIService(msgType)
+	rpcConf, ok := w.cfg.GetRpcConfig(service)
+	if !ok {
+		return nil, fmt.Errorf("rpc config %s not found %d", service, msgType)
+	}
+
+	if len(instance) == 0 {
+		instance = []uint32{0}
+	}
+	var resps [][]byte
+	var errs []error
+	for i := 0; i < len(instance); i++ {
+		conn, err := w.rpcClient.(*grpc.Client).GetConn(rpcConf, instance[i])
 		if err != nil {
-			log.Errorf("OutputMsg decode error %s", err.Error())
 			return nil, err
 		}
-	} else {
-		service := apiconsumer.GetAPIService(msgType)
-		rpcConf, ok := w.cfg.GetRpcConfig(service)
-		if !ok {
-			return nil, fmt.Errorf("rpc config %s not found %d", service, msgType)
+		c := pb.NewApiServerClient(conn)
+		rsp, err := c.ApiRequest(ctx, &pb.ApiRequestReq{Topic: topic, Data: bytes})
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			resps = append(resps, rsp.Data)
 		}
-
-		if len(instance) == 0 {
-			instance = []uint32{0}
-		}
-		var resps [][]byte
-		var errs []error
-		for i := 0; i < len(instance); i++ {
-			conn, err := w.rpcClient.(*grpc.Client).GetConn(rpcConf, instance[i])
-			if err != nil {
-				return nil, err
-			}
-			c := pb.NewApiServerClient(conn)
-			rsp, err := c.ApiRequest(ctx, &pb.ApiRequestReq{Topic: topic, Data: bytes})
-			if err != nil {
-				errs = append(errs, err)
-			} else {
-				resps = append(resps, rsp.Data)
-			}
-		}
-		if len(errs) > 0 {
-			log.Errorf("rpc request %s err %v", service, errs)
-			return nil, errs[0]
-		}
-		resp = resps[0]
 	}
+	if len(errs) > 0 {
+		log.Errorf("rpc request %s err %v", service, errs)
+		return nil, errs[0]
+	}
+	resp = resps[0]
 	outputMsg := new(internals.OutputMsg)
 	err = outputMsg.Decode(resp)
 	if err != nil {
@@ -400,10 +391,4 @@ func (w *HttpProcessor) FilterRequest(req *gomatrixserverlib.FederationRequest) 
 		return false
 	}
 	return true
-}
-
-type wsProcessor struct {
-}
-
-type tcpProcessor struct {
 }
