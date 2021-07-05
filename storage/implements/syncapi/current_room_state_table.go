@@ -189,14 +189,14 @@ func (s *currentRoomStateStatements) selectRoomIDsWithMembership(
 // CurrentState returns all the current state events for the given room.
 func (s *currentRoomStateStatements) selectCurrentState(
 	ctx context.Context, roomID string,
-) ([]gomatrixserverlib.ClientEvent, []int64, error) {
+) ([]*gomatrixserverlib.ClientEvent, []int64, error) {
 	rows, err := s.selectCurrentStateStmt.QueryContext(ctx, roomID)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close() // nolint: errcheck
 
-	result := []gomatrixserverlib.ClientEvent{}
+	result := []*gomatrixserverlib.ClientEvent{}
 	offsets := []int64{}
 	for rows.Next() {
 		var eventBytes []byte
@@ -217,7 +217,7 @@ func (s *currentRoomStateStatements) selectCurrentState(
 		if err != nil {
 			return nil, nil, err
 		}
-		result = append(result, ev)
+		result = append(result, &ev)
 		offsets = append(offsets, offset)
 	}
 	return result, offsets, nil

@@ -191,7 +191,7 @@ func (tl *RoomStateTimeLineRepo) loadStates(roomID string) {
 		log.Infof("load db succ RoomStateTimeLineRepo.loadStates finished %s spend:%d ms", roomID, spend)
 	}
 	for idx := range evs {
-		tl.AddEv(&evs[idx], offsets[idx], false)
+		tl.AddEv(evs[idx], offsets[idx], false)
 	}
 
 	tl.stateReady.Store(roomID, true)
@@ -213,7 +213,7 @@ func (tl *RoomStateTimeLineRepo) loadStateStreams(roomID string) {
 		log.Infof("load db succ RoomStateTimeLineRepo.loadStateStreams finished %s spend:%d ms", roomID, spend)
 	}
 	for idx := range evs {
-		tl.AddStreamEv(&evs[idx], offsets[idx], false)
+		tl.AddStreamEv(evs[idx], offsets[idx], false)
 	}
 	tl.streamReady.Store(roomID, true)
 }
@@ -379,7 +379,7 @@ func (tl *RoomStateTimeLineRepo) GetStateEvents(roomID string, endPos int64) ([]
 		}
 		for i, ev := range evs {
 			streamEv := new(feedstypes.StreamEvent)
-			streamEv.Ev = &ev
+			streamEv.Ev = ev
 			streamEv.Offset = offsets[i]
 			streamEvs = append(streamEvs, streamEv)
 			events = append(events, streamEv.GetEv())

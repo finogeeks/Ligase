@@ -259,19 +259,19 @@ func (d *Database) UpdateRoomState2(
 // Returns an error if there was an issue with the retrieval.
 func (d *Database) GetStateEventsForRoom(
 	ctx context.Context, roomID string,
-) ([]gomatrixserverlib.ClientEvent, []int64, error) {
+) ([]*gomatrixserverlib.ClientEvent, []int64, error) {
 	return d.roomstate.selectCurrentState(ctx, roomID)
 }
 
 func (d *Database) GetStateEventsStreamForRoom(
 	ctx context.Context, roomID string,
-) ([]gomatrixserverlib.ClientEvent, []int64, error) {
+) ([]*gomatrixserverlib.ClientEvent, []int64, error) {
 	return d.events.selectRoomStateStream(ctx, roomID, 1)
 }
 
 func (d *Database) GetStateEventsStreamForRoomBeforePos(
 	ctx context.Context, roomID string, pos int64,
-) ([]gomatrixserverlib.ClientEvent, []int64, error) {
+) ([]*gomatrixserverlib.ClientEvent, []int64, error) {
 	return d.events.selectRoomStateStream(ctx, roomID, pos)
 }
 
@@ -427,7 +427,7 @@ func (d *Database) GetHistoryEvents(
 	ctx context.Context,
 	roomid string,
 	limit int,
-) (events []gomatrixserverlib.ClientEvent, offsets []int64, err error) {
+) (events []*gomatrixserverlib.ClientEvent, offsets []int64, err error) {
 	return d.events.selectHistoryEvents(ctx, roomid, limit)
 }
 
