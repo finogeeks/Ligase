@@ -31,10 +31,10 @@ import (
 )
 
 type Events struct {
-	size int
-	lru *Lru
+	size    int
+	lru     *Lru
 	persist model.RoomServerDatabase
-	events      sync.Map
+	events  sync.Map
 }
 
 func NewEvents(size, gcPerNum int, persist model.RoomServerDatabase) *Events {
@@ -95,23 +95,22 @@ func (es Events) getEventsByID(eventIDs []string) ([]*gomatrixserverlib.Event, e
 	}
 
 	for _, v := range evs {
-		es.addEvent(v)	
+		es.addEvent(v)
 	}
 
 	return evs, nil
 }
 
-
 type RoomServerHistoryTimeLineRepo struct {
-	repo    *TimeLineRepo
-	persist model.RoomServerDatabase
-	cache   service.Cache
-	loading sync.Map
-	ready   sync.Map
-	roomMutex   *sync.Mutex
-	roomIDToNID sync.Map
-	roomNIDToID sync.Map
-	events *Events
+	repo            *TimeLineRepo
+	persist         model.RoomServerDatabase
+	cache           service.Cache
+	loading         sync.Map
+	ready           sync.Map
+	roomMutex       *sync.Mutex
+	roomIDToNID     sync.Map
+	roomNIDToID     sync.Map
+	events          *Events
 	queryHitCounter mon.LabeledCounter
 }
 
@@ -125,7 +124,7 @@ func NewRoomServerHistoryTimeLineRepo(
 	tls.repo = NewTimeLineRepo(bukSize, 128, true, maxEntries, gcPerNum)
 	tls.roomMutex = new(sync.Mutex)
 	tls.persist = persist
-	tls.events = NewEvents(128 * maxEntries, gcPerNum, persist)
+	tls.events = NewEvents(128*maxEntries, gcPerNum, persist)
 
 	return tls
 }
@@ -240,15 +239,8 @@ func (tl *RoomServerHistoryTimeLineRepo) loadHistory(roomID string) {
 		log.Infof("load db succ RoomServerHistoryTimeLineRepo.loadHistory finished room:%s spend:%d ms", roomID, spend)
 	}
 
-	length := len(evs)
-	for i := 0; i < length/2; i++ {
-		ev := evs[i]
-		evs[i] = evs[length-1-i]
-		evs[length-1-i] = ev
-	}
-
-	for idx := range evs {
-		tl.addEv(&evs[idx], false)
+	for i := len(evs); i > 0; i-- {
+		tl.addEv(evs[i], false)
 	}
 
 	tl.ready.Store(roomID, true)

@@ -152,5 +152,5 @@ type RoomServerDatabase interface {
 	UpdateMsgEventMigration(ctx context.Context, id int64, EncryptedEventBytes []byte) error
 	GetRoomEventByNID(ctx context.Context, eventNID int64) ([]byte, error)
 
-	GetHistoryEvents(ctx context.Context, roomNID int64, limit int) ([]gomatrixserverlib.Event, []int64, error)
+	GetHistoryEvents(ctx context.Context, roomNID int64, limit int) ([]*gomatrixserverlib.Event, []int64, error)
 }
