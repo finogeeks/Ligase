@@ -19,9 +19,9 @@ import (
 
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type RoomServerDatabase interface {
@@ -151,4 +151,6 @@ type RoomServerDatabase interface {
 	GetMsgEventsTotalMigration(ctx context.Context) (int, int64, error)
 	UpdateMsgEventMigration(ctx context.Context, id int64, EncryptedEventBytes []byte) error
 	GetRoomEventByNID(ctx context.Context, eventNID int64) ([]byte, error)
+
+	GetHistoryEvents(ctx context.Context, roomNID int64, limit int) ([]gomatrixserverlib.Event, []int64, error)
 }

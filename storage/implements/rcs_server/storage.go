@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/skunkworks/log"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
@@ -124,13 +123,6 @@ func (d *Database) UpdateFriendshipByRoomID(
 	fcIDIsBot, toFcIDIsBot bool, fcIDRemark, toFcIDRemark string,
 	fcIDOnceJoined, toFcIDOnceJoined bool, fcIDDomain, toFcIDDomain, eventID string,
 ) error {
-	log.Infow("rcsserver=====================Database.UpdateFriendshipByRoomID",
-		log.KeysAndValues{"ID", ID, "roomID", roomID, "fcID", fcID, "toFcID", toFcID,
-			"fcIDState", fcIDState, "toFcIDState", toFcIDState,
-			"fcIDIsBot", fcIDIsBot, "toFcIDIsBot", toFcIDIsBot,
-			"fcIDRemark", fcIDRemark, "toFcIDRemark", toFcIDRemark,
-			"fcIDOnceJoined", fcIDOnceJoined, "toFcIDOnceJoined", toFcIDOnceJoined,
-			"eventID", eventID})
 	return d.statements.updateFriendshipByRoomID(
 		ctx, ID, roomID, fcID, toFcID, fcIDState, toFcIDState,
 		fcIDIsBot, toFcIDIsBot, fcIDRemark, toFcIDRemark,

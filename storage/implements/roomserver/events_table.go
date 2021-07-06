@@ -21,8 +21,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -122,6 +122,9 @@ const selectRoomEventByDepthSQL = "SELECT event_nid, event_id FROM roomserver_ev
 
 const selectRoomMaxDomainOffsetSQL = "SELECT t.domain, t.m, m.event_id FROM(SELECT MAX(offsets) AS m, domain FROM roomserver_events WHERE room_nid=$1 GROUP BY domain) t LEFT JOIN roomserver_events m ON room_nid=$1 AND t.domain=m.domain AND t.m=m.offsets"
 
+// timeline
+const selectHistoryEventsSQL = "SELECT event_nid from roomserver_events where room_nid = $1 ORDER BY event_nid LIMIT $2"
+
 type eventStatements struct {
 	db                                         *Database
 	insertEventStmt                            *sql.Stmt
@@ -145,6 +148,7 @@ type eventStatements struct {
 	updateRoomEventStmt                        *sql.Stmt
 	selectRoomEventByDepthStmt                 *sql.Stmt
 	selectRoomMaxDomainOffsetStmt              *sql.Stmt
+	selectHistoryEventsStmt                    *sql.Stmt
 }
 
 func (s *eventStatements) getSchema() string {
@@ -176,6 +180,7 @@ func (s *eventStatements) prepare(db *sql.DB, d *Database) (err error) {
 		{&s.updateRoomEventStmt, updateRoomEventSQL},
 		{&s.selectRoomEventByDepthStmt, selectRoomEventByDepthSQL},
 		{&s.selectRoomMaxDomainOffsetStmt, selectRoomMaxDomainOffsetSQL},
+		{&s.selectHistoryEventsStmt, selectHistoryEventsSQL},
 	}.prepare(db)
 }
 
@@ -609,4 +614,23 @@ func (s *eventStatements) selectRoomStateNIDByStateBlockNID(ctx context.Context,
 		domains = append(domains, domain)
 	}
 	return eventNIDs, eventTypes, stateKeys, domains, nil
+}
+
+func (s *eventStatements) selectHistoryEvents(ctx context.Context, roomNID int64, limit int) ([]int64, error) {
+	rows, err := s.selectHistoryEventsStmt.QueryContext(ctx, roomNID, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	eventNIDs := []int64{}
+	for rows.Next() {
+		var eventNID int64
+		if err = rows.Scan(&eventNID); err != nil {
+			return nil, err
+		}
+
+		eventNIDs = append(eventNIDs, eventNID)
+	}
+
+	return eventNIDs, nil
 }
