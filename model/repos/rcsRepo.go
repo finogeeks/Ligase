@@ -19,12 +19,14 @@ import (
 	"sync"
 
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
 type RCSRepo struct {
 	persist model.RCSServerDatabase
-	idFriendship sync.Map
+	andIDFriendship sync.Map
+	orIDFriendship sync.Map
 	roomFriendship      sync.Map
 }
 
@@ -60,7 +62,7 @@ func (r *RCSRepo) InsertFriendship(
 		ToFcIDDomain: toFcIDDomain,
 		EventID: eventID,
 	}
-	r.idFriendship.Store(getID(fcID, toFcID), &f)
+	r.andIDFriendship.Store(getID(fcID, toFcID), &f)
 	r.roomFriendship.Store(roomID, &f)
 	if err := r.persist.InsertFriendship(
 		ctx, ID, roomID, fcID, toFcID, fcIDState, toFcIDState,
@@ -95,7 +97,7 @@ func (r *RCSRepo) UpdateFriendshipByRoomID(
 		ToFcIDDomain: toFcIDDomain,
 		EventID: eventID,
 	}
-	r.idFriendship.Store(getID(fcID, toFcID), &f)
+	r.andIDFriendship.Store(getID(fcID, toFcID), &f)
 	r.roomFriendship.Store(roomID, &f)
 	if err := r.persist.UpdateFriendshipByRoomID(
 		ctx, ID, roomID, fcID, toFcID, fcIDState, toFcIDState,
@@ -119,7 +121,7 @@ func (r *RCSRepo) GetFriendshipByRoomID(ctx context.Context, roomID string) (*ty
 		return nil, err
 	}
 
-	r.idFriendship.Store(getID(f.FcID, f.ToFcID), f)
+	r.andIDFriendship.Store(getID(f.FcID, f.ToFcID), f)
 	r.roomFriendship.Store(f.RoomID, f)
 
 	return f, nil
@@ -127,7 +129,7 @@ func (r *RCSRepo) GetFriendshipByRoomID(ctx context.Context, roomID string) (*ty
 
 func (r *RCSRepo) GetFriendshipByFcIDAndToFcID (ctx context.Context, fcID, toFcID string) (*types.RCSFriendship, error) {
 	ID := getID(fcID, toFcID)
-	if val, ok := r.idFriendship.Load(ID); ok {
+	if val, ok := r.andIDFriendship.Load(ID); ok {
 		return val.(*types.RCSFriendship), nil
 	}
 
@@ -136,8 +138,23 @@ func (r *RCSRepo) GetFriendshipByFcIDAndToFcID (ctx context.Context, fcID, toFcI
 		return nil, err
 	}
 
-	r.idFriendship.Store(ID, f)
+	r.andIDFriendship.Store(ID, f)
 	r.roomFriendship.Store(f.RoomID, f)
+	return f, nil
+}
+
+func (r *RCSRepo) GetFriendshipByFcIDOrToFcID (ctx context.Context, fcID, toFcID string) (*external.GetFriendshipResponse, error) {
+	ID := getID(fcID, toFcID)
+	if val, ok := r.orIDFriendship.Load(ID); ok {
+		return val.(*external.GetFriendshipResponse), nil
+	}
+
+	f, err := r.persist.GetFriendshipByFcIDOrToFcID(ctx, fcID, toFcID)
+	if err != nil {
+		return nil, err
+	}
+
+	r.orIDFriendship.Store(ID, f)
 	return f, nil
 }
 
@@ -149,7 +166,7 @@ func (r *RCSRepo) DeleteFriendshipByRoomID(ctx context.Context, roomID string) e
 
 	if val, ok := r.roomFriendship.Load(roomID); ok {
 		f := val.(*types.RCSFriendship)
-		r.idFriendship.Delete(getID(f.FcID, f.ToFcID))
+		r.andIDFriendship.Delete(getID(f.FcID, f.ToFcID))
 		r.roomFriendship.Store(f.RoomID, f)
 	}
 

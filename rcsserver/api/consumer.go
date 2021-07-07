@@ -21,9 +21,10 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+	"github.com/finogeeks/ligase/model/repos"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -33,6 +34,7 @@ type InternalMsgConsumer struct {
 	apiconsumer.APIConsumer
 	idg *uid.UidGenerator
 	db  model.RCSServerDatabase
+	repo *repos.RCSRepo
 }
 
 func NewInternalMsgConsumer(
@@ -40,12 +42,14 @@ func NewInternalMsgConsumer(
 	rpcCli *common.RpcClient,
 	idg *uid.UidGenerator,
 	db model.RCSServerDatabase,
+	repo *repos.RCSRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
 	c.RpcCli = rpcCli
 	c.idg = idg
 	c.db = db
+	c.repo = repo
 	return c
 }
 
@@ -55,11 +59,9 @@ func (c *InternalMsgConsumer) Start() {
 }
 
 func (c *InternalMsgConsumer) getFriendship(req *external.GetFriendshipRequest) (*external.GetFriendshipResponse, error) {
-	log.Infow("rcsserver=====================InternalMsgConsumer.getFriendship", log.KeysAndValues{req.FcID, req.ToFcID})
-	resp, err := c.db.GetFriendshipByFcIDOrToFcID(context.Background(), req.FcID, req.ToFcID)
+	resp, err := c.repo.GetFriendshipByFcIDOrToFcID(context.Background(), req.FcID, req.ToFcID)
 	if err != nil {
-		if c.db.NotFound(err) {
-			log.Infoln("rcsserver=====================InternalMsgConsumer.getFriendship, c.db.NotFound")
+		if c.repo.NotFound(err) {
 			return resp, nil
 		}
 		log.Errorf("Failed to get roomId: %v\n", err)
@@ -69,7 +71,6 @@ func (c *InternalMsgConsumer) getFriendship(req *external.GetFriendshipRequest) 
 }
 
 func (c *InternalMsgConsumer) getFriendships(req *external.GetFriendshipsRequest, userID string) (*external.GetFriendshipsResponse, error) {
-	log.Infow("rcsserver=====================InternalMsgConsumer.getFriendships", log.KeysAndValues{"userID", userID, "req.Type", req.Type})
 	var resp external.GetFriendshipsResponse
 	var err error
 	if req.Type == external.RCSFriendshipTypeBot {

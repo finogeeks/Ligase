@@ -26,7 +26,6 @@ import (
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/storage/model"
 	fsm "github.com/smallnest/gofsm"
 )
 
@@ -51,7 +50,6 @@ const (
 )
 
 type RCSDelegate struct {
-	db model.RCSServerDatabase
 	repo *repos.RCSRepo
 }
 
@@ -137,9 +135,8 @@ func (d *RCSDelegate) handleNormalOperation(
 	}
 }
 
-func NewFSM(db model.RCSServerDatabase, repo *repos.RCSRepo) *fsm.StateMachine {
+func NewFSM(repo *repos.RCSRepo) *fsm.StateMachine {
 	delegate := &RCSDelegate{
-		db: db,
 		repo: repo,
 	}
 	transitions := []fsm.Transition{
@@ -204,20 +201,18 @@ func NewFSM(db model.RCSServerDatabase, repo *repos.RCSRepo) *fsm.StateMachine {
 type EventProcessor struct {
 	cfg *config.Dendrite
 	idg *uid.UidGenerator
-	db  model.RCSServerDatabase
 	sm  *fsm.StateMachine
 	repo *repos.RCSRepo 
 }
 
-func NewEventProcessor(cfg *config.Dendrite, idg *uid.UidGenerator, db model.RCSServerDatabase) *EventProcessor {
+func NewEventProcessor(cfg *config.Dendrite, idg *uid.UidGenerator, repo *repos.RCSRepo) *EventProcessor {
 	p := EventProcessor{
 		cfg: cfg,
 		idg: idg,
-		db:  db,
-		repo: repos.NewRCSRepo(db),
+		repo: repo,
 	}
 
-	p.sm = NewFSM(db, p.repo)
+	p.sm = NewFSM(p.repo)
 	return &p
 }
 
