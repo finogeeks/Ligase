@@ -100,7 +100,7 @@ func (r *EventsProcessor) handleInput(input *InputContext) {
 func (r *EventsProcessor) dispthInput(ctx context.Context, input *roomserverapi.RawEvent, result chan InputResult) {
 	hash := common.CalcStringHashCode(input.RoomID)
 	slot := hash % r.slot
-	log.Infof("dispth input roomID:%s slot:%d", input.RoomID, slot)
+	log.Debugf("dispth input roomID:%s slot:%d", input.RoomID, slot)
 	r.inputChan[slot] <- &InputContext{
 		ctx:    ctx,
 		input:  input,
@@ -113,7 +113,7 @@ func (r *EventsProcessor) WriteOutputEvents(roomID string, updates []roomservera
 	for _, event := range updates {
 		updateEvents = append(updateEvents, event.NewRoomEvent.Event.EventID)
 	}
-	log.Infof("before WriteOutputEvents roomID:%s updates:%+v", roomID, updateEvents)
+	log.Debugf("before WriteOutputEvents roomID:%s updates:%+v", roomID, updateEvents)
 	bs := time.Now().UnixNano() / 1000000
 	roomIDData := []byte(roomID)
 	for i := range updates {
@@ -131,7 +131,7 @@ func (r *EventsProcessor) WriteOutputEvents(roomID string, updates []roomservera
 		}
 	}
 	spend := time.Now().UnixNano()/1000000 - bs
-	log.Infof("after WriteOutputEvents spend:%d roomID:%s updates:%+v", spend, roomID, updateEvents)
+	log.Debugf("after WriteOutputEvents spend:%d roomID:%s updates:%+v", spend, roomID, updateEvents)
 	return nil
 }
 
@@ -158,32 +158,32 @@ func (r *EventsProcessor) InputRoomEvents(
 	//n, err := r.processInput(ctx, input)
 	result := make(chan InputResult)
 	if input.TxnID != nil {
-		log.Infof("InputRoomEvents dispatch input txnId:%s", input.TxnID.TransactionID)
+		log.Debugf("InputRoomEvents dispatch input txnId:%s", input.TxnID.TransactionID)
 	} else {
-		log.Infof("InputRoomEvents dispatch input")
+		log.Debugf("InputRoomEvents dispatch input")
 	}
 	for _, event := range input.BulkEvents.Events {
-		log.Infof("begin dispatch input room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
+		log.Debugf("begin dispatch input room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
 			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
 	}
 
 	r.dispthInput(ctx, input, result)
 	inputResult := <-result
 	for _, event := range input.BulkEvents.Events {
-		log.Infof("after dispatch input room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
+		log.Debugf("after dispatch input room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
 			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
 	}
 	if input.TxnID != nil {
-		log.Infof("InputRoomEvents dispatch input txnId:%s response", input.TxnID.TransactionID)
+		log.Debugf("InputRoomEvents dispatch input txnId:%s response", input.TxnID.TransactionID)
 	} else {
-		log.Infof("InputRoomEvents dispatch input response")
+		log.Debugf("InputRoomEvents dispatch input response")
 	}
 	// monitor report
 	duration := float64(time.Since(start)) / float64(time.Microsecond)
 	if len(input.Query) >= 2 {
 		r.evtProcGauge.WithLabelValues(input.Query[0], input.Query[1], input.RoomID).Set(float64(duration))
 	}
-	log.Infof("roomId:%s len:%d", input.RoomID, len(input.BulkEvents.Events))
+	log.Debugf("roomId:%s len:%d", input.RoomID, len(input.BulkEvents.Events))
 	//return n, err
 	return inputResult.Num, inputResult.Error
 }
@@ -196,7 +196,7 @@ func (r *EventsProcessor) processInput(
 	for _, ev := range input.BulkEvents.Events {
 		bytes, _ := ev.MarshalJSON()
 		now := time.Now()
-		log.Infof("processRoomEvent recv %s type %s kind %d use %v content:%s", ev.EventID(), ev.Type(), input.Kind, time.Now().Sub(now), bytes)
+		log.Debugf("processRoomEvent recv %s type %s kind %d use %v content:%s", ev.EventID(), ev.Type(), input.Kind, time.Now().Sub(now), bytes)
 		if err := r.processRoomEvent(ctx, ev, input.Kind, input.Trust, input.TxnID, input.BulkEvents.SvrName); err != nil {
 			log.Errorf("EventsProcessor.InputRoomEvents processRoomEvent process event %s err %v", string(bytes), err)
 			return n, err
@@ -221,11 +221,6 @@ func (r *EventsProcessor) processRoomEvent(
 	txnID *roomservertypes.TransactionID,
 	svrName string,
 ) error {
-	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64, ev gomatrixserverlib.Event) {
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("processRoomEvent roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
-	}(bs, event)
 	if kind == roomserverapi.KindNew {
 		var isDirect bool
 		var err error
@@ -285,11 +280,6 @@ func (r *EventsProcessor) processDirectRoomCreateOrMemberEvent(
 	ctx context.Context,
 	event gomatrixserverlib.Event,
 ) ([]gomatrixserverlib.Event, bool, error) {
-	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64, ev gomatrixserverlib.Event) {
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("processDirectRoomCreateOrMemberEvent roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
-	}(bs, event)
 	inCont := types.RCSInputEventContent{
 		Event: event,
 	}
@@ -317,11 +307,6 @@ func (r *EventsProcessor) processDirectRoomCreateOrMemberEvent(
 }
 
 func (r *EventsProcessor) processFedInvite(ctx context.Context, event gomatrixserverlib.Event) (gomatrixserverlib.Event, error) {
-	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64, ev gomatrixserverlib.Event) {
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("processFedInvite roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
-	}(bs, event)
 	if event.Type() != gomatrixserverlib.MRoomMember || event.StateKey() == nil {
 		return event, nil
 	}
@@ -391,11 +376,6 @@ func (r *EventsProcessor) processNew(
 	svrName string,
 	trustedJSON bool,
 ) error {
-	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64, ev gomatrixserverlib.Event) {
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("processNew roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
-	}(bs, event)
 	log.Debugf("------------------------processNew start")
 	begin := time.Now()
 	last := begin
@@ -430,7 +410,7 @@ func (r *EventsProcessor) processNew(
 	if trustedJSON == false {
 		if err := gomatrixserverlib.Allowed(event, rs); err != nil {
 			if err != nil {
-				log.Infof("------------------------processNew auth fail,  err %v", err)
+				log.Errorf("------------------------processNew auth fail,  err %v", err)
 			}
 			return err
 		}
@@ -523,12 +503,6 @@ func (r *EventsProcessor) postProcessNew(
 	transactionID *roomservertypes.TransactionID,
 	curSnap int64,
 ) error {
-	bs := time.Now().UnixNano() / 1000000
-	defer func(bs int64, ev gomatrixserverlib.Event) {
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Infof("postProcessNew roomID:%s eventId:%s type:%s spend:%d", ev.RoomID(), ev.EventID(), ev.Type(), spend)
-	}(bs, *event)
-
 	last := time.Now()
 
 	updates, err := r.updateMemberShip(ctx, roomNID, eventNID, *event, pre)

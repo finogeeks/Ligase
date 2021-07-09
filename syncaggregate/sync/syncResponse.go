@@ -64,7 +64,7 @@ func (sm *SyncMng) freshToken(req *request,  res *syncapitypes.Response) {
 			return
 		}
 		req.marks.utlProcess = req.marks.utlRecv
-		log.Infof("traceid:%s after sync has no new event userId:%s device:%s utl:%d token not change isfullsync:%t", req.traceId, req.device.UserID, req.device.Identifier, req.marks.utlRecv, req.isFullSync)
+		log.Debugf("traceid:%s after sync has no new event userId:%s device:%s utl:%d token not change isfullsync:%t", req.traceId, req.device.UserID, req.device.Identifier, req.marks.utlRecv, req.isFullSync)
 		return
 	}
 	//maxroomoffset to large
@@ -73,7 +73,7 @@ func (sm *SyncMng) freshToken(req *request,  res *syncapitypes.Response) {
 	for roomId, offset := range req.MaxRoomOffset {
 		if v, ok := req.offsets[roomId]; ok {
 			if v > offset {
-				log.Warnf("traceid:%s roomId:%s reqOffset:%d > respOffset:%d", req.traceId, roomId, v, offset)
+				log.Debugf("traceid:%s roomId:%s reqOffset:%d > respOffset:%d", req.traceId, roomId, v, offset)
 				offsets[roomId] = v
 			}else{
 				offsets[roomId] = offset
@@ -92,7 +92,7 @@ func (sm *SyncMng) freshToken(req *request,  res *syncapitypes.Response) {
 	if err != nil {
 		sm.clearSyncData(res)
 		req.marks.utlProcess = req.marks.utlRecv
-		log.Infof("traceid:%s after sync update token err:%v reset token userId:%s device:%s utl:%d", req.traceId, err, req.device.UserID, req.device.Identifier, req.marks.utlProcess)
+		log.Warnf("traceid:%s after sync update token err:%v reset token userId:%s device:%s utl:%d", req.traceId, err, req.device.UserID, req.device.Identifier, req.marks.utlProcess)
 		return
 	}
 	req.marks.utlProcess = utl
@@ -114,11 +114,11 @@ func (sm *SyncMng) updateFullSyncNotData(req *request) {
 	err := sm.userTimeLine.UpdateToken(req.device.UserID, req.device.ID, utl, roomOffset)
 	if err != nil {
 		req.marks.utlProcess = req.marks.utlRecv
-		log.Infof("traceid:%s after full sync not data update token err:%v reset token userId:%s device:%s utl:%d ishuman:%t", req.traceId, err, req.device.UserID, req.device.ID, req.marks.utlProcess, req.device.IsHuman)
+		log.Debugf("traceid:%s after full sync not data update token err:%v reset token userId:%s device:%s utl:%d ishuman:%t", req.traceId, err, req.device.UserID, req.device.ID, req.marks.utlProcess, req.device.IsHuman)
 		return
 	}
 	req.marks.utlProcess = utl
-	log.Infof("traceid:%s after full sync not data update token userId:%s device:%s utl:%d ishuman:%t", req.traceId, req.device.UserID, req.device.ID, req.marks.utlProcess, req.device.IsHuman)
+	log.Debugf("traceid:%s after full sync not data update token userId:%s device:%s utl:%d ishuman:%t", req.traceId, req.device.UserID, req.device.ID, req.marks.utlProcess, req.device.IsHuman)
 }
 
 func (sm *SyncMng) addSyncData(req *request, res *syncapitypes.Response, data *syncapitypes.SyncServerResponse) bool {
@@ -150,7 +150,7 @@ func (sm *SyncMng) addSyncData(req *request, res *syncapitypes.Response, data *s
 	}
 	sm.updateHasNewEvent(req, data)
 	if req.device.IsHuman {
-		log.Infof("traceid:%s addSyncData user:%s recpProcess:%d maxReceiptOffset:%d", req.traceId, req.device.UserID, req.marks.recpProcess, data.MaxReceiptOffset)
+		log.Debugf("traceid:%s addSyncData user:%s recpProcess:%d maxReceiptOffset:%d", req.traceId, req.device.UserID, req.marks.recpProcess, data.MaxReceiptOffset)
 		if req.marks.recpProcess < data.MaxReceiptOffset {
 			req.marks.recpProcess = data.MaxReceiptOffset
 		}
@@ -172,7 +172,7 @@ func (sm *SyncMng) addSyncData(req *request, res *syncapitypes.Response, data *s
 					return false
 				}
 				res.Presence.Events = append(res.Presence.Events, presenceEvent)
-				log.Infof("add presence new user %s %d %s", req.device.UserID, feed.GetOffset(), feed.DataStream.Content)
+				log.Debugf("add presence new user %s %d %s", req.device.UserID, feed.GetOffset(), feed.DataStream.Content)
 			}
 		}
 	}
@@ -219,5 +219,5 @@ func (sm *SyncMng) FillSortEventOffset(res *syncapitypes.Response, req *request)
 		sort.Sort(syncapitypes.ClientEvents(leave.State.Events))
 		sort.Sort(syncapitypes.ClientEvents(leave.Timeline.Events))
 	}
-	log.Infof("SyncMng FillSortEventOffset traceid:%s, next:%s", req.traceId, res.NextBatch)
+	log.Debugf("SyncMng FillSortEventOffset traceid:%s, next:%s", req.traceId, res.NextBatch)
 }

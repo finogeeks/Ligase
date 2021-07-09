@@ -24,12 +24,12 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	pushapi "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type ReceiptConsumer struct {
@@ -117,7 +117,7 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 		lastEventID = stream.GetEv().EventID
 	}
 	if stream != nil && lastEvStream != nil {
-		log.Infof("roomID:%s last message event:%s last event:%s", req.RoomID, stream.GetEv().EventID, lastEvStream.GetEv().EventID)
+		log.Debugf("roomID:%s last message event:%s last event:%s", req.RoomID, stream.GetEv().EventID, lastEvStream.GetEv().EventID)
 	}else{
 		if stream == nil && lastEvStream != nil {
 			log.Warnf("roomID:%s last message event is nil, last event is:%s", req.RoomID, lastEvStream.GetEv().EventID)
@@ -176,7 +176,7 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 			receipt.Content = new(goSync.Map)
 		}
 
-		log.Infof("-----OnReceipt notifyRoom room:%s, userID:%s type:%s evID:%s time:%d", req.RoomID, req.UserID, req.ReceiptType, req.EventID, time.Now().Unix()*1000)
+		log.Debugf("-----OnReceipt notifyRoom room:%s, userID:%s type:%s evID:%s time:%d", req.RoomID, req.UserID, req.ReceiptType, req.EventID, time.Now().Unix()*1000)
 		receipt.Content.Store(req.UserID, time.Now().Unix()*1000)
 		s.notifyRoom.Store(req.RoomID, true)
 
@@ -239,7 +239,7 @@ func (s *ReceiptConsumer) fireReceipt() {
 		s.notifyRoom.Delete(key)
 
 		roomID := key.(string)
-		log.Infof("-----OnReceipt fireReceipt roomID:%s", roomID)
+		log.Debugf("-----OnReceipt fireReceipt roomID:%s", roomID)
 		s.fireRoomReceipt(roomID)
 		return true
 	})
@@ -277,7 +277,7 @@ func (s *ReceiptConsumer) fireRoomReceipt(roomID string) {
 	}
 
 	offset, _ := s.idg.Next()
-	log.Infof("flushReceiptUpdate roomID:%s evoffset:%d offset:%d", roomID, receipt.EvOffSet, offset)
+	log.Debugf("flushReceiptUpdate roomID:%s evoffset:%d offset:%d", roomID, receipt.EvOffSet, offset)
 	s.flushReceiptUpdate(roomID, eventJson, receipt.EvOffSet, offset)
 }
 

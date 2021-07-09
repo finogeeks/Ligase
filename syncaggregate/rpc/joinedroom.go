@@ -103,7 +103,7 @@ func (s *JoinedRoomRpcConsumer) processOnJoinedRoom(userID, reply string) {
 	}
 
 	for _, roomId := range resp.JoinedRooms {
-		log.Infof("OnIncomingJoinedRoomMessagesRequest user:%s load join room :%s", userID, roomId)
+		log.Debugf("OnIncomingJoinedRoomMessagesRequest user:%s load join room :%s", userID, roomId)
 	}
 
 	respResult := util.JSONResponse{

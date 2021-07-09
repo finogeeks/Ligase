@@ -191,14 +191,14 @@ func (s *SyncServer) processFullSync(req *syncapitypes.SyncServerRequest) {
 		resp, pos, _ := s.buildRoomJoinResp(req, roomInfo.RoomID, roomInfo.Start, roomInfo.End)
 		response.MaxRoomOffset[roomInfo.RoomID] = pos
 		response.Rooms.Join[roomInfo.RoomID] = *resp
-		log.Infof("SyncServer.processFullSync buildRoomJoinResp traceid:%s slot:%d rslot:%d roomID:%s maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, pos)
+		log.Debugf("SyncServer.processFullSync buildRoomJoinResp traceid:%s slot:%d rslot:%d roomID:%s maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, pos)
 	}
 
 	for _, roomInfo := range req.InviteRooms {
 		resp, pos := s.buildRoomInviteResp(req, roomInfo.RoomID, req.UserID)
 		response.MaxRoomOffset[roomInfo.RoomID] = pos
 		response.Rooms.Invite[roomInfo.RoomID] = *resp
-		log.Infof("SyncServer.processFullSync buildRoomInviteResp traceid:%s slot:%d rslot:%d roomID:%s maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, pos)
+		log.Debugf("SyncServer.processFullSync buildRoomInviteResp traceid:%s slot:%d rslot:%d roomID:%s maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, pos)
 	}
 
 	if req.IsHuman {
@@ -221,7 +221,7 @@ func (s *SyncServer) processIncrementSync(req *syncapitypes.SyncServerRequest) {
 
 	for _, roomInfo := range req.JoinRooms {
 		resp, pos, users := s.buildRoomJoinResp(req, roomInfo.RoomID, roomInfo.Start, roomInfo.End)
-		log.Infof("SyncServer.processIncrementSync buildRoomJoinResp traceid:%s slot:%d rslot:%d roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
+		log.Debugf("SyncServer.processIncrementSync buildRoomJoinResp traceid:%s slot:%d rslot:%d roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
 		if (pos > 0 && roomInfo.End > pos) && req.IsHuman == true {
 			log.Warnf("SyncServer.processIncrementSync buildRoomJoinResp not all loaded, traceid:%s room:%s", req.TraceID, roomInfo.RoomID)
 		}
@@ -236,7 +236,7 @@ func (s *SyncServer) processIncrementSync(req *syncapitypes.SyncServerRequest) {
 
 	for _, roomInfo := range req.InviteRooms {
 		resp, pos := s.buildRoomInviteResp(req, roomInfo.RoomID, req.UserID)
-		log.Infof("SyncServer.processIncrementSync buildRoomInviteResp traceid:%s slot:%d rslot:%d roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
+		log.Debugf("SyncServer.processIncrementSync buildRoomInviteResp traceid:%s slot:%d rslot:%d roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
 		if roomInfo.End > pos && req.IsHuman == true {
 			// event missing
 			response.AllLoaded = false
@@ -248,7 +248,7 @@ func (s *SyncServer) processIncrementSync(req *syncapitypes.SyncServerRequest) {
 
 	for _, roomInfo := range req.LeaveRooms {
 		resp, pos := s.buildRoomLeaveResp(req, roomInfo.RoomID, req.UserID, roomInfo.Start)
-		log.Infof("SyncServer.processIncrementSync buildRoomLeaveResp traceid:%s slot:%d rslot:%d roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
+		log.Debugf("SyncServer.processIncrementSync buildRoomLeaveResp traceid:%s slot:%d rslot:%d roomID:%s reqStart:%d reqEnd:%d maxPos:%d", req.TraceID, req.Slot, req.RSlot, roomInfo.RoomID, roomInfo.Start, roomInfo.End, pos)
 		if roomInfo.End > pos && req.IsHuman == true {
 			// event missing
 			response.AllLoaded = false
@@ -274,7 +274,7 @@ func (s *SyncServer) responseLoad(req *syncapitypes.SyncServerRequest, ready boo
 	res := syncapitypes.SyncServerResponse{
 		Ready: ready,
 	}
-	log.Infof("SyncServer.responseLoad traceid:%s slot:%d rslot:%d user %s device %s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID)
+	log.Debugf("SyncServer.responseLoad traceid:%s slot:%d rslot:%d user %s device %s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID)
 	s.rpcClient.PubObj(req.Reply, res)
 }
 
@@ -287,7 +287,7 @@ func (s *SyncServer) responseSync(req *syncapitypes.SyncServerRequest, resp *syn
 	extra.ExpandSyncData(s.rsCurState, &device, s.displayNameRepo, resp)
 	timespend.Logf(types.DB_EXCEED_TIME, "responseSync expand hint traceid:%s", req.TraceID)
 	contentBytes, _ := json.Marshal(*resp)
-	log.Infof("SyncServer.responseSync traceid:%s slot:%d rslot:%d user %s device %s AllLoaded:%t maxroomoffset:%v", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, resp.AllLoaded, resp.MaxRoomOffset)
+	log.Debugf("SyncServer.responseSync traceid:%s slot:%d rslot:%d user %s device %s AllLoaded:%t maxroomoffset:%v", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, resp.AllLoaded, resp.MaxRoomOffset)
 	msgSize := int64(len(contentBytes))
 
 	result := types.CompressContent{
@@ -296,7 +296,7 @@ func (s *SyncServer) responseSync(req *syncapitypes.SyncServerRequest, resp *syn
 	if msgSize > s.compressLength {
 		contentBytes = common.DoCompress(contentBytes)
 		result.Compressed = true
-		log.Infof("nats pub message with content traceid:%s slot:%d rslot:%d, before compress %d after compress %d", req.TraceID, req.Slot, req.RSlot, msgSize, len(contentBytes))
+		log.Debugf("nats pub message with content traceid:%s slot:%d rslot:%d, before compress %d after compress %d", req.TraceID, req.Slot, req.RSlot, msgSize, len(contentBytes))
 	}
 	result.Content = contentBytes
 	s.rpcClient.PubObj(req.Reply, result)
@@ -356,7 +356,7 @@ func (s *SyncServer) fullSyncLoading(req *syncapitypes.SyncServerRequest) {
 			if spend > types.CHECK_LOAD_EXCEED_TIME {
 				log.Warnf("SyncServer fullSyncLoading exceed %d ms traceid:%s slot:%d rslot:%d user:%s device:%s spend:%d ms", types.CHECK_LOAD_EXCEED_TIME, req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, spend)
 			} else {
-				log.Infof("SyncServer fullSyncLoading succ traceid:%s slot:%d rslot:%d user:%s device:%s spend:%d ms", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, spend)
+				log.Debugf("SyncServer fullSyncLoading succ traceid:%s slot:%d rslot:%d user:%s device:%s spend:%d ms", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, spend)
 			}
 			break
 		}
@@ -389,7 +389,7 @@ func (s *SyncServer) incrementSyncLoading(req *syncapitypes.SyncServerRequest) {
 	for _, room := range req.LeaveRooms {
 		ms += room.RoomID + ","
 	}
-	log.Infof("SyncServer.incrementSyncLoading membership traceid:%s slot:%d rslot:%d user:%s devID:%s ms:%s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, ms)
+	log.Debugf("SyncServer.incrementSyncLoading membership traceid:%s slot:%d rslot:%d user:%s devID:%s ms:%s", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, ms)
 	if req.IsHuman {
 		s.receiptDataStreamRepo.LoadRoomLatest(req.JoinedRooms)
 	}
@@ -494,7 +494,7 @@ func (s *SyncServer) incrementSyncLoading(req *syncapitypes.SyncServerRequest) {
 			if spend > types.CHECK_LOAD_EXCEED_TIME {
 				log.Warnf("SyncServer incrementSyncLoading exceed %d ms traceid:%s slot:%d rslot:%d user:%s device:%s use:%d ms", types.CHECK_LOAD_EXCEED_TIME, req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, spend)
 			} else {
-				log.Infof("SyncServer incrementSyncLoading succ traceid:%s slot:%d rslot:%d user:%s device:%s use:%d ms", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, spend)
+				log.Debugf("SyncServer incrementSyncLoading succ traceid:%s slot:%d rslot:%d user:%s device:%s use:%d ms", req.TraceID, req.Slot, req.RSlot, req.UserID, req.DeviceID, spend)
 			}
 			break
 		}
@@ -512,7 +512,7 @@ func (s *SyncServer) incrementSyncLoading(req *syncapitypes.SyncServerRequest) {
 func (s *SyncServer) addReceipt(req *syncapitypes.SyncServerRequest, maxPos int64, response *syncapitypes.SyncServerResponse) {
 	if !s.receiptDataStreamRepo.ExistsReceipt(req.ReceiptOffset, req.UserID) {
 		response.MaxReceiptOffset = req.ReceiptOffset
-		log.Infof("not ExistsReceipt traceid:%s MaxReceiptOffset:%d maxPos:%d", req.TraceID, response.MaxReceiptOffset, maxPos)
+		log.Debugf("not ExistsReceipt traceid:%s MaxReceiptOffset:%d maxPos:%d", req.TraceID, response.MaxReceiptOffset, maxPos)
 		return
 	}
 
@@ -598,10 +598,10 @@ func (s *SyncServer) addReceipt(req *syncapitypes.SyncServerRequest, maxPos int6
 
 	if maxRes == -1 {
 		response.MaxReceiptOffset = req.ReceiptOffset
-		log.Infof("traceid:%s MaxReceiptOffset:%d maxRes is -1", req.TraceID, response.MaxReceiptOffset)
+		log.Debugf("traceid:%s MaxReceiptOffset:%d maxRes is -1", req.TraceID, response.MaxReceiptOffset)
 	} else {
 		response.MaxReceiptOffset = maxRes
-		log.Infof("traceid:%s MaxReceiptOffset:%d maxRes not -1", req.TraceID, response.MaxReceiptOffset)
+		log.Debugf("traceid:%s MaxReceiptOffset:%d maxRes not -1", req.TraceID, response.MaxReceiptOffset)
 	}
 }
 
@@ -1111,7 +1111,7 @@ func (s *SyncServer) buildRoomLeaveResp(req *syncapitypes.SyncServerRequest, roo
 
 	feeds, start, end, low, up := history.GetAllFeedsReverse()
 
-	log.Infof("SyncServer buildRoomJoinResp roomID:%s user:%s device:%s load room-timeline start:%d end:%d low:%d up:%d", roomID, req.UserID, req.DeviceID, start, end, low, up)
+	log.Debugf("SyncServer buildRoomJoinResp roomID:%s user:%s device:%s load room-timeline start:%d end:%d low:%d up:%d", roomID, req.UserID, req.DeviceID, start, end, low, up)
 
 	limit := req.Limit
 	var msgEvent []gomatrixserverlib.ClientEvent

@@ -17,10 +17,10 @@ package rpc
 import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/nats-io/nats.go"
 )
 
@@ -97,7 +97,7 @@ func (s *ReceiptUpdateRpcConsumer) Start() error {
 
 func (s *ReceiptUpdateRpcConsumer) processReceiptUpdate(data *UpdateReceiptOffset) {
 	for _, userID := range data.Users {
-		log.Infof("process update receipt user:%s offset:%d", userID, data.Offset)
+		log.Debugf("process update receipt user:%s offset:%d", userID, data.Offset)
 		s.userTimeLine.SetReceiptLatest(userID, data.Offset)
 	}
 }
