@@ -24,8 +24,8 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	"github.com/finogeeks/ligase/storage/model"
 	fsm "github.com/smallnest/gofsm"
 )
 
@@ -50,7 +50,7 @@ const (
 )
 
 type RCSDelegate struct {
-	db model.RCSServerDatabase
+	repo *repos.RCSRepo
 }
 
 func (d *RCSDelegate) HandleEvent(action, fromState, toState string, args []interface{}) error {
@@ -79,13 +79,13 @@ func (d *RCSDelegate) handleJoinOperation(
 ) error {
 	log.Infow("rcsserver=====================RCSDelegate.handleJoinOperation", log.KeysAndValues{"ev.EventID()", ev.EventID()})
 	if isCreator {
-		return d.db.UpdateFriendshipByRoomID(
+		return d.repo.UpdateFriendshipByRoomID(
 			ctx, f.ID, f.RoomID, stateKey, f.ToFcID, toState, f.ToFcIDState,
 			isBot(stateKey), isBot(f.ToFcID), remark(stateKey, ev), f.ToFcIDRemark,
 			true, f.ToFcIDOnceJoined, getDomain(stateKey), getDomain(f.ToFcID), ev.EventID(),
 		)
 	} else {
-		return d.db.UpdateFriendshipByRoomID(
+		return d.repo.UpdateFriendshipByRoomID(
 			ctx, f.ID, f.RoomID, f.FcID, stateKey, f.FcIDState, toState,
 			isBot(f.FcID), isBot(stateKey), f.FcIDRemark, remark(stateKey, ev),
 			f.FcIDOnceJoined, true, getDomain(f.FcID), getDomain(stateKey), ev.EventID())
@@ -104,13 +104,13 @@ func (d *RCSDelegate) handleInviteOperation(
 	}
 
 	if isCreator {
-		return d.db.UpdateFriendshipByRoomID(
+		return d.repo.UpdateFriendshipByRoomID(
 			ctx, ID, f.RoomID, stateKey, f.ToFcID, toState, f.ToFcIDState,
 			isBot(stateKey), isBot(f.ToFcID), remark(stateKey, ev), f.ToFcIDRemark,
 			f.FcIDOnceJoined, f.ToFcIDOnceJoined, getDomain(stateKey), getDomain(f.ToFcID), ev.EventID(),
 		)
 	} else {
-		return d.db.UpdateFriendshipByRoomID(
+		return d.repo.UpdateFriendshipByRoomID(
 			ctx, ID, f.RoomID, f.FcID, stateKey, f.FcIDState, toState,
 			isBot(f.FcID), isBot(stateKey), f.FcIDRemark, remark(stateKey, ev),
 			f.FcIDOnceJoined, f.ToFcIDOnceJoined, getDomain(f.FcID), getDomain(stateKey), ev.EventID())
@@ -122,22 +122,22 @@ func (d *RCSDelegate) handleNormalOperation(
 ) error {
 	log.Infow("rcsserver=====================RCSDelegate.handleNormalOperation", log.KeysAndValues{"ev.EventID()", ev.EventID()})
 	if isCreator {
-		return d.db.UpdateFriendshipByRoomID(
+		return d.repo.UpdateFriendshipByRoomID(
 			ctx, f.ID, f.RoomID, stateKey, f.ToFcID, toState, f.ToFcIDState,
 			isBot(stateKey), isBot(f.ToFcID), remark(stateKey, ev), f.ToFcIDRemark,
 			f.FcIDOnceJoined, f.ToFcIDOnceJoined, getDomain(stateKey), getDomain(f.ToFcID), ev.EventID(),
 		)
 	} else {
-		return d.db.UpdateFriendshipByRoomID(
+		return d.repo.UpdateFriendshipByRoomID(
 			ctx, f.ID, f.RoomID, f.FcID, stateKey, f.FcIDState, toState,
 			isBot(f.FcID), isBot(stateKey), f.FcIDRemark, remark(stateKey, ev),
 			f.FcIDOnceJoined, f.ToFcIDOnceJoined, getDomain(f.FcID), getDomain(stateKey), ev.EventID())
 	}
 }
 
-func NewFSM(db model.RCSServerDatabase) *fsm.StateMachine {
+func NewFSM(repo *repos.RCSRepo) *fsm.StateMachine {
 	delegate := &RCSDelegate{
-		db: db,
+		repo: repo,
 	}
 	transitions := []fsm.Transition{
 		{
@@ -201,17 +201,19 @@ func NewFSM(db model.RCSServerDatabase) *fsm.StateMachine {
 type EventProcessor struct {
 	cfg *config.Dendrite
 	idg *uid.UidGenerator
-	db  model.RCSServerDatabase
 	sm  *fsm.StateMachine
+	repo *repos.RCSRepo 
 }
 
-func NewEventProcessor(cfg *config.Dendrite, idg *uid.UidGenerator, db model.RCSServerDatabase) *EventProcessor {
-	return &EventProcessor{
+func NewEventProcessor(cfg *config.Dendrite, idg *uid.UidGenerator, repo *repos.RCSRepo) *EventProcessor {
+	p := EventProcessor{
 		cfg: cfg,
 		idg: idg,
-		db:  db,
-		sm:  NewFSM(db),
+		repo: repo,
 	}
+
+	p.sm = NewFSM(p.repo)
+	return &p
 }
 
 func (p *EventProcessor) HandleCreate(
@@ -220,7 +222,7 @@ func (p *EventProcessor) HandleCreate(
 	log.Infow("rcsserver=====================EventProcessor.HandleCreate", log.KeysAndValues{"ev.EventID()", ev.EventID()})
 	// Update is_bot, remark, domain in membership event.
 	// Set primary key value with eventID temporary.
-	err := p.db.InsertFriendship(
+	err := p.repo.InsertFriendship(
 		ctx, ev.EventID(), ev.RoomID(), ev.Sender(), "", ST_INIT, ST_INIT, false, false, "", "", false, false, "", "", ev.EventID())
 	if err != nil {
 		log.Errorf("Failed to insert friendship: %v\n", err)
@@ -269,9 +271,9 @@ func (p *EventProcessor) handleFedInvite(
 	fcID2 := toFcID1
 	toFcID2 := fcID1
 	existRoom2 := true
-	f2, err := p.db.GetFriendshipByFcIDAndToFcID(ctx, fcID2, toFcID2)
+	f2, err := p.repo.GetFriendshipByFcIDAndToFcID(ctx, fcID2, toFcID2)
 	if err != nil {
-		if p.db.NotFound(err) {
+		if p.repo.NotFound(err) {
 			existRoom2 = false
 		} else {
 			log.Errorf("Failed to get friendship: %v\n", err)
@@ -285,17 +287,17 @@ func (p *EventProcessor) handleFedInvite(
 			log.Infow("rcsserver=====================EventProcessor.handleFedInvite, room1 < room2",
 				log.KeysAndValues{"room1", room1, "room2", room2})
 			// Select room1 from other domain.
-			if err := p.db.DeleteFriendshipByRoomID(ctx, room2); err != nil {
+			if err := p.repo.DeleteFriendshipByRoomID(ctx, room2); err != nil {
 				log.Errorf("Failed to delete friendship: %v\n", err)
 				return nil, err
 			}
 
-			f1, err := p.db.GetFriendshipByRoomID(ctx, room1)
+			f1, err := p.repo.GetFriendshipByRoomID(ctx, room1)
 			if err != nil {
 				log.Errorf("Failed to get friendship: %v\n", err)
 				return nil, err
 			}
-			if err := p.db.UpdateFriendshipByRoomID(
+			if err := p.repo.UpdateFriendshipByRoomID(
 				ctx, getID(fcID1, toFcID1), room1, fcID1, toFcID1, f1.FcIDState, ST_JOIN,
 				isBot(fcID1), isBot(toFcID1), f1.FcIDRemark, remark(toFcID1, ev),
 				true, true, getDomain(fcID1), getDomain(toFcID1), ev.EventID()); err != nil {
@@ -318,7 +320,7 @@ func (p *EventProcessor) handleFedInvite(
 			log.Infow("rcsserver=====================EventProcessor.handleFedInvite, room1 > room2",
 				log.KeysAndValues{"room1", room1, "room2", room2})
 			// Select room2 from local domain.
-			if err := p.db.DeleteFriendshipByRoomID(ctx, room1); err != nil {
+			if err := p.repo.DeleteFriendshipByRoomID(ctx, room1); err != nil {
 				log.Errorf("Failed to delete friendship: %v\n", err)
 				return nil, err
 			}
@@ -372,9 +374,9 @@ func (p *EventProcessor) handleLocalInvite(
 	fcID2 := toFcID1
 	toFcID2 := fcID1
 	existRoom2 := true
-	f2, err := p.db.GetFriendshipByFcIDAndToFcID(ctx, fcID2, toFcID2)
+	f2, err := p.repo.GetFriendshipByFcIDAndToFcID(ctx, fcID2, toFcID2)
 	if err != nil {
-		if p.db.NotFound(err) {
+		if p.repo.NotFound(err) {
 			existRoom2 = false
 		} else {
 			log.Errorf("Failed to get friendship: %v\n", err)
@@ -388,7 +390,7 @@ func (p *EventProcessor) handleLocalInvite(
 		room2 := f2.RoomID
 		log.Infow("rcsserver=====================EventProcessor.handleLocalInvite, existRoom2",
 			log.KeysAndValues{"room1", room1, "room2", room2})
-		if err := p.db.DeleteFriendshipByRoomID(ctx, room1); err != nil {
+		if err := p.repo.DeleteFriendshipByRoomID(ctx, room1); err != nil {
 			log.Errorf("Failed to delete friendship: %v\n", err)
 			return nil, err
 		}
@@ -398,7 +400,7 @@ func (p *EventProcessor) handleLocalInvite(
 			return nil, err
 		}
 		evs = append(evs, *e)
-		if err := p.db.UpdateFriendshipByRoomID(
+		if err := p.repo.UpdateFriendshipByRoomID(
 			ctx, f2.ID, room2, f2.FcID, f2.ToFcID, f2.FcIDState, ST_JOIN,
 			isBot(f2.FcID), isBot(f2.ToFcID), f2.FcIDRemark, getUsername(f2.ToFcID),
 			f2.FcIDOnceJoined, true, getDomain(f2.FcID), getDomain(f2.ToFcID), ev.EventID()); err != nil {
@@ -415,14 +417,14 @@ func (p *EventProcessor) handleLocalInvite(
 	} else {
 		// Check if sender has been invited, if so, then join room instead of sending invite.
 		var evs []gomatrixserverlib.Event
-		f1, err := p.db.GetFriendshipByRoomID(ctx, room1)
+		f1, err := p.repo.GetFriendshipByRoomID(ctx, room1)
 		if err != nil {
 			log.Errorf("Failed to get friendship: %v\n", err)
 			return nil, err
 		}
 		if fcID1 == f1.FcID {
 			if f1.FcIDState == ST_INVITE {
-				if err := p.db.UpdateFriendshipByRoomID(
+				if err := p.repo.UpdateFriendshipByRoomID(
 					ctx, f1.ID, f1.RoomID, f1.FcID, f1.ToFcID, ST_JOIN, f1.ToFcIDState,
 					isBot(f1.FcID), isBot(f1.ToFcID), f1.FcIDRemark, f1.ToFcIDRemark,
 					true, f1.ToFcIDOnceJoined, getDomain(f1.FcID), getDomain(f1.ToFcID), ev.EventID()); err != nil {
@@ -438,7 +440,7 @@ func (p *EventProcessor) handleLocalInvite(
 			}
 		} else {
 			if f1.ToFcIDState == ST_INVITE {
-				if err := p.db.UpdateFriendshipByRoomID(
+				if err := p.repo.UpdateFriendshipByRoomID(
 					ctx, f1.ID, f1.RoomID, f1.FcID, f1.ToFcID, f1.FcIDState, ST_JOIN,
 					isBot(f1.FcID), isBot(f1.ToFcID), f1.FcIDRemark, f1.ToFcIDRemark,
 					f1.FcIDOnceJoined, true, getDomain(f1.FcID), getDomain(f1.ToFcID), ev.EventID()); err != nil {
@@ -485,10 +487,10 @@ func (p *EventProcessor) handleNormalMembership(
 	}
 	op := m
 
-	f, err := p.db.GetFriendshipByRoomID(ctx, roomID)
+	f, err := p.repo.GetFriendshipByRoomID(ctx, roomID)
 	if err != nil {
 		// Special case: leave deleted room, only for remote domain.
-		if p.db.NotFound(err) && op == OP_LEAVE && !common.CheckValidDomain(domain, p.cfg.Matrix.ServerName) {
+		if p.repo.NotFound(err) && op == OP_LEAVE && !common.CheckValidDomain(domain, p.cfg.Matrix.ServerName) {
 			return []gomatrixserverlib.Event{*ev}, nil
 		}
 		log.Errorf("Failed to get friendship: %v\n", err)
@@ -547,12 +549,12 @@ func (p *EventProcessor) handleNormalMembership(
 		}
 
 		if senderIsCreator {
-			err = p.db.UpdateFriendshipByRoomID(
+			err = p.repo.UpdateFriendshipByRoomID(
 				ctx, f.ID, f.RoomID, f.FcID, f.ToFcID, ST_JOIN, newStateKeySt,
 				isBot(f.FcID), isBot(f.ToFcID), f.FcIDRemark, f.ToFcIDRemark,
 				f.FcIDOnceJoined, f.ToFcIDOnceJoined, getDomain(f.FcID), getDomain(f.ToFcID), ev.EventID())
 		} else {
-			err = p.db.UpdateFriendshipByRoomID(
+			err = p.repo.UpdateFriendshipByRoomID(
 				ctx, f.ID, f.RoomID, f.FcID, f.ToFcID, newStateKeySt, ST_JOIN,
 				isBot(f.FcID), isBot(f.ToFcID), f.FcIDRemark, f.ToFcIDRemark,
 				f.FcIDOnceJoined, f.ToFcIDOnceJoined, getDomain(f.FcID), getDomain(f.ToFcID), ev.EventID())

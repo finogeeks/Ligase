@@ -23,6 +23,7 @@ import (
 	"github.com/finogeeks/ligase/rcsserver/processors"
 	"github.com/finogeeks/ligase/rcsserver/rpc"
 	"github.com/finogeeks/ligase/storage/model"
+	"github.com/finogeeks/ligase/model/repos"
 )
 
 func SetupRCSServerComponent(
@@ -37,6 +38,7 @@ func SetupRCSServerComponent(
 	//counter := monitor.NewLabeledCounter("rcsserver_hit", []string{"target", "repo", "func"})
 
 	db := dbIface.(model.RCSServerDatabase)
+	repo := repos.NewRCSRepo(db)
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
 	db.SetIDGenerator(idg)
 	//db.SetMonitor(counter)
@@ -45,12 +47,12 @@ func SetupRCSServerComponent(
 		repo.SetPersist(db)
 		repo.SetMonitor(counter)
 	*/
-	proc := processors.NewEventProcessor(base.Cfg, idg, db)
+	proc := processors.NewEventProcessor(base.Cfg, idg, repo)
 	consumer := rpc.NewEventConsumer(base.Cfg, rpcClient, proc)
 	if err := consumer.Start(); err != nil {
 		log.Panicw("Failed to start rcs event consumer", log.KeysAndValues{"error", err})
 	}
 
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, idg, db)
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, rpcClient, idg, db, repo)
 	apiConsumer.Start()
 }

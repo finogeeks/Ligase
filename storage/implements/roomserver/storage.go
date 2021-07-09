@@ -731,3 +731,17 @@ func (d *Database) UpdateMsgEventMigration(ctx context.Context, id int64, Encryp
 func (d *Database) GetRoomEventByNID(ctx context.Context, eventNID int64) ([]byte, error) {
 	return d.statements.selectRoomEventByNID(ctx, eventNID)
 }
+
+func (d *Database) GetHistoryEvents(ctx context.Context, roomNID int64, limit int) ([]*gomatrixserverlib.Event, []int64, error) {
+	eventNIDs, err := d.statements.selectHistoryEvents(ctx, roomNID, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	evs, nids, err := d.statements.bulkEvents(ctx, eventNIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return evs, nids, nil
+}
