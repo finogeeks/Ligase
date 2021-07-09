@@ -754,7 +754,7 @@ func (opt *BuildRoomRespOpt) calcRoomPrevBatch(low, up int64) string {
 //roomtimeline (]
 func (s *SyncServer) buildRoomJoinResp(req *syncapitypes.SyncServerRequest, roomID string, reqStart, reqEnd int64) (*syncapitypes.JoinResponse, int64, []string) {
 	opt := newBuildRoomRespOpt(req, roomID, reqStart, reqEnd)
-	log.Infof("SyncServer.buildRoomJoinResp start %+v", opt)
+	log.Infof("SyncServer.buildRoomJoinResp start %s", opt)
 	//再加载一遍，避免数据遗漏
 	s.rsTimeline.LoadStates(roomID, true)
 	s.rsTimeline.LoadStreamStates(roomID, true)
