@@ -17,7 +17,8 @@ package entry
 import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
-	"github.com/finogeeks/ligase/common/uid"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncwriter"
 )
 
@@ -31,8 +32,10 @@ func StartSyncWriter(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	transportMultiplexer.PreStart()
 
-	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
-	rpcClient.Start(false)
-	syncwriter.SetupSyncWriterComponent(base, rpcClient)
+	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
+	}
+
+	syncwriter.SetupSyncWriterComponent(base, rpcCli)
 }

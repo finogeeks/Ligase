@@ -22,14 +22,15 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqPutSendToDevice{})
 }
 
@@ -62,6 +63,13 @@ func (ReqPutSendToDevice) FillRequest(coder core.Coder, req *http.Request, vars 
 }
 func (ReqPutSendToDevice) NewResponse(code int) core.Coder {
 	return nil
+}
+func (ReqPutSendToDevice) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	resp := []uint32{}
+	for i := uint32(0); i < cfg.MultiInstance.Total; i++ {
+		resp = append(resp, i)
+	}
+	return resp
 }
 func (ReqPutSendToDevice) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

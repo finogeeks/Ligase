@@ -1,6 +1,9 @@
 package api
 
 import (
+	"net/http"
+	"strconv"
+
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
@@ -8,11 +11,10 @@ import (
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"net/http"
-	"strconv"
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetOnlineCount{})
 	apiconsumer.SetAPIProcessor(ReqGetOnlineUsers{})
 }
@@ -40,6 +42,11 @@ func (ReqGetOnlineCount) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqGetOnlineCount) NewResponse(code int) core.Coder {
 	return new(external.GetOnlineCountResponse)
+}
+func (ReqGetOnlineCount) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.GetOnlineCountRequest)
+	inst, _ := strconv.Atoi(req.Inst)
+	return []uint32{uint32(inst)}
 }
 func (ReqGetOnlineCount) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -76,6 +83,11 @@ func (ReqGetOnlineUsers) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqGetOnlineUsers) NewResponse(code int) core.Coder {
 	return new(external.GetOnlineUsersResponse)
+}
+func (ReqGetOnlineUsers) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.GetOnlineUsersRequest)
+	inst, _ := strconv.Atoi(req.Inst)
+	return []uint32{uint32(inst)}
 }
 func (ReqGetOnlineUsers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

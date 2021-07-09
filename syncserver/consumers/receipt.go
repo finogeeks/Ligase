@@ -18,6 +18,7 @@
 package consumers
 
 import (
+	"context"
 	goSync "sync"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -41,14 +43,14 @@ type ReceiptConsumer struct {
 	receiptRepo     *repos.ReceiptDataStreamRepo
 	userReceiptRepo *repos.UserReceiptRepo
 	roomHistory     *repos.RoomHistoryTimeLineRepo
-	rpcClient       *common.RpcClient
+	rpcCli          rpc.RpcClient
 	roomCurState    *repos.RoomCurStateRepo
 	cfg             *config.Dendrite
 	idg             *uid.UidGenerator
 }
 
 func NewReceiptConsumer(
-	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	cfg *config.Dendrite,
 	idg *uid.UidGenerator,
 ) *ReceiptConsumer {
@@ -56,7 +58,7 @@ func NewReceiptConsumer(
 	s.container = new(goSync.Map)
 	s.notifyRoom = new(goSync.Map)
 	s.delay = cfg.ReceiptDelay
-	s.rpcClient = rpcClient
+	s.rpcCli = rpcCli
 	s.cfg = cfg
 	s.idg = idg
 
@@ -118,12 +120,12 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 	}
 	if stream != nil && lastEvStream != nil {
 		log.Debugf("roomID:%s last message event:%s last event:%s", req.RoomID, stream.GetEv().EventID, lastEvStream.GetEv().EventID)
-	}else{
+	} else {
 		if stream == nil && lastEvStream != nil {
 			log.Warnf("roomID:%s last message event is nil, last event is:%s", req.RoomID, lastEvStream.GetEv().EventID)
-		}else if lastEvStream == nil && stream != nil {
+		} else if lastEvStream == nil && stream != nil {
 			log.Warnf("roomID:%s last message event is:%s, last event is nil", req.RoomID, stream.GetEv().EventID)
-		}else{
+		} else {
 			log.Warnf("roomID:%s both last message event and last event is nil", req.RoomID)
 		}
 	}
@@ -204,10 +206,8 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 						Destination: domain,
 						Content:     content,
 					}
-					bytes, err := json.Marshal(edu)
-					if err == nil {
-						s.rpcClient.Pub(types.EduTopicDef, bytes)
-					} else {
+					err := s.rpcCli.SendEduToRemote(context.Background(), &edu)
+					if err != nil {
 						log.Errorf("ReceiptConsumer pub receipt edu error %v", err)
 					}
 				}
@@ -346,10 +346,9 @@ func (s *ReceiptConsumer) pubReceiptUpdate(roomID string, offset int64) {
 			})
 		}
 
-		bytes, err := json.Marshal(roomUpdate)
-		if err == nil {
-			s.rpcClient.Pub(types.ReceiptUpdateTopicDef, bytes)
-		} else {
+		ctx := context.Background()
+		err := s.rpcCli.SetReceiptLatest(ctx, roomUpdate)
+		if err != nil {
 			log.Errorf("ReceiptConsumer pub receipt update error %v", err)
 		}
 	} else {

@@ -31,6 +31,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_server_api")
 	apiconsumer.SetAPIProcessor(ReqGetLRUInfo{})
 	apiconsumer.SetAPIProcessor(ReqPutLRURoom{})
 }
@@ -57,10 +58,14 @@ func (ReqGetLRUInfo) FillRequest(coder core.Coder, req *http.Request, vars map[s
 func (ReqGetLRUInfo) NewResponse(code int) core.Coder {
 	return new(external.GetLRURoomsResponse)
 }
+func (ReqGetLRUInfo) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.GetLRURoomsRequest)
+	return []uint32{common.CalcStringHashCode(req.Timestamp) % cfg.MultiInstance.SyncServerTotal}
+}
 func (ReqGetLRUInfo) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetLRURoomsRequest)
-	if !common.IsRelatedRequest(req.Timestamp, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+	if !common.IsRelatedRequest(req.Timestamp, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.SyncServerTotal, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 
@@ -103,6 +108,10 @@ func (ReqPutLRURoom) FillRequest(coder core.Coder, req *http.Request, vars map[s
 }
 func (ReqPutLRURoom) NewResponse(code int) core.Coder {
 	return new(external.PutLRURoomResponse)
+}
+func (ReqPutLRURoom) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.PutLRURoomRequest)
+	return []uint32{common.CalcStringHashCode(req.RoomID) % cfg.MultiInstance.SyncServerTotal}
 }
 func (ReqPutLRURoom) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

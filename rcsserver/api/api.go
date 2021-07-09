@@ -20,13 +20,14 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
+	apiconsumer.SetServices("front_rcs_api")
 	apiconsumer.SetAPIProcessor(ReqGetFriendships{})
 	apiconsumer.SetAPIProcessor(ReqGetRoomID{})
 }

@@ -15,15 +15,26 @@
 package tokenrewrite
 
 import (
-	"github.com/finogeeks/ligase/common"
+	"log"
+
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/rpc/consul"
 	"github.com/finogeeks/ligase/tokenrewrite/rpc"
 )
 
 func SetupTokenRewrite(
-	rpcClient *common.RpcClient,
 	cfg *config.Dendrite,
 ) {
-	tokenRpcConsumer := rpc.NewTokenRpcConsumer(rpcClient, cfg)
-	tokenRpcConsumer.Start()
+	grpcServer := rpc.NewServer(cfg)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start tokenwriter rpc server err:%v", err)
+	}
+	if cfg.Rpc.Driver == "grpc_with_consul" {
+		if cfg.Rpc.ConsulURL == "" {
+			log.Panicf("grpc_with_consul consul url is null")
+		}
+		consulTag := cfg.Rpc.TokenWriter.ConsulTagPrefix + "0"
+		c := consul.NewConsul(cfg.Rpc.ConsulURL, consulTag, cfg.Rpc.TokenWriter.ServerName, cfg.Rpc.TokenWriter.Port)
+		c.Init()
+	}
 }

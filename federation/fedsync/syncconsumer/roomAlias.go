@@ -19,24 +19,24 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func GetAliasRoomID(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	//request *roomserverapi.FederationEvent,
+	aliasReq *external.GetDirectoryRoomAliasRequest,
 	destination string,
 ) external.GetDirectoryRoomAliasResponse {
-	var aliasReq external.GetDirectoryRoomAliasRequest
-	if err := json.Unmarshal(request.Extra, &aliasReq); err != nil {
-		log.Errorf("federation GetAliasRoomIDRequest unmarshal error: %v", err)
-		return external.GetDirectoryRoomAliasResponse{}
-	}
+	// var aliasReq external.GetDirectoryRoomAliasRequest
+	// if err := json.Unmarshal(request.Extra, &aliasReq); err != nil {
+	// 	log.Errorf("federation GetAliasRoomIDRequest unmarshal error: %v", err)
+	// 	return external.GetDirectoryRoomAliasResponse{}
+	// }
 
-	log.Infof("extra: %s, aliasreq: %v", string(request.Extra), aliasReq)
+	//log.Infof("extra: %s, aliasreq: %v", string(request.Extra), aliasReq)
 
 	// destination := fmt.Sprintf("%s:%s", request.Destination, s.cfg.GetConnectorPort())
 	fedResp, err := fedClient.LookupRoomAlias(context.Background(), destination, aliasReq.RoomAlias)
@@ -55,19 +55,10 @@ func GetAliasRoomID(
 
 func GetRoomState(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	stateReq *external.GetFedRoomStateRequest,
 	destination string,
 	proc backfilltypes.BackFillProcessor,
 ) gomatrixserverlib.RespState {
-	var stateReq external.GetFedRoomStateRequest
-	if err := json.Unmarshal(request.Extra, &stateReq); err != nil {
-		log.Errorf("federation GetRoomState unmarshal error: %v", err)
-		return gomatrixserverlib.RespState{}
-	}
-
-	log.Infof("extra: %s, statereq: %v", string(request.Extra), stateReq)
-
-	// destination := fmt.Sprintf("%s:%s", request.Destination, s.cfg.GetConnectorPort())
 	fedResp, err := fedClient.LookupState(context.Background(), destination, stateReq.RoomID, stateReq.EventID)
 	if err != nil {
 		log.Errorf("federation LookupRoomState error %v", err)
@@ -77,5 +68,4 @@ func GetRoomState(
 	proc.AddRequest(fedResp.StateEvents, false) // TODO: false是因为自动邀请时有可能需要历史消息，这是临时解决方案，看以后有没有更好的处理
 	log.Infof("LookupState return :%v", fedResp)
 	return fedResp
-	// s.rpcClient.PubObj(reply, response)
 }

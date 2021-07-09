@@ -15,12 +15,12 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common/jsonerror"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/types"
@@ -29,6 +29,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_server_api")
 	apiconsumer.SetAPIProcessor(ReqPostRoomReadMarkers{})
 }
 
@@ -61,10 +62,14 @@ func (ReqPostRoomReadMarkers) FillRequest(coder core.Coder, req *http.Request, v
 func (ReqPostRoomReadMarkers) NewResponse(code int) core.Coder {
 	return nil
 }
+func (ReqPostRoomReadMarkers) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.PostRoomReadMarkersRequest)
+	return []uint32{common.CalcStringHashCode(req.RoomID) % cfg.MultiInstance.SyncServerTotal}
+}
 func (ReqPostRoomReadMarkers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostRoomReadMarkersRequest)
-	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.SyncServerTotal, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 	data := &types.ReceiptContent{
@@ -73,7 +78,7 @@ func (ReqPostRoomReadMarkers) Process(consumer interface{}, msg core.Coder, devi
 		DeviceID:    device.Identifier,
 		EventID:     "",
 		ReceiptType: req.ReceiptType,
-		Source: 	 "remark api",
+		Source:      "remark api",
 	}
 	c.receiptConsumer.OnReceipt(data)
 	return http.StatusOK, nil

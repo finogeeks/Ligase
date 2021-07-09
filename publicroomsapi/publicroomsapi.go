@@ -18,22 +18,21 @@
 package publicroomsapi
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/publicroomsapi/api"
 	"github.com/finogeeks/ligase/publicroomsapi/consumers"
 	"github.com/finogeeks/ligase/publicroomsapi/rpc"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	// "github.com/finogeeks/ligase/publicroomsapi/routing"
 )
 
 // SetupPublicRoomsAPIComponent sets up and registers HTTP handlers for the PublicRoomsAPI
 // component.
 func SetupPublicRoomsAPIComponent(
 	base *basecomponent.BaseDendrite,
-	rpcCli *common.RpcClient,
+	rpcClient rpcService.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI,
 	publicRoomsDB model.PublicRoomAPIDatabase,
 ) {
@@ -44,9 +43,11 @@ func SetupPublicRoomsAPIComponent(
 		log.Panicw("failed to start room server consumer", log.KeysAndValues{"error", err})
 	}
 
-	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, publicRoomsDB, rpcCli)
+	apiConsumer := api.NewInternalMsgConsumer(*base.Cfg, publicRoomsDB, rpcClient)
 	apiConsumer.Start()
 
-	prQryConsumer := rpc.NewPublicRoomsRpcConsumer(base.Cfg, rpcCli, publicRoomsDB)
-	prQryConsumer.Start()
+	grpcServer := rpc.NewServer(base.Cfg, publicRoomsDB)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start publicRoom rpc server err:%v", err)
+	}
 }

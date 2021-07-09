@@ -17,14 +17,14 @@ package api
 import (
 	"context"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
-	"github.com/finogeeks/ligase/model/repos"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -32,21 +32,21 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type InternalMsgConsumer struct {
 	apiconsumer.APIConsumer
-	idg *uid.UidGenerator
-	db  model.RCSServerDatabase
+	idg  *uid.UidGenerator
+	db   model.RCSServerDatabase
 	repo *repos.RCSRepo
 }
 
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
-	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	idg *uid.UidGenerator,
 	db model.RCSServerDatabase,
 	repo *repos.RCSRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
+	c.RpcClient = rpcClient
 	c.idg = idg
 	c.db = db
 	c.repo = repo
@@ -54,7 +54,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.Init("rcsserverapi", c, c.Cfg.Rpc.ProxyRCSServerApiTopic)
+	c.APIConsumer.Init("rcsserverapi", c, c.Cfg.Rpc.ProxyRCSServerApiTopic, &c.Cfg.Rpc.FrontRcsApi)
 	c.APIConsumer.Start()
 }
 

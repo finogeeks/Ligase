@@ -22,12 +22,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -39,13 +39,13 @@ func Logout(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	// if req.Method != http.MethodPost {
 	// 	return http.StatusMethodNotAllowed, jsonerror.NotFound("Bad method")
 	// }
 
-	LogoutDevice(userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "logout")
+	LogoutDevice(userID, deviceID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "logout")
 
 	return http.StatusOK, nil
 }
@@ -58,18 +58,19 @@ func LogoutDevice(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	source string,
 ) {
+	ctx := context.TODO()
 	createdTimeMS := time.Now().UnixNano() / 1000000
 	log.Infof("logout user %s device %s source:%s", userID, deviceID, source)
 
 	cache.DeleteLocalDevice(deviceID, userID)
-	if err := deviceDB.RemoveDevice(context.TODO(), deviceID, userID, createdTimeMS); err != nil {
+	if err := deviceDB.RemoveDevice(ctx, deviceID, userID, createdTimeMS); err != nil {
 		log.Errorf("Log out remove device error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
 
-	err := encryptDB.DeleteDeviceKeys(context.TODO(), deviceID, userID)
+	err := encryptDB.DeleteDeviceKeys(ctx, deviceID, userID)
 	if err != nil {
 		log.Errorf("Log out remove device keys error, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
@@ -78,7 +79,7 @@ func LogoutDevice(
 
 	cache.DeleteDeviceKey(userID, deviceID)
 
-	err = syncDB.DeleteDeviceStdMessage(context.TODO(), userID, deviceID)
+	err = syncDB.DeleteDeviceStdMessage(ctx, userID, deviceID)
 	if err != nil {
 		log.Errorf("Log out remove device std message, device: %s ,  user: %s , error: %v", deviceID, userID, err)
 	}
@@ -89,27 +90,22 @@ func LogoutDevice(
 		OneTimeKeyChangeDeviceId: deviceID,
 	}
 
-	bytes, err := json.Marshal(content)
-	if err == nil {
-		rpcClient.Pub(types.KeyUpdateTopicDef, bytes)
-	} else {
-		log.Errorf("Log out pub key update, device: %s ,  user: %s , error: %v", deviceID, userID, err)
+	err = rpcCli.UpdateOneTimeKey(ctx, &content)
+	if err != nil {
+		log.Errorf("Log out pub key update, device: %s, user: %s , error: %v", deviceID, userID, err)
 	}
 
-	pubLogoutToken(userID, deviceID, rpcClient)
+	pubLogoutToken(ctx, userID, deviceID, rpcCli)
 }
 
-func pubLogoutToken(userID string, deviceID string, rpcClient *common.RpcClient) {
+func pubLogoutToken(ctx context.Context, userID string, deviceID string, rpcCli rpc.RpcClient) {
 	content := types.FilterTokenContent{
 		UserID:     userID,
 		DeviceID:   deviceID,
 		FilterType: types.FILTERTOKENDEL,
 	}
-	bytes, err := json.Marshal(content)
-	if err == nil {
-		log.Infof("pub logout filter token info %s", string(bytes))
-		rpcClient.Pub(types.FilterTokenTopicDef, bytes)
-	} else {
+	err := rpcCli.DelFilterToken(ctx, &content)
+	if err != nil {
 		log.Errorf("pub logout filter token info Marshal err %v", err)
 	}
 }
@@ -122,13 +118,13 @@ func LogoutAll(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	tokenFilter *filter.Filter,
-	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 ) (int, core.Coder) {
 	log.Infof("logout all user %s device %s", userID, deviceID)
 
 	devs := cache.GetDevicesByUserID(userID)
 	for _, dev := range *devs {
-		LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcClient, "logout_all")
+		LogoutDevice(dev.UserID, dev.ID, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "logout_all")
 	}
 
 	return http.StatusOK, nil

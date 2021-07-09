@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "./;pb";
+
+import "common.proto";
+
+service Federation {
+  rpc SendEDU (SendEDUReq) returns (Empty) {}
+  rpc GetAliasRoomID (GetFedAliasRoomIDReq) returns (GetFddAliasRoomIDRsp) {}
+  rpc GetProfile (GetProfileReq) returns (GetProfileRsp) {}
+  rpc GetAvatar (GetAvatarReq) returns (GetAvatarRsp) {}
+  rpc GetDisplayName (GetDisplayNameReq) returns (GetDisplayNameRsp) {}
+  rpc GetRoomState (GetRoomStateReq) returns (GetRoomStateRsp) {}
+  rpc Download (DownloadReq) returns (stream DownloadRsp) {}
+  rpc GetUserInfo (GetUserInfoReq) returns (GetUserInfoRsp) {}
+  rpc MakeJoin (MakeJoinReq) returns (MakeJoinRsp) {}
+  rpc SendJoin (SendJoinReq) returns (SendJoinRsp) {}
+  rpc MakeLeave (MakeLeaveReq) returns (MakeLeaveRsp) {}
+  rpc SendLeave (SendLeaveReq) returns (SendLeaveRsp) {}
+  rpc SendInvite (SendInviteReq) returns (SendInviteRsp) {}
+}
+
+message SendEDUReq {
+    string type = 1;
+    string origin = 2;
+    string destination = 3;
+    bytes content = 4;
+}
+
+message GetFedAliasRoomIDReq {
+	string targetDomain = 1;
+	string roomAlias = 2;
+}
+
+message GetFddAliasRoomIDRsp {
+	string roomID = 1;
+	repeated string servers = 2;
+}
+
+message GetProfileReq {
+	string targetDomain = 1;
+	string userID = 2;
+}
+
+message GetProfileRsp {
+	string avatarURL = 1;
+	string displayName = 2;
+	string status = 3;
+	string statusMsg = 4;
+	string extStatusMsg = 5;
+}
+
+message GetAvatarReq {
+	string targetDomain = 1;
+	string userID = 2;
+}
+
+message GetAvatarRsp {
+	string avatarURL = 1;
+}
+
+message GetDisplayNameReq {
+	string targetDomain = 1;
+	string userID = 2;
+}
+
+message GetDisplayNameRsp {
+	string displayName = 1;
+}
+
+message GetRoomStateReq {
+	string targetDomain = 1;
+	string roomID = 2;
+	string eventID = 3;
+}
+
+message GetRoomStateRsp {
+	repeated Event stateEvents = 1;
+	repeated Event authEvents = 2;
+}
+
+message DownloadReq {
+	string targetDomain = 1;
+	string id = 2;
+	string fileType = 3;
+	string mediaID = 4;
+	string width = 5;
+	string method = 6;
+}
+
+message DownloadRsp {
+	int64 seq = 1;
+	bytes data = 2;
+}
+
+message GetUserInfoReq {
+	string targetDomain = 1;
+	string userID = 2;
+}
+
+message GetUserInfoRsp {
+	string userName = 1;
+	string jobNumber = 2;
+	string mobile = 3;
+	string landline = 4;
+	string email = 5;
+	int32 state = 6;
+}
+
+message MakeJoinReq {
+	string targetDomain = 1;
+	string roomID = 2;
+	string userID = 3;
+	repeated string ver = 4;
+}
+
+message MakeJoinRsp {
+	EventBuilder joinEvent = 1;
+}
+
+message SendJoinReq {
+	string targetDomain = 1;
+	string roomID = 2;
+	string eventID = 3;
+	Event event = 4;
+}
+
+message SendJoinRsp {
+	repeated Event stateEvents = 1;
+	repeated Event authEvents = 2;
+}
+
+message MakeLeaveReq {
+	string targetDomain = 1;
+	string roomID = 2;
+	string userID = 3;
+}
+
+message MakeLeaveRsp {
+	EventBuilder event = 1;
+}
+
+message SendLeaveReq {
+	string targetDomain = 1;
+	string roomID = 2;
+	string eventID = 3;
+	Event event = 4;
+}
+
+message SendLeaveRsp {
+	int32 Code = 1;
+}
+
+message SendInviteReq {
+	string targetDomain = 1;
+	Event event = 2;
+}
+
+message SendInviteRsp {
+	int32 code = 1;
+	Event event = 2;
+}

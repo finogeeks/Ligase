@@ -23,11 +23,12 @@ import (
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/publicroomsapi/directory"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -41,17 +42,17 @@ type InternalMsgConsumer struct {
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
 	publicRoomsDB model.PublicRoomAPIDatabase,
-	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
+	c.RpcClient = rpcClient
 	c.publicRoomsDB = publicRoomsDB
 	return c
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.Init("publicroomapi", c, c.Cfg.Rpc.ProxyPublicRoomApiTopic)
+	c.APIConsumer.Init("publicroomapi", c, c.Cfg.Rpc.ProxyPublicRoomApiTopic, &c.Cfg.Rpc.FrontPublicRoomApi)
 	c.APIConsumer.Start()
 }
 
@@ -60,6 +61,7 @@ func getProxyRpcTopic(cfg *config.Dendrite) string {
 }
 
 func init() {
+	apiconsumer.SetServices("front_publicroom_api")
 	apiconsumer.SetAPIProcessor(ReqGetPublicRooms{})
 	apiconsumer.SetAPIProcessor(ReqPostPublicRooms{})
 }

@@ -35,6 +35,7 @@ import (
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -82,7 +83,7 @@ func NewInternalMsgConsumer(
 	syncDB model.SyncAPIDatabase,
 	presenceDB model.PresenceDatabase,
 	roomDB model.RoomServerDatabase,
-	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	tokenFilter *filter.Filter,
 	settings *common.Settings,
 	fedDomians *common.FedDomains,
@@ -90,7 +91,7 @@ func NewInternalMsgConsumer(
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
+	c.RpcClient = rpcClient
 	c.idg, _ = uid.NewDefaultIdGenerator(cfg.Matrix.InstanceId)
 	c.apiMux = apiMux
 	c.rsRpcCli = rsRpcCli
@@ -115,7 +116,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.Init("clientapi", c, c.Cfg.Rpc.ProxyClientApiTopic)
+	c.APIConsumer.Init("clientapi", c, c.Cfg.Rpc.ProxyClientApiTopic, &c.Cfg.Rpc.FrontClientApiApi)
 	c.APIConsumer.Start()
 }
 
@@ -124,6 +125,7 @@ func getProxyRpcTopic(cfg *config.Dendrite) string {
 }
 
 func init() {
+	apiconsumer.SetServices("front_clientapi_api")
 	apiconsumer.SetAPIProcessor(ReqPostCreateRoom{})
 	apiconsumer.SetAPIProcessor(ReqPostJoinRoomByIDOrAlias{})
 	apiconsumer.SetAPIProcessor(ReqPostRoomMembership{})
@@ -862,7 +864,7 @@ func (ReqPostLogout) Process(consumer interface{}, msg core.Coder, device *autht
 	c := consumer.(*InternalMsgConsumer)
 	return routing.Logout(
 		c.deviceDB, device.UserID, device.ID, c.cacheIn, c.encryptDB,
-		c.syncDB, c.tokenFilter, c.RpcCli,
+		c.syncDB, c.tokenFilter, c.RpcClient,
 	)
 }
 
@@ -884,7 +886,7 @@ func (ReqPostLogoutAll) Process(consumer interface{}, msg core.Coder, device *au
 	c := consumer.(*InternalMsgConsumer)
 	return routing.LogoutAll(
 		c.deviceDB, device.UserID, device.ID, c.cacheIn, c.encryptDB,
-		c.syncDB, c.tokenFilter, c.RpcCli,
+		c.syncDB, c.tokenFilter, c.RpcClient,
 	)
 }
 
@@ -909,7 +911,7 @@ func (ReqGetLogin) Process(consumer interface{}, msg core.Coder, device *authtyp
 	req := msg.(*external.GetLoginRequest)
 	return routing.LoginGet(
 		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
-		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter, c.RpcCli,
+		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter,
 	)
 }
 
@@ -940,7 +942,7 @@ func (ReqPostLogin) Process(consumer interface{}, msg core.Coder, device *authty
 	req := msg.(*external.PostLoginRequest)
 	return routing.LoginPost(
 		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
-		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter, c.RpcCli,
+		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter, c.RpcClient,
 	)
 }
 
@@ -965,7 +967,7 @@ func (ReqGetLoginAdmin) Process(consumer interface{}, msg core.Coder, device *au
 	req := msg.(*external.GetLoginRequest)
 	return routing.LoginGet(
 		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
-		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter, c.RpcCli,
+		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter,
 	)
 }
 
@@ -996,7 +998,7 @@ func (ReqPostLoginAdmin) Process(consumer interface{}, msg core.Coder, device *a
 	req := msg.(*external.PostLoginRequest)
 	return routing.LoginPost(
 		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
-		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter, c.RpcCli,
+		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter, c.RpcClient,
 	)
 }
 
@@ -1514,7 +1516,7 @@ func (ReqDelDevice) Process(consumer interface{}, msg core.Coder, device *authty
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.DelDeviceRequest)
 	return routing.DeleteDeviceByID(req, req.DeviceID, c.Cfg, c.cacheIn,
-		c.encryptDB, c.tokenFilter, c.syncDB, c.deviceDB, c.RpcCli,
+		c.encryptDB, c.tokenFilter, c.syncDB, c.deviceDB, c.RpcClient,
 	)
 }
 
@@ -1543,7 +1545,7 @@ func (ReqPostDelDevices) Process(consumer interface{}, msg core.Coder, device *a
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostDelDevicesRequest)
 	return routing.DeleteDevices(req, device, c.cacheIn,
-		c.encryptDB, c.tokenFilter, c.syncDB, c.deviceDB, c.RpcCli)
+		c.encryptDB, c.tokenFilter, c.syncDB, c.deviceDB, c.RpcClient)
 }
 
 type ReqPutPresenceByID struct{}
@@ -1603,7 +1605,7 @@ func (ReqGetPresenceByID) GetPrefix() []string { return []string{"r0", "inr0"} }
 func (ReqGetPresenceByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.GetPresenceRequest)
-	return routing.GetPresenceByID(c.RpcCli, c.cacheIn, c.federation, &c.Cfg, req.UserID)
+	return routing.GetPresenceByID(c.RpcClient, c.cacheIn, c.federation, &c.Cfg, req.UserID)
 }
 
 type ReqGetPresenceListByID struct{}
@@ -2045,7 +2047,7 @@ func (ReqGetUserNewToken) GetPrefix() []string { return []string{"r0"} }
 func (ReqGetUserNewToken) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostLoginRequest)
-	return routing.GenNewToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli, req.IP)
+	return routing.GenNewToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcClient, req.IP)
 }
 
 type ReqGetSuperAdminToken struct{}
@@ -2073,7 +2075,7 @@ func (ReqGetSuperAdminToken) GetPrefix() []string { return []string{"r0"} }
 func (ReqGetSuperAdminToken) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostLoginRequest)
-	return routing.GetSuperAdminToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcCli, req.IP)
+	return routing.GetSuperAdminToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcClient, req.IP)
 }
 
 type ReqGetSetting struct{}

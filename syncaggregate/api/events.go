@@ -15,9 +15,10 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"net/http"
 
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
@@ -30,6 +31,7 @@ import (
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetEvents{})
 }
 
@@ -61,6 +63,9 @@ func (ReqGetEvents) FillRequest(coder core.Coder, req *http.Request, vars map[st
 }
 func (ReqGetEvents) NewResponse(code int) core.Coder {
 	return new(syncapitypes.PaginationChunk)
+}
+func (ReqGetEvents) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (r ReqGetEvents) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

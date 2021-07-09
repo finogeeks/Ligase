@@ -23,25 +23,25 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/finogeeks/ligase/adapter"
-
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"golang.org/x/crypto/ed25519"
-	"gopkg.in/yaml.v2"
-
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	jaegerconfig "github.com/uber/jaeger-client-go/config"
 	jaegermetrics "github.com/uber/jaeger-lib/metrics"
+	"golang.org/x/crypto/ed25519"
+	"gopkg.in/yaml.v2"
 )
 
 // Version is the current version of the config format.
@@ -164,6 +164,10 @@ type Dendrite struct {
 			DismissRoom        ProducerConf `yaml:"dismiss_room"`
 			OutputStatic       ProducerConf `yaml:"output_static_data"`
 			FavoriteInfo       ProducerConf `yaml:"favorite_info"`
+			DispatchOutput     ProducerConf `yaml:"dispatch_output"`
+			FedAPIOutput       ProducerConf `yaml:"fedapi_output"`
+			GetMissingEvent    ProducerConf `yaml:"get_missing_event"`
+			DownloadMedia      ProducerConf `yaml:"download_media"`
 		} `yaml:"producers"`
 		Consumer struct {
 			OutputRoomEventPublicRooms   ConsumerConf `yaml:"output_room_event_publicroom"`    // OutputRoomEventPublicRooms "public-rooms",
@@ -185,8 +189,16 @@ type Dendrite struct {
 			SettingUpdateSyncAggregate ConsumerConf `yaml:"setting_update_syncaggregate"`
 			SetttngUpdateProxy         ConsumerConf `yaml:"setting_update_proxy"`
 			SettingUpdateContent       ConsumerConf `yaml:"setting_update_content"`
+			SettingUpdateFed           ConsumerConf `yaml:"setting_update_fed"`
 			DownloadMedia              ConsumerConf `yaml:"download_media"`
 			DismissRoom                ConsumerConf `yaml:"dismiss_room"`
+
+			DispatchInput   ConsumerConf `yaml:"dispatch_input"`
+			SenderInput     ConsumerConf `yaml:"fedsenser_input"`
+			FedAPIInput     ConsumerConf `yaml:"fedapi_input"`
+			FedBackFill     ConsumerConf `yaml:"fed_backfill"`
+			EduSenderInput  ConsumerConf `yaml:"edusender_input"`
+			GetMissingEvent ConsumerConf `yaml:"get_missing_event"`
 		} `yaml:"consumers"`
 	} `yaml:"kafka"`
 
@@ -195,6 +207,7 @@ type Dendrite struct {
 		PrQryTopic                 string `yaml:"pr_qry_topic"`
 		AliasTopic                 string `yaml:"alias_topic"`
 		RoomInputTopic             string `yaml:"room_input_topic"`
+		FedTopic                   string `yaml:"fed_topic"`
 		FedAliasTopic              string `yaml:"fed_alias_topic"`
 		FedProfileTopic            string `yaml:"fed_profile_topic"`
 		FedAvatarTopic             string `yaml:"fed_avatar_topic"`
@@ -217,6 +230,29 @@ type Dendrite struct {
 		ProxyFedApiTopic           string `yaml:"proxy_fed_api_topic"`
 		ProxyBgmgrApiTopic         string `yaml:"proxy_bgmgr_api_topic"`
 		ProxyRCSServerApiTopic     string `yaml:"proxy_rcsserver_api_topic"`
+
+		Driver        string  `yaml:"driver"`
+		ConsulURL     string  `yaml:"consul_url"`
+		SyncServer    RpcConf `yaml:"sync_server"`
+		SyncAggregate RpcConf `yaml:"sync_aggregate"`
+		Front         RpcConf `yaml:"front"`
+		Proxy         RpcConf `yaml:"proxy"`
+		Rcs           RpcConf `yaml:"rcs"`
+		TokenWriter   RpcConf `yaml:"token_writer"`
+		PublicRoom    RpcConf `yaml:"public_room"`
+		RoomServer    RpcConf `yaml:"room_server"`
+		Fed           RpcConf `yaml:"fed"`
+		Push          RpcConf `yaml:"push"`
+
+		FrontClientApiApi  RpcConf `yaml:"front_clientapi_api"`
+		FrontBgMngApi      RpcConf `yaml:"front_bgmng_api"`
+		FrontEncryptoApi   RpcConf `yaml:"front_encrypto_api"`
+		FrontPublicRoomApi RpcConf `yaml:"front_publicroom_api"`
+		FrontRcsApi        RpcConf `yaml:"front_rcs_api"`
+		SyncServerPushApi  RpcConf `yaml:"sync_server_push_api"`
+		SyncServerApi      RpcConf `yaml:"sync_server_api"`
+		SyncAggregateApi   RpcConf `yaml:"sync_aggregate_api"`
+		SyncWriterApi      RpcConf `yaml:"sync_writer_api"`
 	} `yaml:"rpc"`
 
 	Redis struct {
@@ -262,6 +298,8 @@ type Dendrite struct {
 		Content DataBaseConf `yaml:"content"`
 
 		RCSServer DataBaseConf `yaml:"rcs_server"`
+
+		Federation DataBaseConf `yaml:"federation"`
 
 		UseSync bool `yaml:"use_sync"`
 	} `yaml:"database"`
@@ -559,6 +597,14 @@ type ProducerConf struct {
 	Inst       int    `yaml:"inst"` //producer instance number, default one instance
 }
 
+type RpcConf struct {
+	Port            int      `yaml:"port"`
+	ServerName      string   `yaml:"server_name"`
+	ConsulTagPrefix string   `yaml:"consul_tag_prefix"`
+	AddressesStr    string   `yaml:"addresses"`
+	Addresses       []string `yaml:"-"`
+}
+
 type DataBaseConf struct {
 	Driver    string `yaml:"driver"`
 	Addresses string `yaml:"addresses"`
@@ -646,32 +692,6 @@ func loadConfig(
 		return err
 	}
 
-	/*
-		privateKeyPath := absPath(basePath, config.Matrix.PrivateKeyPath)
-		privateKeyData, err := readFile(privateKeyPath)
-		if err != nil {
-			return err
-		}
-
-		if config.Matrix.KeyID, config.Matrix.PrivateKey, err = readKeyPEM(privateKeyPath, privateKeyData); err != nil {
-			return err
-		}
-
-		for _, certPath := range config.Matrix.FederationCertificatePaths {
-			absCertPath := absPath(basePath, certPath)
-			var pemData []byte
-			pemData, err = readFile(absCertPath)
-			if err != nil {
-				return err
-			}
-			fingerprint := fingerprintPEM(pemData)
-			if fingerprint == nil {
-				return fmt.Errorf("no certificate PEM data in %q", absCertPath)
-			}
-			config.Matrix.TLSFingerPrints = append(config.Matrix.TLSFingerPrints, *fingerprint)
-		}
-	*/
-
 	// Generate data from config options
 	err = config.derive()
 	if err != nil {
@@ -697,6 +717,10 @@ func loadConfig(
 	adapter.SetDebugLevel(config.DebugLevel)
 	adapter.SetCacheCfg(config.TokenExpire, config.UtlExpire, config.LatestToken)
 	return nil
+}
+
+func (config *Dendrite) GetServerName() []string {
+	return config.Matrix.ServerName
 }
 
 func (config *Dendrite) GetDBConfig(name string) (driver string, createAddr string, addr string, persistUnderlying string, persistName string, async bool) {
@@ -727,6 +751,8 @@ func (config *Dendrite) GetDBConfig(name string) (driver string, createAddr stri
 		return config.Database.Content.Driver, config.Database.CreateDB.Addresses, config.Database.Content.Addresses, config.Kafka.Producer.DBUpdates.Underlying, config.Kafka.Producer.DBUpdates.Name, !config.Database.UseSync
 	case "rcsserver":
 		return config.Database.Content.Driver, config.Database.CreateDB.Addresses, config.Database.RCSServer.Addresses, config.Kafka.Producer.DBUpdates.Underlying, config.Kafka.Producer.DBUpdates.Name, !config.Database.UseSync
+	case "federation":
+		return config.Database.Federation.Driver, config.Database.CreateDB.Addresses, config.Database.Federation.Addresses, config.Kafka.Producer.DBUpdates.Underlying, config.Kafka.Producer.DBUpdates.Name, !config.Database.UseSync
 	default:
 		return "", "", "", "", "", false
 	}
@@ -749,6 +775,57 @@ func (config *Dendrite) derive() error {
 	} else {
 		config.Derived.Registration.Flows = append(config.Derived.Registration.Flows,
 			external.AuthFlow{Stages: []string{authtypes.LoginTypeDummy}})
+	}
+
+	if config.Rpc.Driver == "grpc" {
+		rpcConfs := []*RpcConf{
+			&config.Rpc.SyncServer,
+			&config.Rpc.SyncAggregate,
+			&config.Rpc.Front,
+			&config.Rpc.Proxy,
+			&config.Rpc.Rcs,
+			&config.Rpc.TokenWriter,
+			&config.Rpc.PublicRoom,
+			&config.Rpc.RoomServer,
+			&config.Rpc.Fed,
+			&config.Rpc.Push,
+			&config.Rpc.FrontClientApiApi,
+			&config.Rpc.FrontBgMngApi,
+			&config.Rpc.FrontEncryptoApi,
+			&config.Rpc.FrontPublicRoomApi,
+			&config.Rpc.FrontRcsApi,
+			&config.Rpc.SyncServerPushApi,
+			&config.Rpc.SyncServerApi,
+			&config.Rpc.SyncAggregateApi,
+			&config.Rpc.SyncWriterApi,
+		}
+		// TODO: 这里在k8s中的hostname，替换地址
+		// 后面看看如何优化
+		hostname, hasHostName := os.LookupEnv("HOSTNAME")
+		var hostnameSl []string
+		if hasHostName {
+			hostnameSl = strings.Split(hostname, "-")
+		}
+		for _, v := range rpcConfs {
+			if v.AddressesStr == "" {
+				return errors.New("yaml rpc.sync_server.addresses is empty in grpc mode")
+			}
+			if hasHostName {
+				v.AddressesStr = strings.Replace(v.AddressesStr, hostnameSl[0]+":", "127.0.0.1:", -1)
+			}
+			v.Addresses = strings.Split(v.AddressesStr, ",")
+		}
+		if config.MultiInstance.SyncServerTotal != 0 {
+			log.Warnf("yaml multi_instance.sync_server_total not 0 in grpc mode")
+		}
+		if config.MultiInstance.Total != 0 {
+			log.Warnf("yaml multi_instance.total not 0 in grpc mode")
+		}
+		config.MultiInstance.SyncServerTotal = uint32(len(config.Rpc.SyncServer.Addresses))
+		config.MultiInstance.Total = uint32(len(config.Rpc.SyncAggregate.Addresses))
+	}
+	if config.Rpc.Driver == "grpc_with_consul" && config.Rpc.ConsulURL == "" {
+		return errors.New("yaml rpc.consul_url is empty in grpc_with_consul mode")
 	}
 
 	// Load application service configuration files
@@ -918,6 +995,50 @@ func (config *Dendrite) SetupTracing(serviceName string) (closer io.Closer, err 
 		jaegerconfig.Logger(Logger{}),
 		jaegerconfig.Metrics(jaegermetrics.NullFactory),
 	)
+}
+
+func (config *Dendrite) GetRpcConfig(service string) (*RpcConf, bool) {
+	switch service {
+	case config.Rpc.Front.ServerName:
+		return &config.Rpc.Front, true
+	case config.Rpc.SyncServer.ServerName:
+		return &config.Rpc.SyncServer, true
+	case config.Rpc.SyncAggregate.ServerName:
+		return &config.Rpc.SyncAggregate, true
+	case config.Rpc.Proxy.ServerName:
+		return &config.Rpc.Proxy, true
+	case config.Rpc.Rcs.ServerName:
+		return &config.Rpc.Rcs, true
+	case config.Rpc.TokenWriter.ServerName:
+		return &config.Rpc.TokenWriter, true
+	case config.Rpc.PublicRoom.ServerName:
+		return &config.Rpc.PublicRoom, true
+	case config.Rpc.RoomServer.ServerName:
+		return &config.Rpc.RoomServer, true
+	case config.Rpc.Fed.ServerName:
+		return &config.Rpc.Fed, true
+	case config.Rpc.Push.ServerName:
+		return &config.Rpc.Push, true
+	case config.Rpc.FrontClientApiApi.ServerName:
+		return &config.Rpc.FrontClientApiApi, true
+	case config.Rpc.FrontBgMngApi.ServerName:
+		return &config.Rpc.FrontBgMngApi, true
+	case config.Rpc.FrontEncryptoApi.ServerName:
+		return &config.Rpc.FrontEncryptoApi, true
+	case config.Rpc.FrontPublicRoomApi.ServerName:
+		return &config.Rpc.FrontPublicRoomApi, true
+	case config.Rpc.FrontRcsApi.ServerName:
+		return &config.Rpc.FrontRcsApi, true
+	case config.Rpc.SyncServerPushApi.ServerName:
+		return &config.Rpc.SyncServerPushApi, true
+	case config.Rpc.SyncServerApi.ServerName:
+		return &config.Rpc.SyncServerApi, true
+	case config.Rpc.SyncAggregateApi.ServerName:
+		return &config.Rpc.SyncAggregateApi, true
+	case config.Rpc.SyncWriterApi.ServerName:
+		return &config.Rpc.SyncWriterApi, true
+	}
+	return nil, false
 }
 
 // Logger is a small wrapper that implements jaeger.Logger.

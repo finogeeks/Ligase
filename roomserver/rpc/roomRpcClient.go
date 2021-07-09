@@ -16,6 +16,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/finogeeks/ligase/common"
@@ -23,14 +24,14 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type RoomserverRpcClient struct {
 	cfg           *config.Dendrite
-	rpcClient     *common.RpcClient
+	rpcCli        rpc.RpcClient
 	aliase        roomserverapi.RoomserverAliasAPI
 	qry           roomserverapi.RoomserverQueryAPI
 	input         roomserverapi.RoomserverInputAPI
@@ -40,7 +41,7 @@ type RoomserverRpcClient struct {
 
 func NewRoomserverRpcClient(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	aliase roomserverapi.RoomserverAliasAPI,
 	qry roomserverapi.RoomserverQueryAPI,
 	input roomserverapi.RoomserverInputAPI,
@@ -52,7 +53,7 @@ func NewRoomserverRpcClient(
 	}
 	s := &RoomserverRpcClient{
 		cfg:           cfg,
-		rpcClient:     rpcClient,
+		rpcCli:        rpcCli,
 		aliase:        aliase,
 		qry:           qry,
 		input:         input,
@@ -72,17 +73,12 @@ func (c *RoomserverRpcClient) AllocRoomAlias(
 		return c.aliase.AllocRoomAlias(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverAliasRequest{
-		AllocRoomAliasRequest: req,
+	resp, err := c.rpcCli.AllocRoomAlias(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-	data, err := c.rpcClient.Request(c.cfg.Rpc.AliasTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
+	*response = *resp
+	return nil
 }
 
 func (c *RoomserverRpcClient) SetRoomAlias( //cli
@@ -94,17 +90,12 @@ func (c *RoomserverRpcClient) SetRoomAlias( //cli
 		return c.aliase.SetRoomAlias(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverAliasRequest{
-		SetRoomAliasRequest: req,
+	resp, err := c.rpcCli.SetRoomAlias(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-	data, err := c.rpcClient.Request(c.cfg.Rpc.AliasTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
+	*response = *resp
+	return nil
 }
 
 func (c *RoomserverRpcClient) GetAliasRoomID( //fed & cli
@@ -117,19 +108,13 @@ func (c *RoomserverRpcClient) GetAliasRoomID( //fed & cli
 		return c.aliase.GetAliasRoomID(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverAliasRequest{
-		GetAliasRoomIDRequest: req,
-	}
-	bytes, err := json.Marshal(content)
-
 	log.Infof("-------RoomserverRpcClient GetAliasRoomID call rpc")
-	data, err := c.rpcClient.Request(c.cfg.Rpc.AliasTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	resp, err := c.rpcCli.GetAliasRoomID(ctx, req)
+	if err != nil {
+		return err
 	}
-
-	return err
+	*response = *resp
+	return nil
 }
 
 func (c *RoomserverRpcClient) RemoveRoomAlias(
@@ -140,18 +125,12 @@ func (c *RoomserverRpcClient) RemoveRoomAlias(
 	if c.aliase != nil {
 		return c.aliase.RemoveRoomAlias(ctx, req, response)
 	}
-
-	content := roomserverapi.RoomserverAliasRequest{
-		RemoveRoomAliasRequest: req,
+	resp, err := c.rpcCli.RemoveRoomAlias(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-	data, err := c.rpcClient.Request(c.cfg.Rpc.AliasTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
-
-	return err
+	*response = *resp
+	return nil
 }
 
 func (c *RoomserverRpcClient) QueryEventsByID(
@@ -163,17 +142,13 @@ func (c *RoomserverRpcClient) QueryEventsByID(
 		return c.qry.QueryEventsByID(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryEventsByID: req,
+	resp, err := c.rpcCli.QueryEventsByID(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
+	*response = *resp
 
-	return err
+	return nil
 }
 
 func (c *RoomserverRpcClient) QueryRoomEventByID( //cli
@@ -185,17 +160,13 @@ func (c *RoomserverRpcClient) QueryRoomEventByID( //cli
 		return c.qry.QueryRoomEventByID(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryRoomEventByID: req,
+	resp, err := c.rpcCli.QueryRoomEventByID(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
+	*response = *resp
 
-	return err
+	return nil
 }
 
 func (c *RoomserverRpcClient) QueryJoinRooms( //cli & mig
@@ -207,17 +178,13 @@ func (c *RoomserverRpcClient) QueryJoinRooms( //cli & mig
 		return c.qry.QueryJoinRooms(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryJoinRooms: req,
+	resp, err := c.rpcCli.QueryJoinRooms(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
-	}
+	*response = *resp
 
-	return err
+	return nil
 }
 
 func (c *RoomserverRpcClient) QueryRoomState( //cli & mig
@@ -225,29 +192,19 @@ func (c *RoomserverRpcClient) QueryRoomState( //cli & mig
 	req *roomserverapi.QueryRoomStateRequest,
 	response *roomserverapi.QueryRoomStateResponse,
 ) error {
-	log.Debugf("-------RoomserverRpcClient QueryRoomState start, %v", c.qry)
 	if c.qry != nil {
 		return c.qry.QueryRoomState(ctx, req, response)
 	}
 
-	content := roomserverapi.RoomserverRpcRequest{
-		QueryRoomState: req,
+	resp, err := c.rpcCli.QueryRoomState(ctx, req)
+	if err != nil {
+		return err
 	}
-	bytes, err := json.Marshal(content)
-
-	log.Debugf("-------QueryRoomState send data:%v", string(bytes))
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
-
-	log.Debugf("-------QueryRoomState resp data:%v, err:%v", string(data), err)
-	if err == nil {
-		json.Unmarshal(data, response)
-		if response.RoomExists == false {
-			return errors.New("room not exits")
-		}
-		return nil
+	*response = *resp
+	if response.RoomExists == false {
+		return errors.New("room not exits")
 	}
-
-	return err
+	return nil
 }
 
 //use kafka in a async way, use nats in a sync way
@@ -278,21 +235,10 @@ func (c *RoomserverRpcClient) InputRoomEvents(
 			})
 	}
 
-	bytes, err := json.Marshal(rawEvent)
+	log.Debugf("-------RoomserverRpcClient InputRoomEvents request topic:%s val:%+v", c.cfg.Rpc.RoomInputTopic, rawEvent)
+	resp, err := c.rpcCli.InputRoomEvents(ctx, rawEvent)
 	if err != nil {
 		return 0, err
-	}
-
-	log.Debugf("-------RoomserverRpcClient InputRoomEvents request topic:%s val:%s", c.cfg.Rpc.RoomInputTopic, string(bytes))
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RoomInputTopic, bytes, 3000+len(rawEvent.BulkEvents.Events)*1000)
-	if err != nil {
-		return 0, err
-	}
-
-	var resp roomserverapi.InputRoomEventsResponse
-	err = json.Unmarshal(data, &resp)
-	if err != nil {
-		return resp.N, err
 	}
 
 	log.Debugf("-------RoomserverRpcClient InputRoomEvents resp:%v", resp)
@@ -320,13 +266,12 @@ func (c *RoomserverRpcClient) QueryBackFillEvents( //fed
 	bytes, err := json.Marshal(content)
 
 	log.Infof("-------QueryBackFillEvents send data:%v", string(bytes))
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
+	resp, err := c.rpcCli.QueryBackFillEvents(ctx, req)
 
-	log.Infof("-------QueryBackFillEvents resp data:%v, err:%v", string(data), err)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	if err != nil {
+		return err
 	}
+	*response = *resp
 
 	return err
 }
@@ -347,15 +292,14 @@ func (c *RoomserverRpcClient) QueryEventAuth(
 	bytes, err := json.Marshal(content)
 
 	log.Infof("-------QueryEventAuth send data:%v", string(bytes))
-	data, err := c.rpcClient.Request(c.cfg.Rpc.RsQryTopic, bytes, 30000)
+	resp, err := c.rpcCli.QueryEventAuth(ctx, req)
 
-	log.Infof("-------QueryEventAuth resp data:%v, err:%v", string(data), err)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	if err != nil {
+		return err
 	}
+	*response = *resp
 
-	return err
+	return nil
 }
 
 func (c *RoomserverRpcClient) ProcessReceipt(edu *gomatrixserverlib.EDU) {

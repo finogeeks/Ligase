@@ -19,6 +19,8 @@ import (
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/syncaggregate"
 	"github.com/finogeeks/ligase/syncserver"
 	"github.com/finogeeks/ligase/syncwriter"
@@ -47,8 +49,11 @@ func StartSyncMonolith(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	cache := base.PrepareCache()
 
 	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
-	rpcClient.Start(false)
+
+	rpcCli, err := rpcService.NewRpcClient(base.Cfg.Rpc.Driver, base.Cfg)
+	if err != nil {
+		log.Panicf("failed to create rpc client, driver %s err:%v", base.Cfg.Rpc.Driver, err)
+	}
 
 	deviceDB := base.CreateDeviceDB()
 	tokenFilter := filter.GetFilterMng().Register("device", deviceDB)
@@ -58,7 +63,7 @@ func StartSyncMonolith(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	complexCache := common.NewComplexCache(accountDB, cache)
 	complexCache.SetDefaultAvatarURL(base.Cfg.DefaultAvatar)
 
-	syncwriter.SetupSyncWriterComponent(base, rpcClient)
-	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcClient, idg)
-	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcClient, idg, complexCache)
+	syncwriter.SetupSyncWriterComponent(base, rpcCli)
+	syncserver.SetupSyncServerComponent(base, accountDB, cache, rpcCli, idg)
+	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcCli, idg, complexCache)
 }

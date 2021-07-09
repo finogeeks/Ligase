@@ -15,76 +15,73 @@
 package rpc
 
 import (
-	"github.com/finogeeks/ligase/common"
+	"context"
+
 	"github.com/finogeeks/ligase/common/config"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/rpc"
 )
 
 func GetProfile(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	destination string,
 	req *external.GetProfileRequest,
 	response *external.GetProfileResponse,
 ) error {
-	data, err := RpcRequest(rpcClient, string(destination), cfg.Rpc.FedProfileTopic, req)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	ctx := context.Background()
+	rsp, err := rpcClient.GetProfileFromRemote(ctx, req, destination)
+	if err != nil {
+		return err
 	}
-
-	log.Infof("federation rpc request failed, err: %v", err)
-	return err
+	*response = *rsp
+	return nil
 }
 
 func GetAvatar(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	destination string,
 	req *external.GetProfileRequest,
 	response *external.GetAvatarURLResponse,
 ) error {
-	data, err := RpcRequest(rpcClient, string(destination), cfg.Rpc.FedAvatarTopic, req)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	ctx := context.Background()
+	rsp, err := rpcClient.GetAvatarFromRemote(ctx, req, destination)
+	if err != nil {
+		return err
 	}
-
-	log.Infof("federation rpc request failed, err: %v", err)
-	return err
+	*response = *rsp
+	return nil
 }
 
 func GetDisplayName(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	destination string,
 	req *external.GetProfileRequest,
 	response *external.GetDisplayNameResponse,
 ) error {
-	data, err := RpcRequest(rpcClient, string(destination), cfg.Rpc.FedDisplayNameTopic, req)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	ctx := context.Background()
+	rsp, err := rpcClient.GetDisplayNameFromRemote(ctx, req, destination)
+	if err != nil {
+		return err
 	}
-
-	log.Infof("federation rpc request failed, err: %v", err)
-	return err
+	*response = *rsp
+	return nil
 }
 
 func GetUserInfo(
 	cfg *config.Dendrite,
-	rpcClient *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	destination string,
 	req *external.GetUserInfoRequest,
 	response *external.GetUserInfoResponse,
 ) error {
-	data, err := RpcRequest(rpcClient, string(destination), cfg.Rpc.FedUserInfoTopic, req)
-	if err == nil {
-		json.Unmarshal(data, response)
-		return nil
+	ctx := context.Background()
+	rsp, err := rpcClient.GetUserInfoFromRemote(ctx, req, destination)
+	if err != nil {
+		return err
 	}
-
-	log.Infof("federation rpc request failed, err: %v", err)
-	return err
+	*response = *rsp
+	return nil
 }

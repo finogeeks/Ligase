@@ -18,22 +18,22 @@
 package roomserver
 
 import (
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/roomserver/consumers"
 	"github.com/finogeeks/ligase/roomserver/processors"
 	"github.com/finogeeks/ligase/roomserver/rpc"
-	"github.com/finogeeks/ligase/storage/model"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
-
+	rpcService "github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
+	"github.com/finogeeks/ligase/storage/model"
 )
 
 // SetupRoomServerComponent sets up and registers HTTP handlers for the
@@ -43,7 +43,7 @@ import (
 func SetupRoomServerComponent(
 	base *basecomponent.BaseDendrite,
 	processEvent bool,
-	rpcClient *common.RpcClient,
+	rpcCli rpcService.RpcClient,
 	repoCache service.Cache,
 	federation *fed.Federation,
 ) (roomserverapi.RoomserverInputAPI, roomserverapi.RoomserverRPCAPI, model.RoomServerDatabase) {
@@ -79,7 +79,7 @@ func SetupRoomServerComponent(
 		UmsRepo:    umsRepo,
 		Cfg:        base.Cfg,
 		Idg:        idg,
-		RpcClient:  rpcClient,
+		RpcCli:     rpcCli,
 		Federation: federation,
 	}
 
@@ -114,16 +114,16 @@ func SetupRoomServerComponent(
 	inputAPI.Start()
 	if processEvent {
 		consumer := consumers.NewInputRoomEventConsumer(
-			base.Cfg, &inputAPI, rpcClient,
+			base.Cfg, &inputAPI,
 		)
 		if err := consumer.Start(); err != nil {
 			log.Panicw("failed to start api server consumer", log.KeysAndValues{"error", err})
 		}
 	}
 
-	rsRpcCli := rpc.NewRoomserverRpcClient(base.Cfg, rpcClient, &aliasAPI, &queryAPI, &inputAPI)
+	rsRpcCli := rpc.NewRoomserverRpcClient(base.Cfg, rpcCli, &aliasAPI, &queryAPI, &inputAPI)
 
-	rpcConsumer := consumers.NewQueryConsumer(base.Cfg, roomserverDB, repo, umsRepo, rpcClient, &aliasAPI, &queryAPI)
+	rpcConsumer := consumers.NewQueryConsumer(base.Cfg, roomserverDB, repo, umsRepo, &aliasAPI, &queryAPI, &inputAPI)
 	rpcConsumer.Start()
 
 	return &inputAPI, rsRpcCli, roomserverDB

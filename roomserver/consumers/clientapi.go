@@ -24,7 +24,6 @@ import (
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/nats-io/nats.go"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -33,11 +32,10 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // consumes events that originated in the client api server.
 type InputRoomEventConsumer struct {
-	channel   core.IChannel
-	cfg       *config.Dendrite
-	input     roomserverapi.RoomserverInputAPI
-	rpcClient *common.RpcClient
-	idg       *uid.UidGenerator
+	channel core.IChannel
+	cfg     *config.Dendrite
+	input   roomserverapi.RoomserverInputAPI
+	idg     *uid.UidGenerator
 
 	chanSize uint32
 	msgChan  []chan *roomserverapi.RawEvent
@@ -46,7 +44,6 @@ type InputRoomEventConsumer struct {
 func NewInputRoomEventConsumer(
 	cfg *config.Dendrite,
 	input roomserverapi.RoomserverInputAPI,
-	client *common.RpcClient,
 ) *InputRoomEventConsumer {
 	idg, _ := uid.NewDefaultIdGenerator(cfg.Matrix.InstanceId)
 	//input use kafka,output use nats
@@ -58,11 +55,10 @@ func NewInputRoomEventConsumer(
 	if ok {
 		channel := val.(core.IChannel)
 		s := &InputRoomEventConsumer{
-			channel:   channel,
-			cfg:       cfg,
-			input:     input,
-			rpcClient: client,
-			idg:       idg,
+			channel: channel,
+			cfg:     cfg,
+			input:   input,
+			idg:     idg,
 		}
 		channel.SetHandler(s)
 
@@ -80,11 +76,6 @@ func (s *InputRoomEventConsumer) Start() error {
 		go s.startWorker(s.msgChan[i])
 	}
 
-	/*if s.useKafkaInput {
-		s.channel.Start()
-	}*/
-
-	s.rpcClient.Reply(s.cfg.Rpc.RoomInputTopic, s.cb)
 	return nil
 }
 
@@ -123,33 +114,6 @@ func (s *InputRoomEventConsumer) OnMessage(topic string, partition int32, data [
 	return
 }
 
-//when nats, write data to chan, when process done need to replay, called by nats transport
-func (s *InputRoomEventConsumer) cb(msg *nats.Msg) {
-	var input roomserverapi.RawEvent
-	if err := json.Unmarshal(msg.Data, &input); err != nil {
-		log.Errorf("cb: parse failure %v, input:%s", err, string(msg.Data))
-		return
-	}
-
-	input.Reply = msg.Reply
-	roomId := input.RoomID
-
-	log.Infow("rpc received data from client api server", log.KeysAndValues{
-		"roomid", roomId, "crc64", common.CalcStringHashCode(roomId), "reply", input.Reply,
-		"len", len(input.BulkEvents.Events),
-	})
-
-	for _, event := range input.BulkEvents.Events {
-		log.Infof("rpc room_id:%s event_id:%s domain_offset:%d origin_server_ts:%d depth:%d",
-			event.RoomID(), event.EventID(), event.DomainOffset(), event.OriginServerTS(), event.Depth())
-	}
-
-	idx := common.CalcStringHashCode(roomId) % s.chanSize
-
-	s.msgChan[idx] <- &input
-	return
-}
-
 //worker, replay when needed
 func (s *InputRoomEventConsumer) processEvent(input *roomserverapi.RawEvent) error {
 	log.Infof("------------------------client-api processEvent start roomId:%s len:%d", input.RoomID, len(input.BulkEvents.Events))
@@ -165,20 +129,11 @@ func (s *InputRoomEventConsumer) processEvent(input *roomserverapi.RawEvent) err
 	n, err := s.input.InputRoomEvents(context.TODO(), input)
 	respResult.N = n
 	if err != nil {
-		if input.Reply != "" {
-			respResult.ErrCode = -1
-			respResult.ErrMsg = err.Error()
-			s.rpcClient.PubObj(input.Reply, respResult)
-		}
 		return err
 	}
 
 	log.Infof("------------------------client-api processEvent use %v", time.Now().Sub(last))
 	last = time.Now()
 
-	if input.Reply != "" {
-		respResult.ErrCode = 0
-		s.rpcClient.PubObj(input.Reply, respResult)
-	}
 	return nil
 }

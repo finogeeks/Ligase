@@ -17,11 +17,11 @@ package bgmng
 import (
 	"github.com/finogeeks/ligase/bgmng/api"
 	"github.com/finogeeks/ligase/bgmng/devicemng"
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/filter"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -32,17 +32,17 @@ func SetupBgMngComponent(
 	encryptDB model.EncryptorAPIDatabase,
 	syncDB model.SyncAPIDatabase,
 	servernameDB model.ConfigDatabase,
-	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	tokenFilter *filter.Filter,
 	scanUnActive int64,
 	kickUnActive int64,
 ) {
-	deviceMng := devicemng.NewDeviceMng(deviceDB, cache, encryptDB, syncDB, rpcCli, tokenFilter, scanUnActive, kickUnActive)
+	deviceMng := devicemng.NewDeviceMng(deviceDB, cache, encryptDB, syncDB, rpcClient, tokenFilter, scanUnActive, kickUnActive)
 	log.Infof("scantime:%d,kicktime:%d", scanUnActive, kickUnActive)
 	deviceMng.Start()
 	apiConsumer := api.NewInternalMsgConsumer(
 		*base.Cfg,
-		rpcCli,
+		rpcClient,
 		servernameDB,
 		cache,
 	)

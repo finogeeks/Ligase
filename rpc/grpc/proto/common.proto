@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "./;pb";
+
+message Empty {
+}
+
+message CommonResult {
+  string error = 1;
+  string errcode = 2;
+  int32 httpcode = 3;
+}
+
+message Device {
+  string id = 1;
+  string userID = 2;
+  string displayName = 3;
+  string deviceType = 4;
+  bool isHuman = 5;
+  string identifier = 6;
+  int64 createTs = 7;
+  int64 lastActiveTs = 8;
+}
+
+message Event {
+  string roomID = 1;
+  string eventID = 2;
+  int64 eventNID = 3;
+  int64 domainOffset = 4;
+  string sender = 5;
+  string type = 6;
+  string stateKey = 7;
+  bytes content = 8;
+  string redacts = 9;
+  int64 depth = 10;
+  bytes unsigned = 11;
+  int64 originServerTS = 12;
+  string Origin = 13;
+  string redactsSender = 14;
+}
+
+message BulkEvent {
+  repeated Event events = 1;
+  string svrName = 2;
+}
+
+message EventBuilder {
+	string sender = 1;
+	string roomID = 2;
+	string type = 3;
+	string stateKey = 4;
+	bool stateKeyExists = 5;
+	string redacts = 6;
+	int64 depth = 7;
+	int64 domainOffset = 8;
+	bytes content = 9;
+	bytes unsigned = 10;
+	string redactsSender = 11;
+}
+
+message ClientEvent {
+  bytes content = 1;
+  string eventID = 2;
+  int64 eventNID = 3;
+  int64 domainOffset = 4;
+  int64 depth = 5;
+  int64 originServerTS = 6;
+  string roomID = 7;
+  string sender = 8;
+  string stateKey = 9;
+  string type = 10;
+  string redacts = 11;
+  string hint = 12;
+  bool visible = 13;
+  bytes unsigned = 14;
+  int64 eventOffset = 15;
+}
+
+message TransactionID {
+  string deviceID = 1;
+  string transactionID = 2;
+  string ip = 3;
+}
+
+service ApiServer {
+  rpc ApiRequest (ApiRequestReq) returns (ApiRequestRsp) {}
+}
+
+message ApiRequestReq {
+  string topic = 1;
+  bytes data = 2;
+}
+
+message ApiRequestRsp {
+  bytes data = 1;
+}

@@ -15,23 +15,25 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common/jsonerror"
+	"context"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
+	apiconsumer.SetServices("sync_server_api")
 	apiconsumer.SetAPIProcessor(ReqPutTyping{})
 }
 
@@ -64,10 +66,14 @@ func (ReqPutTyping) FillRequest(coder core.Coder, req *http.Request, vars map[st
 func (ReqPutTyping) NewResponse(code int) core.Coder {
 	return nil
 }
+func (ReqPutTyping) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.PutRoomUserTypingRequest)
+	return []uint32{common.CalcStringHashCode(req.RoomID) % cfg.MultiInstance.SyncServerTotal}
+}
 func (ReqPutTyping) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PutRoomUserTypingRequest)
-	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
+	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.SyncServerTotal, c.Cfg.MultiInstance.MultiWrite) {
 		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
 	}
 
@@ -97,11 +103,14 @@ func (ReqPutTyping) Process(consumer interface{}, msg core.Coder, device *authty
 			}
 			return true
 		})
-
-		bytes, err := json.Marshal(update)
-		if err == nil {
-			c.RpcCli.Pub(types.TypingUpdateTopicDef, bytes)
+		ctx := context.Background()
+		var err error
+		if req.Typing {
+			err = c.RpcClient.AddTyping(ctx, &update)
 		} else {
+			err = c.RpcClient.RemoveTyping(ctx, &update)
+		}
+		if err != nil {
 			log.Errorf("TypingRpcConsumer pub typing update error %v", err)
 		}
 
@@ -115,10 +124,8 @@ func (ReqPutTyping) Process(consumer interface{}, msg core.Coder, device *authty
 					Destination: domain,
 					Content:     content,
 				}
-				bytes, err := json.Marshal(edu)
-				if err == nil {
-					c.RpcCli.Pub(types.EduTopicDef, bytes)
-				} else {
+				err := c.RpcClient.SendEduToRemote(ctx, &edu)
+				if err != nil {
 					log.Errorf("TypingRpcConsumer pub typing edu error %v", err)
 				}
 			}

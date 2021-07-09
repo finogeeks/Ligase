@@ -69,6 +69,7 @@ func getProxyRpcTopic(cfg *config.Dendrite) string {
 }
 
 func init() {
+	apiconsumer.SetServices("proxy")
 	apiconsumer.SetAPIProcessor(ReqGetFedVer{})
 	apiconsumer.SetAPIProcessor(ReqGetFedDirectory{})
 	apiconsumer.SetAPIProcessor(ReqGetFedProfile{})

@@ -19,30 +19,18 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/federation/client"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func Download(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	req *external.GetFedDownloadRequest,
 	destination, domain string,
-	rpcCli *common.RpcClient,
+	onData func(string, []byte) error,
+	onFinished func(string),
 ) external.GetFedDownloadResponse {
-	var req external.GetFedDownloadRequest
-	if err := json.Unmarshal(request.Extra, &req); err != nil {
-		log.Errorf("federation Download unmarshal error: %v", err)
-		return external.GetFedDownloadResponse{
-			StatusCode: http.StatusInternalServerError,
-		}
-	}
-
 	ch := make(chan struct{}, 1)
 	var resp *http.Response
 	cb := func(response *http.Response) error {
@@ -56,15 +44,21 @@ func Download(
 				if err != nil {
 					if err == io.EOF {
 						if n > 0 {
-							rpcCli.Pub(req.ID, data[:n])
+							err = onData(req.ID, data[:n])
+							if err != nil {
+								return err
+							}
 						}
-						rpcCli.Pub(req.ID, []byte{})
+						onFinished(req.ID)
 					} else {
 						log.Errorf("federation download read body error %#v", err)
 					}
 					break
 				}
-				rpcCli.Pub(req.ID, data[:n])
+				err = onData(req.ID, data[:n])
+				if err != nil {
+					return err
+				}
 			}
 		}
 		return nil

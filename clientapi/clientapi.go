@@ -18,19 +18,21 @@
 package clientapi
 
 import (
-	"github.com/finogeeks/ligase/clientapi/api"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"log"
 
-	// "github.com/finogeeks/ligase/clientapi/routing"
+	"github.com/finogeeks/ligase/clientapi/api"
 	"github.com/finogeeks/ligase/clientapi/rpc"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	rpcService "github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/rpc/consul"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
-	fed "github.com/finogeeks/ligase/federation/fedreq"
 )
 
 // SetupClientAPIComponent sets up and registers HTTP handlers for the ClientAPI
@@ -47,22 +49,33 @@ func SetupClientAPIComponent(
 	syncDB model.SyncAPIDatabase,
 	presenceDB model.PresenceDatabase,
 	roomDB model.RoomServerDatabase,
-	rpcCli *common.RpcClient,
+	rpcClient rpcService.RpcClient,
 	tokenFilter *filter.Filter,
 	idg *uid.UidGenerator,
 	settings *common.Settings,
 	fedDomians *common.FedDomains,
 	complexCache *common.ComplexCache,
 ) {
-	profileRpcConsumer := rpc.NewProfileRpcConsumer(rpcCli, base.Cfg, rsRpcCli, idg, accountsDB, presenceDB, cache, complexCache)
-	profileRpcConsumer.Start()
+	grpcServer := rpc.NewServer(base.Cfg, idg, accountsDB, presenceDB, cache, complexCache, rsRpcCli)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start front rpc server err:%v", err)
+	}
+
+	if base.Cfg.Rpc.Driver == "grpc_with_consul" {
+		if base.Cfg.Rpc.ConsulURL == "" {
+			log.Panicf("grpc_with_consul consul url is null")
+		}
+		consulTag := base.Cfg.Rpc.Front.ConsulTagPrefix + "0"
+		c := consul.NewConsul(base.Cfg.Rpc.ConsulURL, consulTag, base.Cfg.Rpc.Front.ServerName, base.Cfg.Rpc.Front.Port)
+		c.Init()
+	}
 
 	apiConsumer := api.NewInternalMsgConsumer(
 		base.APIMux, *base.Cfg,
 		rsRpcCli, accountsDB, deviceDB,
 		federation, *keyRing,
 		cache, encryptDB, syncDB, presenceDB,
-		roomDB, rpcCli, tokenFilter, settings, fedDomians, complexCache,
+		roomDB, rpcClient, tokenFilter, settings, fedDomians, complexCache,
 	)
 	apiConsumer.Start()
 }

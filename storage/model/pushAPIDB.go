@@ -16,6 +16,7 @@ package model
 
 import (
 	"context"
+
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
 )
@@ -52,11 +53,11 @@ type PushAPIDatabase interface {
 	) error
 
 	AddPusher(
-		ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64,  lang string, data []byte, deviceID string,
+		ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64, lang string, data []byte, deviceID string,
 	) error
 
 	OnAddPusher(
-		ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64,  lang string, data []byte, deviceID string,
+		ctx context.Context, userID, profileTag, kind, appID, appDisplayName, deviceDisplayName, pushKey string, pushKeyTs int64, lang string, data []byte, deviceID string,
 	) error
 
 	DeleteUserPushers(
@@ -93,13 +94,13 @@ type PushAPIDatabase interface {
 
 	LoadPusher(
 		ctx context.Context,
-	)([]pushapitypes.Pusher, error)
+	) ([]pushapitypes.Pusher, error)
 
 	LoadPushRule(
 		ctx context.Context,
-	)([]pushapitypes.PushRuleData, error)
+	) ([]pushapitypes.PushRuleData, error)
 
 	LoadPushRuleEnable(
 		ctx context.Context,
-	)([]pushapitypes.PushRuleEnable, error)
+	) ([]pushapitypes.PushRuleEnable, error)
 }

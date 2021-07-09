@@ -15,6 +15,7 @@
 package consumers
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -26,11 +27,13 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/feedstypes"
+	"github.com/finogeeks/ligase/model/pushapitypes"
 	push "github.com/finogeeks/ligase/model/pushapitypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/pushapi/routing"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/tidwall/gjson"
@@ -58,8 +61,8 @@ type HelperSignalContent struct {
 }
 
 type HelperContent struct {
-	Body    string              `json:"body"`
-	MsgType string              `json:"msgtype"`
+	Body    string                `json:"body"`
+	MsgType string                `json:"msgtype"`
 	Signals []HelperSignalContent `json:"signals"`
 }
 
@@ -72,14 +75,13 @@ type HelperEvent struct {
 }
 
 type PushConsumer struct {
-	rpcClient    *common.RpcClient
+	rpcCli       rpc.RpcClient
 	cache        service.Cache
 	eventRepo    *repos.EventReadStreamRepo
 	countRepo    *repos.ReadCountRepo
 	roomCurState *repos.RoomCurStateRepo
 	rsTimeline   *repos.RoomStateTimeLineRepo
 	roomHistory  *repos.RoomHistoryTimeLineRepo
-	pubTopic     string
 	complexCache *common.ComplexCache
 	msgChan      []chan *PushEvent
 	chanSize     uint32
@@ -96,21 +98,20 @@ type PushEvent struct {
 
 func NewPushConsumer(
 	cache service.Cache,
-	client *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	complexCache *common.ComplexCache,
 	pushDataRepo *repos.PushDataRepo,
 	cfg *config.Dendrite,
 ) *PushConsumer {
 	s := &PushConsumer{
 		cache:        cache,
-		rpcClient:    client,
+		rpcCli:       rpcCli,
 		complexCache: complexCache,
 		chanSize:     20480,
 		slotSize:     64,
 		pushDataRepo: pushDataRepo,
 		cfg:          cfg,
 	}
-	s.pubTopic = push.PushTopicDef
 
 	return s
 }
@@ -312,7 +313,7 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 	static.MemCount = len(members)
 	static.MemSpend = time.Now().UnixNano()/1000 - bs
 	//将需要推送的消息聚合一次推送
-	if s.rpcClient != nil && len(pushContents.Contents) > 0 {
+	if len(pushContents.Contents) > 0 {
 		pushContents.Input = input
 		pushContents.RoomAlias = ""
 		go s.pubPushContents(&pushContents, &eventJson)
@@ -383,40 +384,15 @@ func (s *PushConsumer) getUserPushDataFromLocal(req *push.ReqPushUsers) *push.Re
 }
 
 func (s *PushConsumer) getUserPushDataFromRemote(req *push.ReqPushUsers) *push.RespPushUsersData {
-	data := &push.RespPushUsersData{
-		Data: make(map[string]push.RespPushData),
-	}
-	payload, err := json.Marshal(req)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Marshal payload:%+v err:%v", req, err)
-		return data
-	}
-	request := push.PushDataRequest{
-		Payload: payload,
-		ReqType: types.GET_PUSHDATA_BATCH,
-		Slot:    req.Slot,
-	}
-	bt, err := json.Marshal(request)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Marshal request:%+v err:%v", req, err)
-		return data
-	}
-	r, err := s.rpcClient.Request(types.PushDataTopicDef, bt, 15000)
+	ctx := context.Background()
+	data, err := s.rpcCli.GetPushDataBatch(ctx, req)
 	if err != nil {
 		log.Error("getUserPushDataFromRemote rpc req:%+v err:%v", req, err)
-		return data
+		return &push.RespPushUsersData{
+			Data: make(map[string]push.RespPushData),
+		}
 	}
-	resp := push.RpcResponse{}
-	err = json.Unmarshal(r, &resp)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Unmarshal RpcResponse err:%v", err)
-		return data
-	}
-	err = json.Unmarshal(resp.Payload, &data)
-	if err != nil {
-		log.Error("getUserPushDataFromRemote json.Unmarshal Rpc payload err:%v", err)
-		return data
-	}
+
 	return data
 }
 
@@ -541,7 +517,7 @@ func (s *PushConsumer) getRoomName(roomID string) string {
 	return name
 }
 
-func (s *PushConsumer) getCreateContent(roomID string) interface{} {
+func (s *PushConsumer) getCreateContent(roomID string) []byte {
 	states := s.rsTimeline.GetStates(roomID)
 
 	if states != nil {
@@ -586,15 +562,14 @@ func (s *PushConsumer) pubPushContents(pushContents *push.PushPubContents, event
 	pushContents.RoomName = s.getRoomName(pushContents.Input.RoomID)
 	createContent := s.getCreateContent(pushContents.Input.RoomID)
 	if createContent != nil {
-		pushContents.CreateContent = &createContent
+		pushContents.CreateContent = createContent
 	}
 
-	bytes, err := json.Marshal(pushContents)
-	if err == nil {
-		log.Infof("EventDataConsumer.pubPushContents %s", string(bytes))
-		s.rpcClient.Pub(s.pubTopic, bytes)
+	err := s.rpcCli.PushData(context.Background(), pushContents)
+	if err != nil {
+		log.Errorf("EventDataConsumer.pubPushContents err %v", err)
 	} else {
-		log.Errorf("EventDataConsumer.pubPushContents marsh err %v", err)
+		log.Infof("EventDataConsumer.pubPushContents %v", pushContents)
 	}
 }
 
@@ -699,10 +674,13 @@ func (s *PushConsumer) updateReadCountAndNotify(
 	bs := time.Now().UnixNano() / 1000
 	count, _ := s.countRepo.GetRoomReadCount(helperEvent.RoomID, *userID)
 	atomic.AddInt64(&static.ReadUnreadSpend, time.Now().UnixNano()/1000-bs)
-	if notify && s.rpcClient != nil && len(pushers.Pushers) > 0 {
+	if notify && len(pushers.Pushers) > 0 {
 		var pubContent push.PushPubContent
 		pubContent.UserID = *userID
-		pubContent.Pushers = pushers
+		pubContent.Pushers = new(pushapitypes.PushersWitchInterfaceData)
+		for _, v := range pushers.Pushers {
+			pubContent.Pushers.Pushers = append(pubContent.Pushers.Pushers, v.ToPusherWitchInterfaceData())
+		}
 		pubContent.Action = action
 		pubContent.NotifyCount = count
 

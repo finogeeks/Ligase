@@ -15,25 +15,31 @@
 package pushsender
 
 import (
-	"github.com/finogeeks/ligase/common"
+	"log"
+
 	"github.com/finogeeks/ligase/common/basecomponent"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/pushsender/consumers"
+	"github.com/finogeeks/ligase/pushsender/rpc"
+	"github.com/finogeeks/ligase/rpc/consul"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
 func SetupPushSenderComponent(
 	base *basecomponent.BaseDendrite,
-	rpcClient *common.RpcClient,
-) (model.PushAPIDatabase, *consumers.PushDataConsumer) {
+) model.PushAPIDatabase {
 	pushDB := base.CreatePushApiDB()
 
-	pushConsumer := consumers.NewPushDataConsumer(
-		base.Cfg, pushDB, rpcClient,
-	)
-	if err := pushConsumer.Start(); err != nil {
-		log.Panicw("failed to start push data consumer", log.KeysAndValues{"error", err})
+	grpcServer := rpc.NewServer(base.Cfg, pushDB)
+	if err := grpcServer.Start(); err != nil {
+		log.Panicf("failed to start push rpc server err:%v", err)
+	}
+	if base.Cfg.Rpc.Driver == "grpc_with_consul" {
+		if base.Cfg.Rpc.ConsulURL == "" {
+			log.Panicf("grpc_with_consul consul url is null")
+		}
+		consulTag := base.Cfg.Rpc.Push.ConsulTagPrefix + "0"
+		c := consul.NewConsul(base.Cfg.Rpc.ConsulURL, consulTag, base.Cfg.Rpc.Push.ServerName, base.Cfg.Rpc.Push.Port)
+		c.Init()
 	}
 
-	return pushDB, pushConsumer
+	return pushDB
 }

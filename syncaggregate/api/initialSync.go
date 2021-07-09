@@ -15,24 +15,25 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/jsonerror"
 	"net/http"
 	"strconv"
 
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrix"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	"github.com/finogeeks/ligase/skunkworks/gomatrix"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqGetInitialSync{})
 }
 
@@ -71,6 +72,9 @@ func (ReqGetInitialSync) FillRequest(coder core.Coder, req *http.Request, vars m
 }
 func (ReqGetInitialSync) NewResponse(code int) core.Coder {
 	return new(ResponseInitialSync)
+}
+func (ReqGetInitialSync) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetInitialSync) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

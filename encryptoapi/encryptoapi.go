@@ -18,12 +18,12 @@
 package encryptoapi
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/encryptoapi/api"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/rpc"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -36,7 +36,7 @@ import (
 func SetupEncryptApi(
 	base *basecomponent.BaseDendrite,
 	cache service.Cache,
-	rpcClient *common.RpcClient,
+	rpcCli rpc.RpcClient,
 	federation *gomatrixserverlib.FederationClient,
 	idg *uid.UidGenerator,
 ) model.EncryptorAPIDatabase {
@@ -46,7 +46,7 @@ func SetupEncryptApi(
 
 	apiConsumer := api.NewInternalMsgConsumer(
 		*base.Cfg, encryptionDB, syncDB,
-		idg, cache, rpcClient, federation, serverName,
+		idg, cache, rpcCli, federation, serverName,
 	)
 	apiConsumer.Start()
 

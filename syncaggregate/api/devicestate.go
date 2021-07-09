@@ -15,19 +15,21 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
-	"net/http"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func init() {
+	apiconsumer.SetServices("sync_aggregate_api")
 	apiconsumer.SetAPIProcessor(ReqPostReportDeviceState{})
 }
 
@@ -55,6 +57,9 @@ func (ReqPostReportDeviceState) FillRequest(coder core.Coder, req *http.Request,
 }
 func (ReqPostReportDeviceState) NewResponse(code int) core.Coder {
 	return nil
+}
+func (ReqPostReportDeviceState) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqPostReportDeviceState) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)

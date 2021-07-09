@@ -19,23 +19,16 @@ import (
 
 	"github.com/finogeeks/ligase/federation/client"
 	"github.com/finogeeks/ligase/federation/model/backfilltypes"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
-	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 func MakeJoin(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	req *external.GetMakeJoinRequest,
 	destination string,
 ) gomatrixserverlib.RespMakeJoin {
-	var req external.GetMakeJoinRequest
-	if err := json.Unmarshal(request.Extra, &req); err != nil {
-		log.Errorf("federation make join unmarshal error: %v", err)
-		return gomatrixserverlib.RespMakeJoin{}
-	}
-
 	redResp, err := fedClient.MakeJoin(context.Background(), gomatrixserverlib.ServerName(destination), req.RoomID, req.UserID, req.Ver)
 	if err != nil {
 		log.Errorf("federation make join error response: %v", err)
@@ -45,16 +38,10 @@ func MakeJoin(
 
 func SendJoin(
 	fedClient *client.FedClientWrap,
-	request *roomserverapi.FederationEvent,
+	req *external.PutSendJoinRequest,
 	destination string,
 	proc backfilltypes.BackFillProcessor,
 ) gomatrixserverlib.RespSendJoin {
-	var req external.PutSendJoinRequest
-	if err := json.Unmarshal(request.Extra, &req); err != nil {
-		log.Errorf("federation send join unmarshal error: %v", err)
-		return gomatrixserverlib.RespSendJoin{}
-	}
-
 	redResp, err := fedClient.SendJoin(context.Background(), gomatrixserverlib.ServerName(destination), req.RoomID, req.EventID, req.Event)
 	if err != nil {
 		log.Errorf("federation send join error response: %v", err)

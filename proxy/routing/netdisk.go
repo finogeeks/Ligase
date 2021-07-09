@@ -31,6 +31,7 @@ import (
 	"github.com/finogeeks/ligase/federation/fedreq/rpc"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/mediatypes"
+	rpcService "github.com/finogeeks/ligase/rpc"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -133,7 +134,7 @@ func NetDiskDownLoad(
 	mediaID mediatypes.MediaID,
 	fileType string,
 	cfg *config.Dendrite,
-	rpcCli *common.RpcClient,
+	rpcCli rpcService.RpcClient,
 	idg *uid.UidGenerator,
 	useFed bool,
 ) int {

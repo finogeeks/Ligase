@@ -16,21 +16,22 @@ package api
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/common/jsonerror"
-	"github.com/finogeeks/ligase/model/repos"
 	"net/http"
 
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/pushapitypes"
+	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/pushapi/routing"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/storage/model"
 	jsoniter "github.com/json-iterator/go"
 )
@@ -39,9 +40,9 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type InternalMsgConsumer struct {
 	apiconsumer.APIConsumer
-	pushDB     model.PushAPIDatabase
-	redisCache service.Cache
-	localcache *cache.LocalCacheRepo
+	pushDB       model.PushAPIDatabase
+	redisCache   service.Cache
+	localcache   *cache.LocalCacheRepo
 	pushDataRepo *repos.PushDataRepo
 }
 
@@ -49,12 +50,12 @@ func NewInternalMsgConsumer(
 	cfg config.Dendrite,
 	pushDB model.PushAPIDatabase,
 	redisCache service.Cache,
-	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	pushDataRepo *repos.PushDataRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
+	c.RpcClient = rpcClient
 	c.pushDB = pushDB
 	c.redisCache = redisCache
 
@@ -65,7 +66,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.Init("pushapi", c, c.Cfg.Rpc.ProxyPushApiTopic)
+	c.APIConsumer.Init("pushapi", c, c.Cfg.Rpc.ProxyPushApiTopic, &c.Cfg.Rpc.SyncServerPushApi)
 	c.APIConsumer.Start()
 }
 
@@ -74,6 +75,7 @@ func getProxyRpcTopic(cfg *config.Dendrite) string {
 }
 
 func init() {
+	apiconsumer.SetServices("sync_server_push_api")
 	apiconsumer.SetAPIProcessor(ReqGetPushers{})
 	apiconsumer.SetAPIProcessor(ReqPostSetPushers{})
 	apiconsumer.SetAPIProcessor(ReqGetPushRules{})
@@ -106,7 +108,10 @@ func (ReqGetPushers) FillRequest(coder core.Coder, req *http.Request, vars map[s
 	return nil
 }
 func (ReqGetPushers) NewResponse(code int) core.Coder {
-	return new(pushapitypes.Pushers)
+	return new(pushapitypes.PushersWitchInterfaceData)
+}
+func (ReqGetPushers) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetPushers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -143,6 +148,9 @@ func (ReqPostSetPushers) FillRequest(coder core.Coder, req *http.Request, vars m
 func (ReqPostSetPushers) NewResponse(code int) core.Coder {
 	return nil
 }
+func (ReqPostSetPushers) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
+}
 func (ReqPostSetPushers) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -174,6 +182,9 @@ func (ReqGetPushRules) FillRequest(coder core.Coder, req *http.Request, vars map
 func (ReqGetPushRules) NewResponse(code int) core.Coder {
 	return new(pushapitypes.GlobalRule)
 }
+func (ReqGetPushRules) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
+}
 func (ReqGetPushRules) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -202,7 +213,10 @@ func (ReqGetPushRulesGlobal) FillRequest(coder core.Coder, req *http.Request, va
 	return nil
 }
 func (ReqGetPushRulesGlobal) NewResponse(code int) core.Coder {
-	return new(pushapitypes.RuleSet)
+	return new(pushapitypes.Rules)
+}
+func (ReqGetPushRulesGlobal) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetPushRulesGlobal) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -239,6 +253,9 @@ func (ReqGetPushRuleByID) FillRequest(coder core.Coder, req *http.Request, vars 
 }
 func (ReqGetPushRuleByID) NewResponse(code int) core.Coder {
 	return make(internals.JSONMap)
+}
+func (ReqGetPushRuleByID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -283,6 +300,9 @@ func (ReqPutPushRuleByID) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqPutPushRuleByID) NewResponse(code int) core.Coder {
 	return nil
 }
+func (ReqPutPushRuleByID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
+}
 func (ReqPutPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -324,6 +344,9 @@ func (ReqDelPushRuleByID) FillRequest(coder core.Coder, req *http.Request, vars 
 func (ReqDelPushRuleByID) NewResponse(code int) core.Coder {
 	return nil
 }
+func (ReqDelPushRuleByID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
+}
 func (ReqDelPushRuleByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -362,6 +385,9 @@ func (ReqGetPushRulesEnabledByID) FillRequest(coder core.Coder, req *http.Reques
 }
 func (ReqGetPushRulesEnabledByID) NewResponse(code int) core.Coder {
 	return new(pushapitypes.EnabledType)
+}
+func (ReqGetPushRulesEnabledByID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetPushRulesEnabledByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -406,6 +432,9 @@ func (ReqPutPushRulesEnabledByID) FillRequest(coder core.Coder, req *http.Reques
 func (ReqPutPushRulesEnabledByID) NewResponse(code int) core.Coder {
 	return nil
 }
+func (ReqPutPushRulesEnabledByID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
+}
 func (ReqPutPushRulesEnabledByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -445,6 +474,9 @@ func (ReqGetPushRuleActionsByID) FillRequest(coder core.Coder, req *http.Request
 }
 func (ReqGetPushRuleActionsByID) NewResponse(code int) core.Coder {
 	return new(pushapitypes.PushActions)
+}
+func (ReqGetPushRuleActionsByID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
 }
 func (ReqGetPushRuleActionsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
@@ -489,6 +521,9 @@ func (ReqPutPushRulesActionsByID) FillRequest(coder core.Coder, req *http.Reques
 func (ReqPutPushRulesActionsByID) NewResponse(code int) core.Coder {
 	return nil
 }
+func (ReqPutPushRulesActionsByID) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	return []uint32{common.CalcStringHashCode(device.UserID) % cfg.MultiInstance.Total}
+}
 func (ReqPutPushRulesActionsByID) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	if !common.IsRelatedRequest(device.UserID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
@@ -525,18 +560,26 @@ func (ReqPostUsersPushKey) FillRequest(coder core.Coder, req *http.Request, vars
 func (ReqPostUsersPushKey) NewResponse(code int) core.Coder {
 	return new(pushapitypes.PushersRes)
 }
+func (ReqPostUsersPushKey) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.PostUsersPushKeyRequest)
+	if req.Users != nil && len(req.Users) > 0 {
+		return []uint32{common.CalcStringHashCode(req.Users[0]) % cfg.MultiInstance.Total}
+	} else {
+		return []uint32{}
+	}
+}
 func (ReqPostUsersPushKey) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostUsersPushKeyRequest)
 	if req.Users != nil && len(req.Users) > 0 {
 		if !common.IsRelatedRequest(req.Users[0], c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.Total, c.Cfg.MultiInstance.MultiWrite) {
 			return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
-		}else{
+		} else {
 			return routing.GetUsersPushers(
-				context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcCli,
+				context.Background(), req, c.pushDataRepo, c.Cfg, c.RpcClient,
 			)
 		}
-	}else{
+	} else {
 		pushersRes := pushapitypes.PushersRes{}
 		pushers := []pushapitypes.PusherRes{}
 		pushersRes.PushersRes = pushers

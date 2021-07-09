@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "./;pb";
+
+import "common.proto";
+
+service Push {
+  rpc PushData (PushDataReq) returns (Empty) {}
+}
+
+message PushDataReq {
+    ClientEvent input = 1;
+    string senderDisplayName = 2;
+    string roomName = 3;
+    string roomAlias = 4;
+	bytes contents = 5;
+	bytes createContent = 6;
+	uint32 slot = 7;
+	string traceId = 8;
+}

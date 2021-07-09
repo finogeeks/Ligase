@@ -15,10 +15,10 @@
 package api
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/repos"
+	rpcService "github.com/finogeeks/ligase/rpc"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -33,14 +33,14 @@ type InternalMsgConsumer struct {
 
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
-	rpcCli *common.RpcClient,
+	rpcClient rpcService.RpcClient,
 	rsCurState *repos.RoomCurStateRepo,
 	rsTimeline *repos.RoomStateTimeLineRepo,
 	rmHsTimeline *repos.RoomHistoryTimeLineRepo,
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
+	c.RpcClient = rpcClient
 	c.rsCurState = rsCurState
 	c.rsTimeline = rsTimeline
 	c.rmHsTimeline = rmHsTimeline
@@ -48,7 +48,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.Init("syncwriterapi", c, c.Cfg.Rpc.ProxySyncWriterApiTopic)
+	c.APIConsumer.Init("syncwriterapi", c, c.Cfg.Rpc.ProxySyncWriterApiTopic, &c.Cfg.Rpc.SyncWriterApi)
 	//c.APIConsumer.InitGroup("syncapi",c,c.Cfg.Rpc.ProxySyncWriterApiTopic,types.SYNC_API_GROUP)
 	c.APIConsumer.Start()
 }

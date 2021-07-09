@@ -15,15 +15,10 @@
 package entry
 
 import (
-	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
-	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/tokenrewrite"
 )
 
 func StartTokenRewrite(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
-	idg, _ := uid.NewDefaultIdGenerator(base.Cfg.Matrix.InstanceId)
-	rpcClient := common.NewRpcClient(base.Cfg.Nats.Uri, idg)
-	rpcClient.Start(true)
-	tokenrewrite.SetupTokenRewrite(rpcClient, base.Cfg)
+	tokenrewrite.SetupTokenRewrite(base.Cfg)
 }

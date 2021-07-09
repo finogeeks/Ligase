@@ -21,6 +21,7 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/rpc"
 	"github.com/finogeeks/ligase/storage/model"
 	"github.com/finogeeks/ligase/syncserver/consumers"
 	jsoniter "github.com/json-iterator/go"
@@ -43,7 +44,7 @@ type InternalMsgConsumer struct {
 
 func NewInternalMsgConsumer(
 	cfg config.Dendrite,
-	rpcCli *common.RpcClient,
+	rpcClient rpc.RpcClient,
 	idg *uid.UidGenerator,
 	db model.SyncAPIDatabase,
 	rsCurState *repos.RoomCurStateRepo,
@@ -56,7 +57,7 @@ func NewInternalMsgConsumer(
 ) *InternalMsgConsumer {
 	c := new(InternalMsgConsumer)
 	c.Cfg = cfg
-	c.RpcCli = rpcCli
+	c.RpcClient = rpcClient
 	c.idg = idg
 	c.db = db
 	c.rsCurState = rsCurState
@@ -70,7 +71,7 @@ func NewInternalMsgConsumer(
 }
 
 func (c *InternalMsgConsumer) Start() {
-	c.APIConsumer.Init("syncapi", c, c.Cfg.Rpc.ProxySyncApiTopic)
+	c.APIConsumer.Init("syncapi", c, c.Cfg.Rpc.ProxySyncApiTopic, &c.Cfg.Rpc.SyncServerApi)
 	//c.APIConsumer.InitGroup("syncapi",c,c.Cfg.Rpc.ProxySyncApiTopic,types.SYNC_API_GROUP)
 	c.APIConsumer.Start()
 }
