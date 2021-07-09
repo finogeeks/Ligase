@@ -33,7 +33,6 @@ import (
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/content/download"
 	"github.com/finogeeks/ligase/content/repos"
-	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/mediatypes"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
@@ -45,11 +44,6 @@ import (
 const contentUri = "mxc://%s/%s"
 const HeaderCustomID = "X-Consumer-Custom-ID"
 const FakeUserID = "@fakeUser:fakeDomain.com"
-
-const (
-	ACTION_ADD_FAVORITE    = "add"
-	ACTION_DELETE_FAVORITE = "delete"
-)
 
 var jsonContentType = []string{"application/json; charset=utf-8"}
 
@@ -504,11 +498,11 @@ func (p *Processor) checkRequest(req *http.Request) {
 
 }
 
-func (p *Processor) forwardProxy(rw http.ResponseWriter, req *http.Request, url string, data []byte, op string) []byte {
+func (p *Processor) forwardProxy(rw http.ResponseWriter, req *http.Request, url string, data []byte, op string) {
 	newReq, err := http.NewRequest(req.Method, url, bytes.NewReader(data))
 	if err != nil {
 		log.Errorf("%s: new request error %v", op, err)
-		return nil
+		return
 	}
 
 	// newReq.Header = req.Header.Clone()
@@ -522,11 +516,11 @@ func (p *Processor) forwardProxy(rw http.ResponseWriter, req *http.Request, url 
 	resp, err := p.httpCli.Do(newReq)
 	if err != nil {
 		log.Errorf("%s response error url:%s %v", op, url, err)
-		return nil
+		return
 	}
 	if resp == nil {
 		log.Errorf("%s response nil url:%s", op, url)
-		return nil
+		return
 	}
 
 	for k, v := range resp.Header {
@@ -535,49 +529,26 @@ func (p *Processor) forwardProxy(rw http.ResponseWriter, req *http.Request, url 
 		}
 	}
 	rw.WriteHeader(resp.StatusCode)
-	var respData []byte
 	if resp.Body != nil {
-		respData, err = ioutil.ReadAll(resp.Body)
+		respData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Errorf("%s response body read err: %v", op, err)
-			return nil
+			return
 		}
 		defer resp.Body.Close()
 		rw.Write(respData)
 	}
-
-	return respData
-}
-
-type FavoriteOutput struct {
-	Action     string `json:"action"`
-	Type       string `json:"type"`
-	Content    string `json:"content"`
-	SenderID   string `json:"senderID"`
-	SenderName string `json:"senderName"`
-	RoomID     string `json:"roomID"`
-	Timestamp  int64  `json:"timestamp"`
-	OwnerID    string `json:"ownerID"`
-	OwnerName  string `json:"ownerName"`
-	NetdiskID  string `json:"netdiskID"`
 }
 
 type ForwardRequest struct {
 	Type         string `json:"type"`
 	Content      string `json:"content"`
-	SenderID     string `json:"senderID"`
 	From         string `json:"from"`
 	SrcNetdiskID string `json:"srcNetdiskID"`
 	SrcRoom      string `json:"srcRoom"`   // 留给大数据用
 	SrcPeople    string `json:"srcPeople"` // 留给大数据用
 	Public       bool   `json:"public"`    // 只有forward用到
 	Traceable    bool   `json:"traceable"`
-	OwnerID      string `json:"ownerID"`
-	OwnerName    string `json:"ownerName"`
-}
-
-type FavoriteResponse struct {
-	NetdiskID string `json:"netdiskID"`
 }
 
 func (p *Processor) Favorite(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
@@ -624,35 +595,7 @@ func (p *Processor) Favorite(rw http.ResponseWriter, req *http.Request, device *
 
 	reqUrl := p.cfg.Media.NetdiskUrl + reqURI
 	log.Debugf("forwardproxy url %s", reqUrl)
-	resp := p.forwardProxy(rw, req, reqUrl, data, "Favorite")
-	if resp != nil {
-		var respInfo FavoriteResponse
-		if err := json.Unmarshal(resp, &respInfo); err != nil {
-			log.Errorf("Failed to unmarshal FavoriteResponse: %v\n", err)
-			return
-		}
-
-		output := FavoriteOutput{
-			Action:     ACTION_ADD_FAVORITE,
-			Type:       forwardReq.Type,
-			Content:    forwardReq.Content,
-			SenderID:   forwardReq.SenderID,
-			SenderName: forwardReq.From,
-			RoomID:     forwardReq.SrcRoom,
-			Timestamp:  time.Now().UnixNano() / 1000000,
-			OwnerID:    forwardReq.OwnerID,
-			OwnerName:  forwardReq.OwnerName,
-			NetdiskID:  respInfo.NetdiskID,
-		}
-
-		common.GetTransportMultiplexer().SendAndRecvWithRetry(
-			p.cfg.Kafka.Producer.FavoriteInfo.Underlying,
-			p.cfg.Kafka.Producer.FavoriteInfo.Name,
-			&core.TransportPubMsg{
-				Keys: []byte(output.RoomID),
-				Obj:  output,
-			})
-	}
+	p.forwardProxy(rw, req, reqUrl, data, "Favorite")
 }
 
 func (p *Processor) Unfavorite(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
@@ -665,23 +608,7 @@ func (p *Processor) Unfavorite(rw http.ResponseWriter, req *http.Request, device
 	}
 
 	reqUrl := p.cfg.Media.NetdiskUrl + reqURI
-	resp := p.forwardProxy(rw, req, reqUrl, nil, "Unfavorite")
-	if resp != nil {
-		vars := mux.Vars(req)
-		netdiskID := vars["netdiskID"]
-		output := FavoriteOutput{
-			Action:    ACTION_DELETE_FAVORITE,
-			NetdiskID: netdiskID,
-		}
-
-		common.GetTransportMultiplexer().SendAndRecvWithRetry(
-			p.cfg.Kafka.Producer.FavoriteInfo.Underlying,
-			p.cfg.Kafka.Producer.FavoriteInfo.Name,
-			&core.TransportPubMsg{
-				Keys: []byte(output.RoomID),
-				Obj:  output,
-			})
-	}
+	p.forwardProxy(rw, req, reqUrl, nil, "Unfavorite")
 }
 
 func (p *Processor) SingleForward(rw http.ResponseWriter, req *http.Request, device *authtypes.Device) {
