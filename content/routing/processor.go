@@ -672,7 +672,6 @@ func (p *Processor) Unfavorite(rw http.ResponseWriter, req *http.Request, device
 	if resp != nil {
 		vars := mux.Vars(req)
 		netdiskID := vars["netdiskID"]
-		log.Infof("===============================netdiskID=%s\n", netdiskID)
 		output := FavoriteOutput{
 			Action:    ACTION_DELETE_FAVORITE,
 			NetdiskID: netdiskID,

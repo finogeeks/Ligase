@@ -127,33 +127,7 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 
 	ctx := context.Background()
 	numPartitions := adapter.GetKafkaNumPartitions()
-	log.Infow("==================================================================", log.KeysAndValues{"numPartitions", numPartitions, "topic", topic})
 	replicationFactor := adapter.GetKafkaReplicaFactor()
-
-	/*
-	md, err := a.GetMetadata(&topic, false, 5000)
-	if err != nil {
-		log.Errorln("Failed to get kafka meta data: ", err)
-		return err
-	}
-
-	if topicInfo, ok := md.Topics[topic]; ok && len(topicInfo.Partitions) > 0 {
-		log.Infof("kafka topic %s already create", topic)
-		if len(topicInfo.Partitions) != numPartitions {
-			log.Warnf("kafka topic:%s partition %d expect %d", topic, len(topicInfo.Partitions), numPartitions)
-		}
-		for _, vv := range topicInfo.Partitions {
-			if len(vv.Replicas) != replicationFactor {
-				log.Warnf("kafka topic:%s partition:%d reeplicas %d expect %d", topic, vv.ID, len(vv.Replicas), replicationFactor)
-			}
-		}
-		if topic != c.topic {
-			c.cacheTopics.Store(topic, true)
-		}
-		return nil
-	}
-	*/
-
 	maxDur, err := time.ParseDuration("60s")
 	if err != nil {
 		log.Errorln("ParseDuration err: ", err)
