@@ -24,12 +24,10 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/cache"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
@@ -147,18 +145,7 @@ func addProducer(mult core.IMultiplexer, conf config.ProducerConf) {
 	val, ok := common.GetTransportMultiplexer().GetNode(conf.Underlying)
 	if ok {
 		tran := val.(core.ITransport)
-		inst := conf.Inst
-		if inst <= 0 {
-			inst = adapter.GetKafkaNumProducers()
-		}
-		if inst <= 1 {
-			tran.AddChannel(core.CHANNEL_PUB, conf.Name, conf.Topic, "", &conf)
-		} else {
-			for i := 0; i < inst; i++ {
-				name := conf.Name + strconv.Itoa(i)
-				tran.AddChannel(core.CHANNEL_PUB, name, conf.Topic, "", &conf)
-			}
-		}
+		tran.AddChannel(core.CHANNEL_PUB, conf.Name, conf.Topic, "", &conf)
 	} else {
 		log.Errorf("AddProducer can't find transport %s, topic:%s", conf.Underlying, conf.Topic)
 	}
@@ -247,8 +234,6 @@ func startContentService(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	cfg := base.Cfg
 	transportMultiplexer := common.GetTransportMultiplexer()
 	kafka := base.Cfg.Kafka
-
-	addProducer(transportMultiplexer, kafka.Producer.FavoriteInfo)
 
 	addConsumer(transportMultiplexer, kafka.Consumer.SettingUpdateContent, base.Cfg.MultiInstance.Instance)
 	addConsumer(transportMultiplexer, kafka.Consumer.DownloadMedia, base.Cfg.MultiInstance.Instance)

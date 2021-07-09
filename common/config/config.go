@@ -163,7 +163,6 @@ type Dendrite struct {
 			UserInfoUpdate     ProducerConf `yaml:"user_info_update"`
 			DismissRoom        ProducerConf `yaml:"dismiss_room"`
 			OutputStatic       ProducerConf `yaml:"output_static_data"`
-			FavoriteInfo       ProducerConf `yaml:"favorite_info"`
 			DispatchOutput     ProducerConf `yaml:"dispatch_output"`
 			FedAPIOutput       ProducerConf `yaml:"fedapi_output"`
 			GetMissingEvent    ProducerConf `yaml:"get_missing_event"`
