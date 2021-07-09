@@ -188,7 +188,7 @@ func (tl *RoomStateTimeLineRepo) loadStates(roomID string) {
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms RoomStateTimeLineRepo.loadStates finished %s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
 	} else {
-		log.Infof("load db succ RoomStateTimeLineRepo.loadStates finished %s spend:%d ms", roomID, spend)
+		log.Debugf("load db succ RoomStateTimeLineRepo.loadStates finished %s spend:%d ms", roomID, spend)
 	}
 	for idx := range evs {
 		tl.AddEv(evs[idx], offsets[idx], false)
@@ -210,7 +210,7 @@ func (tl *RoomStateTimeLineRepo) loadStateStreams(roomID string) {
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms RoomStateTimeLineRepo.loadStateStreams finished %s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
 	} else {
-		log.Infof("load db succ RoomStateTimeLineRepo.loadStateStreams finished %s spend:%d ms", roomID, spend)
+		log.Debugf("load db succ RoomStateTimeLineRepo.loadStateStreams finished %s spend:%d ms", roomID, spend)
 	}
 	for idx := range evs {
 		tl.AddStreamEv(evs[idx], offsets[idx], false)

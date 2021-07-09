@@ -280,7 +280,7 @@ func (tl *ReceiptDataStreamRepo) loadHistory(roomID string) {
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms ReceiptDataStreamRepo.loadHistory finished %s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
 	} else {
-		log.Infof("load db succ ReceiptDataStreamRepo.loadHistory finished %s spend:%d ms", roomID, spend)
+		log.Debugf("load db succ ReceiptDataStreamRepo.loadHistory finished %s spend:%d ms", roomID, spend)
 	}
 
 	if streams != nil {
