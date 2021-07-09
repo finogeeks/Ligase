@@ -22,8 +22,8 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 	"github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -255,18 +255,18 @@ func (c *RoomserverRpcClient) InputRoomEvents(
 	ctx context.Context,
 	rawEvent *roomserverapi.RawEvent,
 ) (int, error) {
-	log.Infof("-------RoomserverRpcClient InputRoomEvents start")
+	log.Debugf("-------RoomserverRpcClient InputRoomEvents start")
 	if c.input != nil {
 		if rawEvent.TxnID != nil {
-			log.Infof("-------RoomserverRpcClient input not nil, direct call txnId:%s", rawEvent.TxnID)
+			log.Debugf("-------RoomserverRpcClient input not nil, direct call txnId:%s", rawEvent.TxnID)
 		} else {
-			log.Infof("-------RoomserverRpcClient input not nil, direct call")
+			log.Debugf("-------RoomserverRpcClient input not nil, direct call")
 		}
 		return c.input.InputRoomEvents(context.TODO(), rawEvent)
 	}
 
 	if c.inputUseKafka == true {
-		log.Infof("-------RoomserverRpcClient send to node %s", c.cfg.Kafka.Producer.InputRoomEvent.Name)
+		log.Debugf("-------RoomserverRpcClient send to node %s", c.cfg.Kafka.Producer.InputRoomEvent.Name)
 		// TODO: 返回0先，如果成功则也没问题，如果失败则认为所有事件失败
 		return 0, common.GetTransportMultiplexer().SendAndRecvWithRetry(
 			c.cfg.Kafka.Producer.InputRoomEvent.Underlying,
@@ -283,7 +283,7 @@ func (c *RoomserverRpcClient) InputRoomEvents(
 		return 0, err
 	}
 
-	log.Errorf("-------RoomserverRpcClient InputRoomEvents request topic:%s val:%s", c.cfg.Rpc.RoomInputTopic, string(bytes))
+	log.Debugf("-------RoomserverRpcClient InputRoomEvents request topic:%s val:%s", c.cfg.Rpc.RoomInputTopic, string(bytes))
 	data, err := c.rpcClient.Request(c.cfg.Rpc.RoomInputTopic, bytes, 3000+len(rawEvent.BulkEvents.Events)*1000)
 	if err != nil {
 		return 0, err
@@ -295,7 +295,7 @@ func (c *RoomserverRpcClient) InputRoomEvents(
 		return resp.N, err
 	}
 
-	log.Infof("-------RoomserverRpcClient InputRoomEvents resp:%v", resp)
+	log.Debugf("-------RoomserverRpcClient InputRoomEvents resp:%v", resp)
 
 	if resp.ErrCode < 0 {
 		return resp.N, errors.New(resp.ErrMsg)

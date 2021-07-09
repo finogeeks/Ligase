@@ -953,7 +953,7 @@ func (s *SyncServer) getJoinRoomEvents(opt *BuildRoomRespOpt, feeds []feedstypes
 	opt.meetCreate = meetCreate
 
 	s.reverseEvents(msgEvent)
-	log.Infof("SyncServer.buildRoomJoinResp after sort get msgevent len:%d %+v", len(msgEvent), opt)
+	log.Infof("SyncServer.buildRoomJoinResp after sort get msgevent len:%d %s", len(msgEvent), opt)
 
 	return msgEvent
 }

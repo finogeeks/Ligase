@@ -111,7 +111,7 @@ func PostEvent(
 
 	domainID, _ := common.DomainFromID(userID)
 	e, err := common.BuildEvent(&builder, domainID, cfg, idg)
-	log.Infof("------------------------PostEvent txnId:%s build-event %v", txnAndDeviceID.TransactionID, (time.Now().UnixNano()-last)/1000)
+	log.Debugf("------------------------PostEvent txnId:%s build-event %v", txnAndDeviceID.TransactionID, (time.Now().UnixNano()-last)/1000)
 	last = time.Now().UnixNano()
 	if err != nil {
 		log.Errorf("PostEvent BuildEvent error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID, err)
@@ -120,7 +120,7 @@ func PostEvent(
 
 	// check to see if this user can perform this operation
 	if eventType == "m.room.create" {
-		log.Infof("------------------------PostEvent %v", *e)
+		log.Debugf("------------------------PostEvent %v", *e)
 	}
 	if err = gomatrixserverlib.Allowed(*e, &queryRes); err != nil {
 		log.Errorf("PostEvent Allowed error, txnid:%s userID %s roomID %s err %v", txnAndDeviceID.TransactionID, userID, roomID, err)

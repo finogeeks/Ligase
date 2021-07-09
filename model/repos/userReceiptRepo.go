@@ -147,7 +147,7 @@ func (tl *UserReceiptRepo) loadHistory(userID, roomID string) {
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms UserReceiptRepo.loadHistory finished room:%s user:%s spend:%d ms", types.DB_EXCEED_TIME, roomID, userID, spend)
 	} else {
-		log.Infof("load db succ UserReceiptRepo.loadHistory finished room:%s user:%s spend:%d ms", roomID, userID, spend)
+		log.Debugf("load db succ UserReceiptRepo.loadHistory finished room:%s user:%s spend:%d ms", roomID, userID, spend)
 	}
 	var receipt types.UserReceipt
 	receipt.RoomID = roomID
