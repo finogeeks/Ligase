@@ -16,6 +16,7 @@ package repos
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/finogeeks/ligase/adapter"
@@ -51,7 +52,7 @@ type RoomState struct {
 	canonicalAlias       string
 	power                *common.PowerLevelContent
 	isEncrypted          bool
-
+	joinCount int64
 	join   sync.Map
 	leave  sync.Map
 	invite sync.Map
@@ -75,6 +76,10 @@ func newRoomState() *RoomState {
 	rs := new(RoomState)
 	rs.userMemberViewOk = new(sync.Map)
 	return rs
+}
+
+func (rs *RoomState) GetJoinCount() int64 {
+	return rs.joinCount
 }
 
 //RoomStateTimeLineRepo 保证state 会重演
@@ -282,9 +287,10 @@ func (rs *RoomState) onMembership(ev *gomatrixserverlib.ClientEvent, offset int6
 	member := external.MemberContent{}
 	json.Unmarshal(ev.Content, &member)
 	pre := ""
-
+	hasJoin := false
 	if _, ok := rs.join.Load(*ev.StateKey); ok {
 		pre = "join"
+		hasJoin = true
 	} else if _, ok := rs.leave.Load(*ev.StateKey); ok {
 		pre = "leave"
 	} else if _, ok := rs.invite.Load(*ev.StateKey); ok {
@@ -297,6 +303,9 @@ func (rs *RoomState) onMembership(ev *gomatrixserverlib.ClientEvent, offset int6
 	}
 
 	if member.Membership == "join" {
+		if !hasJoin {
+			atomic.AddInt64(&rs.joinCount,1)
+		}
 		rs.join.Store(*ev.StateKey, offset)
 	} else if member.Membership == "invite" {
 		rs.invite.Store(*ev.StateKey, offset)
@@ -307,6 +316,7 @@ func (rs *RoomState) onMembership(ev *gomatrixserverlib.ClientEvent, offset int6
 	//log.Errorf("onEvent user:%s pre:%s, mem:%s", *ev.StateKey(), pre, member.Membership)
 	if member.Membership != pre {
 		if pre == "join" {
+			atomic.AddInt64(&rs.joinCount, -1)
 			rs.join.Delete(*ev.StateKey)
 		} else if pre == "invite" {
 			rs.invite.Delete(*ev.StateKey)
@@ -693,6 +703,7 @@ func (rs *RoomState) findRangeIdx(ranges []*RangeItem, evTS int64, isRef bool) i
 
 type RoomCurStateRepo struct {
 	roomState sync.Map
+	count 	  int64
 	persist   model.SyncAPIDatabase
 }
 
@@ -734,6 +745,7 @@ func (repo *RoomCurStateRepo) onEvent(ev *gomatrixserverlib.ClientEvent, offset 
 	} else if !backfill {
 		rs = newRoomState()
 		log.Debugf("=-------==-=-=-==-= new %s %s", ev.RoomID, ev.Type)
+		atomic.AddInt64(&repo.count,1)
 		repo.roomState.Store(ev.RoomID, rs)
 	} else {
 		return
@@ -743,5 +755,10 @@ func (repo *RoomCurStateRepo) onEvent(ev *gomatrixserverlib.ClientEvent, offset 
 }
 
 func (repo *RoomCurStateRepo) removeRoomState(roomID string) {
+	atomic.AddInt64(&repo.count, -1)
 	repo.roomState.Delete(roomID)
+}
+
+func (repo *RoomCurStateRepo) GetRoomStateRepo() (r sync.Map) {
+	return repo.roomState
 }

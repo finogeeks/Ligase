@@ -2050,3 +2050,11 @@ func (externalReq *GetOnlineCountRequest) Decode(data []byte) error {
 func (externalReq *GetOnlineUsersRequest) Decode(data []byte) error {
 	return json.Unmarshal(data, externalReq)
 }
+
+func (externalReq *GetSyncServerMetricsRequest) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}
+
+func (externalReq *SyncServerMetrics) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}

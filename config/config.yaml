@@ -590,3 +590,11 @@ sync:
     rpc_timeout: 2000
     fullsync_rpc_timeout: 15000
     visibility: 0
+
+metrics:
+    sync_server:
+        room_scale:
+            large: 1000     # 超大
+            big: 500        # 大
+            middle: 300     # 中
+            small: 100      # 小
