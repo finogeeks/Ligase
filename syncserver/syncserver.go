@@ -19,6 +19,7 @@ package syncserver
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/common/exporter"
 	"strconv"
 
 	"github.com/finogeeks/ligase/common"
@@ -60,6 +61,7 @@ func SetupSyncServerComponent(
 
 	roomHistory := repos.NewRoomHistoryTimeLineRepo(4, maxEntries, gcPerNum)
 	rsCurState := new(repos.RoomCurStateRepo)
+	exporter.SyncServerExporterMetrics(rsCurState, base)
 	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum)
 
 	receiptDataStreamRepo := repos.NewReceiptDataStreamRepo(flushDelay, 100, true)

@@ -528,6 +528,19 @@ type Dendrite struct {
 		FullSyncTimeout int64 `yaml:"fullsync_rpc_timeout"`
 		Visibility      int64 `yaml:"visibility"`
 	} `yaml:"sync"`
+
+	Metrics struct {
+		SyncServer SyncServerMetrics  `yaml:"sync_server"`
+	} `yaml:"metrics"`
+}
+
+type SyncServerMetrics struct {
+	RoomScale  struct {
+		Large  int64 `yaml:"large"`
+		Big    int64 `yaml:"big"`
+		Middle int64 `yaml:"middle"`
+		Small  int64 `yaml:"small"`
+	} `yaml:"room_scale"`
 }
 
 type LicenseConf struct {
