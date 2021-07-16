@@ -537,7 +537,6 @@ type Dendrite struct {
 type SyncServerMetrics struct {
 	RoomScale  struct {
 		Large  int64 `yaml:"large"`
-		Big    int64 `yaml:"big"`
 		Middle int64 `yaml:"middle"`
 		Small  int64 `yaml:"small"`
 	} `yaml:"room_scale"`
