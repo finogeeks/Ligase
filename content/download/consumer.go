@@ -435,7 +435,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 			return err
 		}
 
-		log.Infof("federation Download write file success domain: %s netdiskID: %s", domain, netdiskID)
+		log.Infof("federation Download write file success domain: qa.sumscope.cloud.com netdiskID: 71612e73756d73636f70652e636c6f75642e636f6d60f66eaf617e900001ebad5e", domain, netdiskID)
 
 		header = response.Header
 		return nil
@@ -452,11 +452,11 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 		reqUrl := p.cfg.Media.UploadUrl
 
 		headStr, _ := json.Marshal(header)
-		log.Infof("fed download, header for media upload request: %s, %s", string(headStr), header.Get("Content-Length"))
+		log.Infof("fed download, header for media upload %s request: %s, %s", string(headStr), netdiskID, header.Get("Content-Length"))
 
 		newReq, err := http.NewRequest("POST", reqUrl, body)
 		if err != nil {
-			log.Errorf("fed download, upload to local NewRequest error: %v", err)
+			log.Errorf("fed download, upload %s to local NewRequest error: %v", netdiskID, err)
 			return errors.New("fed download, upload to local NewRequest error:" + err.Error())
 		}
 		if thumbnail {
@@ -492,16 +492,16 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 		newReq.Header.Set("Content-Length", strconv.FormatInt(size, 10))
 
 		headStr, _ = json.Marshal(newReq.Header)
-		log.Infof("fed download, upload netdisk request url: %s query: %s header: %s", reqUrl, newReq.URL.String(), string(headStr))
+		log.Infof("fed download, upload %s netdisk request url: %s query: %s header: %s", netdiskID, reqUrl, newReq.URL.String(), string(headStr))
 
 		res, err := p.httpCli.Do(newReq)
 		if err != nil {
-			log.Errorf("fed download, upload file request error: %v", err)
+			log.Errorf("fed download, upload file %s request error: %v", netdiskID, err)
 			return errors.New("fed download, upload file request error:" + err.Error())
 		}
 		respData, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			log.Errorf("upload netdisk read resp err: %v", err)
+			log.Errorf("upload netdisk %s read resp err: %v", netdiskID, err)
 			return errors.New("upload netdisk read resp err: %v" + err.Error())
 		}
 		defer res.Body.Close()
@@ -510,14 +510,14 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 				log.Warnf("download remote netdiskID duplicate %s", netdiskID)
 				return nil
 			}
-			log.Errorf("fed download, upload file response statusCode %d", res.StatusCode)
+			log.Errorf("fed download, upload file %s response statusCode %d", netdiskID, res.StatusCode)
 			var errInfo mediatypes.UploadError
 			err = json.Unmarshal(respData, &errInfo)
 			if err != nil {
-				log.Errorf("fed download, upload file decode error: %v, data: %v", err, respData)
+				log.Errorf("fed download, upload file %s decode error: %v, data: %v", netdiskID, err, respData)
 				return errors.New("fed download, upload file decode error: %v" + err.Error())
 			}
-			log.Errorf("fed download, upload file response %v", errInfo)
+			log.Errorf("fed download, upload file %s response %v", netdiskID, errInfo)
 			return errors.New("fed download, upload file response" + string(respData))
 		}
 		if isEmote {
@@ -525,16 +525,16 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 			data_, _ := ioutil.ReadAll(res.Body)
 			err := json.Unmarshal(data_, &resp)
 			if err != nil {
-				log.Errorf("fed download, upload emote unmarhal resp error: %v, data: %v", err, respData)
+				log.Errorf("fed download, upload emote %s unmarhal resp error: %v, data: %v", netdiskID, err, respData)
 				return errors.New("fed download, upload emote unmarhal resp error: %v" + err.Error())
 			}
-			log.Infof("fed download, upload emote succ resp:%+v", resp)
+			log.Infof("fed download, upload emote %s succ resp:%+v", netdiskID, resp)
 			return nil
 		}
 		var resp mediatypes.NetDiskResponse
 		err = json.Unmarshal(respData, &resp)
 		if err != nil {
-			log.Errorf("fed download, upload file unmarhal resp error: %v, data: %v", err, respData)
+			log.Errorf("fed download, upload file %s unmarhal resp error: %v, data: %v", netdiskID, err, respData)
 			return errors.New("fed download, upload file unmarhal resp error: %v" + err.Error())
 		}
 	}
