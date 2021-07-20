@@ -119,6 +119,16 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 		log.Warn("create topic is empty")
 		return nil
 	}
+
+	numPartitions := adapter.GetKafkaNumPartitions()
+	replicationFactor := adapter.GetKafkaReplicaFactor()
+	maxDur, err := time.ParseDuration("60s")
+	if err != nil {
+		log.Errorln("ParseDuration err: ", err)
+		return err
+	}
+
+	ctx := context.Background()
 	a, err := kafka.NewAdminClient(&kafka.ConfigMap{
 		"bootstrap.servers": broker})
 	if err != nil {
@@ -127,37 +137,6 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 	}
 	defer a.Close()
 
-	ctx := context.Background()
-	md, err := a.GetMetadata(&topic, false, 5000)
-	if err != nil {
-		log.Errorln("Failed to get kafka meta data: ", err)
-		return err
-	}
-
-	numPartitions := adapter.GetKafkaNumPartitions()
-	replicationFactor := adapter.GetKafkaReplicaFactor()
-
-	if topicInfo, ok := md.Topics[topic]; ok && len(topicInfo.Partitions) > 0 {
-		log.Infof("kafka topic %s already create", topic)
-		if len(topicInfo.Partitions) != numPartitions {
-			log.Warnf("kafka topic:%s partition %d expect %d", topic, len(topicInfo.Partitions), numPartitions)
-		}
-		for _, vv := range topicInfo.Partitions {
-			if len(vv.Replicas) != replicationFactor {
-				log.Warnf("kafka topic:%s partition:%d reeplicas %d expect %d", topic, vv.ID, len(vv.Replicas), replicationFactor)
-			}
-		}
-		if topic != c.topic {
-			c.cacheTopics.Store(topic, true)
-		}
-		return nil
-	}
-
-	maxDur, err := time.ParseDuration("60s")
-	if err != nil {
-		log.Errorln("ParseDuration err: ", err)
-		return err
-	}
 	results, err := a.CreateTopics(
 		ctx,
 		[]kafka.TopicSpecification{{
@@ -170,6 +149,7 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 		log.Errorln("Failed to create topic: ", err)
 		return err
 	}
+
 	// check results
 	for _, result := range results {
 		if result.Error.Code() != kafka.ErrNoError && result.Error.Code() != kafka.ErrTopicAlreadyExists {
@@ -177,9 +157,29 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 			return result.Error
 		}
 	}
+
 	if topic != c.topic {
 		c.cacheTopics.Store(topic, true)
 	}
+
+	md, err := a.GetMetadata(&topic, false, 5000)
+	if err != nil {
+		log.Errorln("Failed to get kafka meta data: ", err)
+		return err
+	}
+
+	if topicInfo, ok := md.Topics[topic]; ok && len(topicInfo.Partitions) > 0 {
+		log.Infof("kafka topic %s already create", topic)
+		if len(topicInfo.Partitions) != numPartitions {
+			log.Warnf("kafka topic:%s partition %d expect %d", topic, len(topicInfo.Partitions), numPartitions)
+		}
+		for _, vv := range topicInfo.Partitions {
+			if len(vv.Replicas) != replicationFactor {
+				log.Warnf("kafka topic:%s partition:%d reeplicas %d expect %d", topic, vv.ID, len(vv.Replicas), replicationFactor)
+			}
+		}
+	}
+
 	return nil
 }
 
