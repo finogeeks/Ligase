@@ -608,11 +608,17 @@ func (tl *UserTimeLineRepo) GetLeaveRoomOffset(roomID, user string) int64 {
 	}
 }
 
-func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, token map[string]int64, user, device, traceId string) bool {
+func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, traceId string) (bool, int64) {
+	curUtl, token, err := tl.LoadToken(user, device, utl)
+	//load token from redis err
+	if err != nil {
+		log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", traceId, user, device, utl, err)
+		return false, utl
+	}
 	//load token miss, cur handle is full sync
 	if token == nil {
 		log.Infof("traceId:%s user:%s device:%s utl:%d load token miss", traceId, user, device, utl)
-		return true
+		return true, curUtl
 	}
 	//compare token room offset
 	for roomID, offset := range token {
@@ -622,11 +628,11 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, token map[string]in
 			if membership == "join" {
 				if tl.GetJoinMembershipOffset(user, roomID) > 0 {
 					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
-					return true
+					return true, curUtl
 				}
 			} else {
 				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
-				return true
+				return true, curUtl
 			}
 		}
 	}
@@ -650,7 +656,7 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, token map[string]in
 	}
 	if hasNewJoined {
 		log.Infof("traceId:%s user:%s device:%s utl:%d join new room has event", traceId, user, device, utl)
-		return true
+		return true, curUtl
 	}
 	//has new invite
 	hasNewInvite := false
@@ -667,7 +673,7 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, token map[string]in
 	}
 	if hasNewInvite {
 		log.Infof("traceId:%s user:%s device:%s utl:%d invite new room has event", traceId, user, device, utl)
-		return true
+		return true, curUtl
 	}
 	//has new leave
 	hasNewLeave := false
@@ -689,9 +695,9 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, token map[string]in
 	}
 	if hasNewLeave {
 		log.Infof("traceId:%s user:%s device:%s utl:%d leave new room has event", traceId, user, device, utl)
-		return true
+		return true, curUtl
 	}
-	return false
+	return false, curUtl
 }
 
 func (tl *UserTimeLineRepo) ExistsUserReceiptUpdate(pos int64, user string) (bool, int64) {
