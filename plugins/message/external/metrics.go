@@ -12,6 +12,8 @@ type RoomScale struct {
 	Label string `json:"label"`
 	// 数量
 	Count int64  `json:"count"`
+	// 消息数量
+	MsgCount int64 `json:"msg_count"`
 }
 
 type RoomScaleMetrics struct {
@@ -26,5 +28,7 @@ type SyncServerMetrics struct {
 	Instance int   `json:"instance"`
 	// 房间规模数据
 	RoomScale RoomScaleMetrics `json:"room_scale"`
+	// 消息总量
+	MsgCount int64 `json:"msg_count"`
 }
 // --- syncserver end ---

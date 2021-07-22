@@ -17,10 +17,20 @@ const (
 type SyncServerExporter struct {
 	roomCurState *repos.RoomCurStateRepo
 	base *basecomponent.BaseDendrite
+	data *SyncServerStatic
 }
 
 var onceSyncServer sync.Once
 var syncServerExporter *SyncServerExporter
+
+type SyncServerStatic struct {
+	Msg struct {
+		Large 	int64 `json:"large"`
+		Big 	int64 `json:"big"`
+		Middle  int64 `json:"middle"`
+		Small   int64 `json:"small"`
+	} `json:"msg"`
+}
 
 func SyncServerExporterMetrics(
 	roomCurState *repos.RoomCurStateRepo,
@@ -30,6 +40,7 @@ func SyncServerExporterMetrics(
 		syncServerExporter = &SyncServerExporter{
 			roomCurState: roomCurState,
 			base: base,
+			data: &SyncServerStatic{},
 		}
 	})
 	return syncServerExporter
@@ -51,18 +62,22 @@ func (s *SyncServerExporter) getRoomScale() external.RoomScaleMetrics {
 		Large: external.RoomScale{
 			Label: ROOM_SCALE_LARGE,
 			Count: 0,
+			MsgCount: 0,
 		},
 		Big: external.RoomScale{
 			Label: ROOM_SCALE_BIG,
 			Count: 0,
+			MsgCount: 0,
 		},
 		Middle: external.RoomScale{
 			Label: ROOM_SCALE_MIDDLE,
 			Count: 0,
+			MsgCount: 0,
 		},
 		Small: external.RoomScale{
 			Label: ROOM_SCALE_SMALL,
 			Count: 0,
+			MsgCount: 0,
 		},
 	}
 	repo := s.roomCurState.GetRoomStateRepo()
@@ -80,11 +95,36 @@ func (s *SyncServerExporter) getRoomScale() external.RoomScaleMetrics {
 		}
 		return true
 	})
+	roomScale.Large.MsgCount = s.data.Msg.Large
+	roomScale.Big.MsgCount = s.data.Msg.Big
+	roomScale.Middle.MsgCount = s.data.Msg.Middle
+	roomScale.Small.MsgCount = s.data.Msg.Small
 	return roomScale
+}
+
+func (s *SyncServerExporter) MsgInc(roomId string){
+	rs := s.roomCurState.GetRoomState(roomId)
+	if rs == nil {
+		return
+	}
+	count := rs.GetJoinCount()
+	if count < s.base.Cfg.Metrics.SyncServer.RoomScale.Small {
+		s.data.Msg.Small ++
+	} else if count >= s.base.Cfg.Metrics.SyncServer.RoomScale.Small && count < s.base.Cfg.Metrics.SyncServer.RoomScale.Middle {
+		s.data.Msg.Middle++
+	} else if count >= s.base.Cfg.Metrics.SyncServer.RoomScale.Middle && count < s.base.Cfg.Metrics.SyncServer.RoomScale.Large {
+		s.data.Msg.Big++
+	} else{
+		s.data.Msg.Large++
+	}
 }
 
 
 func GetSyncServerMetrics() *external.SyncServerMetrics {
 	return syncServerExporter.getMetrics()
+}
+
+func SyncServerMsgInc(roomId string) {
+	syncServerExporter.MsgInc(roomId)
 }
 
