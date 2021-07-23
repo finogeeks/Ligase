@@ -15,6 +15,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -93,6 +94,7 @@ func (ReqGetInitialSync) Process(consumer interface{}, msg core.Coder, device *a
 	filterBytes, _ := json.Marshal(filter)
 
 	httpReq := types.HttpReq{
+		Ctx:         context.TODO(),
 		TimeOut:     strconv.Itoa(req.Timeout),
 		FullState:   req.FullState,
 		SetPresence: req.SetPresence,

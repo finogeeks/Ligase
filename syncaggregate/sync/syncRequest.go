@@ -145,11 +145,11 @@ func (oms *offsetMarks) build() string {
 }
 
 type request struct {
-	ctx     context.Context
-	device  *authtypes.Device
-	limit   int
-	timeout int64
-	//since     int64
+	ctx       context.Context
+	device    *authtypes.Device
+	limit     int
+	start     int64
+	timeout   int64
 	fullState bool
 	filter    *gomatrix.Filter
 	presence  string
@@ -173,7 +173,7 @@ type request struct {
 }
 
 func (req *request) checkNoWait() bool {
-	if (req.marks.utlRecv == 0 && req.lastPos != -1) || req.timeout == 0 || req.fullState == true {
+	if (req.marks.utlRecv == 0 && req.lastPos != -1) || req.timeout == 0 || req.fullState {
 		return true
 	}
 	return false
@@ -198,7 +198,7 @@ func (sm *SyncMng) buildFilter(req *types.HttpReq, userID string) *gomatrix.Filt
 			filter := new(gomatrix.Filter)
 			err := json.Unmarshal([]byte(cacheFilter), filter)
 			if err == nil {
-				if strings.Contains(cacheFilter, "include_leave") == false {
+				if !strings.Contains(cacheFilter, "include_leave") {
 					filter.Room.IncludeLeave = true
 				}
 				return filter
@@ -218,7 +218,7 @@ func (sm *SyncMng) buildRequest(
 ) *request {
 	res := new(request)
 
-	res.ctx = context.TODO()
+	res.ctx = req.Ctx
 	res.device = device
 
 	//build timeout
@@ -227,6 +227,7 @@ func (sm *SyncMng) buildRequest(
 		res.timeout = 30000
 	}
 
+	res.start = now
 	val, err := strconv.Atoi(str)
 	if err == nil {
 		res.timeout = int64(val)
@@ -307,179 +308,186 @@ func (sm *SyncMng) isFullSync(req *request) bool {
 }
 
 func (sm *SyncMng) OnSyncRequest(
-	req *types.HttpReq,
+	httpReq *types.HttpReq,
 	device *authtypes.Device,
 ) (int, *syncapitypes.Response) {
 	start := time.Now().UnixNano() / 1000000
-	log.Debugf("SyncMng request start traceid:%s user:%s dev:%s start:%d", req.TraceId, device.UserID, device.ID, start)
+	log.Debugf("SyncMng request start traceid:%s user:%s dev:%s start:%d", httpReq.TraceId, device.UserID, device.ID, start)
 	lastPos := sm.onlineRepo.GetLastPos(device.UserID, device.ID)
-	request := sm.buildRequest(req, device, start, lastPos)
-	sm.onlineRepo.Pet(device.UserID, device.ID, request.marks.utlRecv, request.timeout)
+	req := sm.buildRequest(httpReq, device, start, lastPos)
+	sm.onlineRepo.Pet(device.UserID, device.ID, req.marks.utlRecv, req.timeout)
 	sm.userDeviceActiveRepo.UpdateDevActiveTs(device.UserID, device.ID)
-	sm.dispatch(device.UserID, request)
-	for request.ready == false || request.remoteReady == false {
+	sm.dispatch(device.UserID, req)
+
+	for !req.ready || !req.remoteReady {
 		time.Sleep(time.Millisecond * 100)
 
 		now := time.Now().UnixNano() / 1000000
-		if now > request.latest || (request.remoteFinished == true && request.remoteReady == false && now-start > 1000) {
-			res := syncapitypes.NewResponse(0)
-			res.NextBatch = request.token
-
-			if sm.isFullSync(request) && request.device.IsHuman == true {
-				log.Errorf("SyncMng request not ready failed traceid:%s user:%s dev:%s latest:%d spend:%d ms errcode:%d request.remoteFinished:%t request.remoteReady:%t", request.traceId, request.device.UserID, request.device.ID, request.latest, now-start, http.StatusServiceUnavailable, request.remoteFinished, request.remoteReady)
-				return http.StatusServiceUnavailable, res
-			} else {
-				log.Infof("SyncMng request not ready succ traceid:%s user:%s dev:%s latest:%d spend:%d ms request.remoteFinished:%t request.remoteReady:%t", request.traceId, request.device.UserID, request.device.ID, request.latest, now-start, request.remoteFinished, request.remoteReady)
-				return http.StatusOK, res
-			}
+		if now > req.latest || (req.remoteFinished && !req.remoteReady && now-start > 1000) {
+			return sm.BuildNotReadyResponse(req, now)
 		}
 	}
 
 	//wait process ready
-	if request.checkNoWait() == false {
-		hasEventUpdate := false
-		curUtl, token, err := sm.userTimeLine.LoadToken(device.UserID, device.ID, request.marks.utlRecv)
+	if !req.checkNoWait() {
+		curUtl, token, err := sm.userTimeLine.LoadToken(device.UserID, device.ID, req.marks.utlRecv)
 		//load token from redis err
 		if err != nil {
-			log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", req.TraceId, device.UserID, device.ID, request.marks.utlRecv, err)
-			curUtl = request.marks.utlRecv
+			log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", req.traceId, device.UserID, device.ID, req.marks.utlRecv, err)
+			curUtl = req.marks.utlRecv
 		}
 
-		for request.checkNoWait() == false {
+		for !req.checkNoWait() {
 			time.Sleep(time.Millisecond * 200)
 
 			now := time.Now().UnixNano() / 1000000
-			if now > request.latest { //超时
-				log.Infof("SyncMng request ready timeout, break wait traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, request.latest)
-				break
-			}
-			hasEventUpdate = sm.userTimeLine.ExistsUserEventUpdate(request.marks.utlRecv, token, device.UserID, device.ID, req.TraceId)
-			if curUtl != request.marks.utlRecv {
-				log.Warnf("SyncMng ExistsUserEventUpdate update oldUtl:%d to newUtl:%d", request.marks.utlRecv, curUtl)
-				request.marks.utlRecv = curUtl
-			}
-			if hasEventUpdate && now-start > 500 {
-				log.Infof("SyncMng break has user event traceid:%s user:%s dev:%s now:%d latest:%d utlRecv:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.utlRecv)
+			if now > req.latest { //超时
+				log.Infof("SyncMng request ready timeout, break wait traceid:%s user:%s dev:%s now:%d latest:%d",
+					req.traceId, req.device.UserID, req.device.ID, now, req.latest)
 				break
 			}
 
-			if sm.clientDataStreamRepo.ExistsAccountDataUpdate(request.marks.accRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
-				log.Infof("SyncMng break has account data traceid:%s user:%s dev:%s now:%d latest:%d", request.traceId, request.device.UserID, request.device.ID, now, start)
+			if sm.CheckNewEvent(req, token, curUtl, start, 500) {
 				break
 			}
-
-			if sm.typingConsumer.ExistsTyping(device.UserID, device.ID, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)) && now-start > 500 && request.device.IsHuman == true {
-				log.Infof("SyncMng break has typing traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
-				break
-			}
-
-			hasReceiptUpdate, lastReceipt := sm.userTimeLine.ExistsUserReceiptUpdate(request.marks.recpRecv, device.UserID)
-			if hasReceiptUpdate && now-start > sm.cfg.CheckReceipt && request.device.IsHuman == true {
-				log.Infof("SyncMng break has receipt traceid:%s user:%s dev:%s now:%d latest:%d recpRecv:%d lastReceipt:%d", request.traceId, request.device.UserID, request.device.ID, now, start, request.marks.recpRecv, lastReceipt)
-				break
-			}
-
-			if sm.cfg.UseEncrypt {
-				if common.IsActualDevice(device.DeviceType) && sm.keyChangeRepo.ExistsKeyChange(request.marks.kcRecv, device.UserID) && now-start > 500 && request.device.IsHuman == true {
-					log.Infof("SyncMng break has key change traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
-					break
-				}
-			}
-
-			if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(request.marks.stdRecv, device.UserID, device.ID) && now-start > 500 && request.device.IsHuman == true {
-				log.Infof("SyncMng break has send to device messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
-				break
-			}
-
-			//if sm.cfg.SendMemberEvent == false {
-			if sm.presenceStreamRepo.ExistsPresence(request.device.UserID, request.marks.preRecv) && now-start > 500 && request.device.IsHuman == true {
-				log.Infof("SyncMng break has presence messages traceid:%s user:%s dev:%s now:%d latest:%d ", request.traceId, request.device.UserID, request.device.ID, now, start)
-				break
-			}
-			//}
 		}
 	}
 
-	var res *syncapitypes.Response
-	if request.ready == false || request.remoteReady == false {
-		res = syncapitypes.NewResponse(0)
-		res.NextBatch = request.token
-		now := time.Now().UnixNano() / 1000000
-		if sm.isFullSync(request) && request.device.IsHuman == true {
-			log.Errorf("SyncMng OnSyncRequest still not ready failed traceid:%s user:%s dev:%s last:%d spend:%d ms errcode:%d", request.traceId, request.device.UserID, device.ID, lastPos, now-start, http.StatusServiceUnavailable)
-			return http.StatusServiceUnavailable, res
-		} else {
-			log.Infof("SyncMng OnSyncRequest still not ready succ traceid:%s user:%s dev:%s last:%d spend:%d ms", request.traceId, request.device.UserID, device.ID, lastPos, now-start)
-			return http.StatusOK, res
-		}
-	} else {
-		res = syncapitypes.NewResponse(0)
-		bs := time.Now().UnixNano() / 1000000
-		ok := sm.buildSyncData(request, res)
-		spend := time.Now().UnixNano()/1000000 - bs
-		log.Debugf("traceid:%s buildSyncData spend:%d", request.traceId, spend)
-		if !ok {
-			res = syncapitypes.NewResponse(0)
-			res.NextBatch = request.token
-			now := time.Now().UnixNano() / 1000000
-			if sm.isFullSync(request) && request.device.IsHuman == true {
-				log.Errorf("SyncMng OnSyncRequest failed ready traceid:%s user:%s dev:%s spend:%d ms errcode:%d", request.traceId, request.device.UserID, request.device.ID, now-start, http.StatusServiceUnavailable)
-				return http.StatusServiceUnavailable, res
-			} else {
-				log.Warnf("SyncMng OnSyncRequest succ ready traceid:%s user:%s dev:%s spend:%d ms", request.traceId, request.device.UserID, request.device.ID, now-start)
-				return http.StatusOK, res
-			}
-		}
-
-		if request.device.IsHuman == true {
-			//if sm.cfg.SendMemberEvent == false {
-			sm.addPresence(request, res)
-			//}
-
-			res = sm.addAccountData(request, res)
-
-			if sm.cfg.UseEncrypt {
-				if common.IsActualDevice(device.DeviceType) {
-					sm.addKeyChangeInfo(request, res)
-					sm.addSendToDevice(request, res)
-					sm.addOneTimeKeyCountInfo(request, res)
-				} else {
-					res.SignNum = common.DefaultKeyCount()
-				}
-			} else {
-				if common.IsActualDevice(device.DeviceType) {
-					sm.addSendToDevice(request, res)
-				}
-				res.SignNum = common.DefaultKeyCount()
-			}
-
-			sm.addTyping(request, res, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID))
-		}
-
-		if sm.cfg.UseMessageFilter {
-			res = sm.filterSyncData(request, res)
-		}
-
-		res.NextBatch = request.marks.build()
+	if !req.ready || !req.remoteReady {
+		log.Errorf("SyncMng not ready traceid:%s user:%s dev:%s", req.traceId, req.device.UserID, req.device.ID)
+		return sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
 	}
-	sm.FillSortEventOffset(res, request)
+
+	statusCode, res := sm.BuildResponse(req)
+
 	now := time.Now().UnixNano() / 1000000
-	if sm.isFullSync(request) {
-		bytes, _ := json.Marshal(res.Presence)
-		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s presence:%s", request.traceId, request.device.UserID, request.device.ID, string(bytes))
-		bytes, _ = json.Marshal(res.AccountData)
-		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s account data:%s", request.traceId, request.device.UserID, request.device.ID, string(bytes))
+	if sm.isFullSync(req) {
+		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s presence:%s", req.traceId, req.device.UserID, req.device.ID, res.Presence)
+		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s account data:%s", req.traceId, req.device.UserID, req.device.ID, res.AccountData)
 		spend := now - start
 		if spend > types.CHECK_LOAD_EXCEED_TIME {
-			log.Warnf("SyncMng full sync exceed %d ms traceid:%s user:%s dev:%s spend:%d ms", types.CHECK_LOAD_EXCEED_TIME, request.traceId, request.device.UserID, request.device.ID, spend)
+			log.Warnf("SyncMng full sync exceed %d ms traceid:%s user:%s dev:%s spend:%d ms",
+				types.CHECK_LOAD_EXCEED_TIME, req.traceId, req.device.UserID, req.device.ID, spend)
 		} else {
-			log.Infof("SyncMng full sync succ traceid:%s user:%s dev:%s spend:%d ms", request.traceId, request.device.UserID, request.device.ID, spend)
+			log.Infof("SyncMng full sync succ traceid:%s user:%s dev:%s spend:%d ms",
+				req.traceId, req.device.UserID, req.device.ID, spend)
+		}
+	} else {
+		log.Infof("SyncMng Increment sync response succ traceid:%s user:%s dev:%s spend:%d ms events:%s",
+			req.traceId, req.device.UserID, req.device.ID, now-start, res)
+	}
+
+	return statusCode, res
+}
+
+func (sm *SyncMng) CheckNewEvent(req *request, token map[string]int64, curUtl, start, afterMS int64) bool {
+	device := req.device
+	now := time.Now().UnixNano() / 1000000
+	receiptAfterMS := int64(0)
+	if afterMS != 0 {
+		receiptAfterMS = sm.cfg.CheckReceipt
+	}
+	hasEventUpdate := sm.userTimeLine.ExistsUserEventUpdate(req.marks.utlRecv, token, device.UserID, device.ID, req.traceId)
+	if curUtl != req.marks.utlRecv {
+		log.Warnf("SyncMng ExistsUserEventUpdate update oldUtl:%d to newUtl:%d", req.marks.utlRecv, curUtl)
+		req.marks.utlRecv = curUtl
+	}
+	if hasEventUpdate && now-start > afterMS {
+		log.Infof("SyncMng break has user event traceid:%s user:%s dev:%s now:%d latest:%d utlRecv:%d",
+			req.traceId, req.device.UserID, req.device.ID, now, start, req.marks.utlRecv)
+		return true
+	}
+
+	if sm.clientDataStreamRepo.ExistsAccountDataUpdate(req.marks.accRecv, device.UserID) && now-start > afterMS && req.device.IsHuman {
+		log.Infof("SyncMng break has account data traceid:%s user:%s dev:%s now:%d latest:%d", req.traceId, req.device.UserID, req.device.ID, now, start)
+		return true
+	}
+
+	if sm.typingConsumer.ExistsTyping(device.UserID, device.ID, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)) && now-start > afterMS && req.device.IsHuman {
+		log.Infof("SyncMng break has typing traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
+		return true
+	}
+
+	hasReceiptUpdate, lastReceipt := sm.userTimeLine.ExistsUserReceiptUpdate(req.marks.recpRecv, device.UserID)
+	if hasReceiptUpdate && now-start > receiptAfterMS && req.device.IsHuman {
+		log.Infof("SyncMng break has receipt traceid:%s user:%s dev:%s now:%d latest:%d recpRecv:%d lastReceipt:%d",
+			req.traceId, req.device.UserID, req.device.ID, now, start, req.marks.recpRecv, lastReceipt)
+		return true
+	}
+
+	if sm.cfg.UseEncrypt {
+		if common.IsActualDevice(device.DeviceType) && sm.keyChangeRepo.ExistsKeyChange(req.marks.kcRecv, device.UserID) && now-start > afterMS && req.device.IsHuman {
+			log.Infof("SyncMng break has key change traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
+			return true
+		}
+	}
+
+	if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(req.marks.stdRecv, device.UserID, device.ID) && now-start > afterMS && req.device.IsHuman {
+		log.Infof("SyncMng break has send to device messages traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
+		return true
+	}
+
+	if sm.presenceStreamRepo.ExistsPresence(req.device.UserID, req.marks.preRecv) && now-start > afterMS && req.device.IsHuman {
+		log.Infof("SyncMng break has presence messages traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
+		return true
+	}
+	return false
+}
+
+func (sm *SyncMng) BuildNotReadyResponse(req *request, now int64) (int, *syncapitypes.Response) {
+	res := syncapitypes.NewResponse(0)
+	res.NextBatch = req.token
+	if sm.isFullSync(req) && req.device.IsHuman {
+		log.Errorf("SyncMng request not ready failed traceid:%s user:%s dev:%s latest:%d spend:%d ms errcode:%d remoteFinished:%t remoteReady:%t",
+			req.traceId, req.device.UserID, req.device.ID, req.latest, now-req.start, http.StatusServiceUnavailable, req.remoteFinished, req.remoteReady)
+		return http.StatusServiceUnavailable, res
+	}
+	log.Infof("SyncMng request not ready succ traceid:%s user:%s dev:%s latest:%d spend:%d ms remoteFinished:%t remoteReady:%t",
+		req.traceId, req.device.UserID, req.device.ID, req.latest, now-req.start, req.remoteFinished, req.remoteReady)
+	return http.StatusOK, res
+}
+
+func (sm *SyncMng) BuildResponse(req *request) (int, *syncapitypes.Response) {
+	res := syncapitypes.NewResponse(0)
+	bs := time.Now().UnixNano() / 1000000
+	ok := sm.buildSyncData(req, res)
+	spend := time.Now().UnixNano()/1000000 - bs
+	log.Debugf("traceid:%s buildSyncData spend:%d", req.traceId, spend)
+	if !ok {
+		log.Errorf("SyncMng buildSyncData not ok traceid:%s user:%s dev:%s", req.traceId, req.device.UserID, req.device.ID)
+		return sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
+	}
+
+	if req.device.IsHuman {
+		sm.addPresence(req, res)
+
+		res = sm.addAccountData(req, res)
+
+		if sm.cfg.UseEncrypt {
+			if common.IsActualDevice(req.device.DeviceType) {
+				sm.addKeyChangeInfo(req, res)
+				sm.addSendToDevice(req, res)
+				sm.addOneTimeKeyCountInfo(req, res)
+			} else {
+				res.SignNum = common.DefaultKeyCount()
+			}
+		} else {
+			if common.IsActualDevice(req.device.DeviceType) {
+				sm.addSendToDevice(req, res)
+			}
+			res.SignNum = common.DefaultKeyCount()
 		}
 
-	} else {
-		bytes, _ := json.Marshal(res)
-		log.Infof("SyncMng Increment sync response succ traceid:%s user:%s dev:%s spend:%d ms events:%s", request.traceId, request.device.UserID, request.device.ID, now-start, string(bytes))
+		sm.addTyping(req, res, sm.userTimeLine.GetUserCurRoom(req.device.UserID, req.device.ID))
 	}
+
+	if sm.cfg.UseMessageFilter {
+		res = sm.filterSyncData(req, res)
+	}
+
+	res.NextBatch = req.marks.build()
+
+	sm.FillSortEventOffset(res, req)
 
 	return http.StatusOK, res
 }

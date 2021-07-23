@@ -15,6 +15,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -72,6 +73,7 @@ func (ReqGetSync) Process(consumer interface{}, msg core.Coder, device *authtype
 	req := msg.(*external.GetSyncRequest)
 	traceId, _ := c.idg.Next()
 	httpReq := types.HttpReq{
+		Ctx:         context.TODO(),
 		TimeOut:     req.TimeOut,
 		FullState:   req.FullState,
 		SetPresence: req.SetPresence,

@@ -15,6 +15,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
@@ -76,6 +77,7 @@ func (r ReqGetEvents) Process(consumer interface{}, msg core.Coder, device *auth
 
 	from := req.From
 	httpReq := types.HttpReq{
+		Ctx:         context.TODO(),
 		TimeOut:     req.TimeOut,
 		FullState:   req.FullState,
 		SetPresence: req.SetPresence,

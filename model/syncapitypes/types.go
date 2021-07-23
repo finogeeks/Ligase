@@ -45,16 +45,21 @@ type PrevEventRef struct {
 	PreOffset     int64              `json:"prev_offset"`
 }
 
+type ResponseEvents struct {
+	Events []gomatrixserverlib.ClientEvent `json:"events"`
+}
+
+func (p *ResponseEvents) String() string {
+	v, _ := json.Marshal(p)
+	return string(v)
+}
+
 // Response represents a /sync API response. See https://matrix.org/docs/spec/client_server/r0.2.0.html#get-matrix-client-r0-sync
 type Response struct {
-	NextBatch   string `json:"next_batch"`
-	AccountData struct {
-		Events []gomatrixserverlib.ClientEvent `json:"events"`
-	} `json:"account_data"`
-	Presence struct {
-		Events []gomatrixserverlib.ClientEvent `json:"events"`
-	} `json:"presence"`
-	Rooms struct {
+	NextBatch   string         `json:"next_batch"`
+	AccountData ResponseEvents `json:"account_data"`
+	Presence    ResponseEvents `json:"presence"`
+	Rooms       struct {
 		Join   map[string]JoinResponse   `json:"join"`
 		Invite map[string]InviteResponse `json:"invite"`
 		Leave  map[string]LeaveResponse  `json:"leave"`
@@ -75,6 +80,11 @@ func (p *Response) Encode() ([]byte, error) {
 
 func (p *Response) Decode(input []byte) error {
 	return json.Unmarshal(input, p)
+}
+
+func (p *Response) String() string {
+	v, _ := json.Marshal(p)
+	return string(v)
 }
 
 type SyncServerResponseRooms struct {
