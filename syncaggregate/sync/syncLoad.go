@@ -196,7 +196,11 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 				req.traceId, req.slot, user, req.device.ID)
 			return
 		}
-		go sm.callSyncLoad(req)
+		remoteFinishedCh := make(chan struct{}, 1)
+		go func() {
+			sm.callSyncLoad(req)
+			remoteFinishedCh <- struct{}{}
+		}()
 		if req.device.IsHuman == true {
 			start := time.Now().UnixNano()
 			sm.clientDataStreamRepo.LoadHistory(user, false)
@@ -240,6 +244,8 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 		} else {
 			req.ready = true
 		}
+		<-remoteFinishedCh
+		req.fsm.OnLoadReady()
 	} else {
 		log.Warnf("SyncMng processRequest not load ready traceid:%s slot:%d user:%s device:%s",
 			req.traceId, req.slot, user, req.device.ID)

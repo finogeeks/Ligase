@@ -16,9 +16,11 @@ package consumers
 
 import (
 	"fmt"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type TypingConsumer struct {
@@ -33,6 +35,8 @@ type TypingConsumer struct {
 	calculateDelay int64
 	typingTimeOut  int64
 	delay          int64
+
+	listener *common.Listener
 }
 
 func NewTypingConsumer(
@@ -52,6 +56,7 @@ func NewTypingConsumer(
 	typingConsumer.calculateDelay = calculateDelay
 	typingConsumer.typingTimeOut = typingTimeOut
 	typingConsumer.delay = delay
+	typingConsumer.listener = common.NewListener()
 	return typingConsumer
 }
 
@@ -96,6 +101,7 @@ func (s *TypingConsumer) startProduce() error {
 
 					s.eventTimeLine.Store(roomID, event)
 					s.eventRead.Store(roomID, new(sync.Map))
+					s.broadcastTypingEvent(roomID)
 					s.roomTimeLine.Delete(roomID)
 					s.eventTimer.Store(roomID, time.Now().Unix())
 
@@ -310,4 +316,21 @@ func (s *TypingConsumer) GetTyping(userID, deviceID, curRoomID string) []gomatri
 	}
 
 	return events
+}
+
+func (s *TypingConsumer) RegisterTypingEvent(userID, curRoomID string, cb common.ListenerCallback) {
+	s.listener.Register(userID+"_"+curRoomID, cb)
+}
+
+func (s *TypingConsumer) UnregisterTypingEvent(userID, curRoomID string, cb common.ListenerCallback) {
+	s.listener.Unregister(userID+"_"+curRoomID, cb)
+}
+
+func (s *TypingConsumer) broadcastTypingEvent(roomID string) {
+	if join, ok := s.joined.Load(roomID); ok {
+		for _, user := range join.([]string) {
+			s.listener.Broadcast(user+"_"+roomID, nil)
+			s.listener.Broadcast(user+"_", nil)
+		}
+	}
 }

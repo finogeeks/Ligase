@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
@@ -37,6 +38,8 @@ type PresenceDataStreamRepo struct {
 	cfg          *config.Dendrite
 
 	queryHitCounter mon.LabeledCounter
+
+	listener *common.Listener
 }
 
 func NewPresenceDataStreamRepo(
@@ -45,6 +48,7 @@ func NewPresenceDataStreamRepo(
 	tls := new(PresenceDataStreamRepo)
 	tls.userTimeLine = userTimeLine
 	tls.repo = new(sync.Map)
+	tls.listener = common.NewListener()
 
 	return tls
 }
@@ -83,9 +87,11 @@ func (tl *PresenceDataStreamRepo) AddPresenceDataStream(dataStream *types.Presen
 					if maxPos.(int64) < offset {
 						log.Infof("change user:%s update presence is men user:%s offset:%d", dataStream.UserID, key.(string), offset)
 						tl.maxPosition.Store(key.(string), offset)
+						tl.broadcastPresenceEvent(key.(string), offset)
 					}
 				} else {
 					tl.maxPosition.Store(key.(string), offset)
+					tl.broadcastPresenceEvent(key.(string), offset)
 					log.Infof("change user:%s update presence no mem user:%s offset:%d", dataStream.UserID, key.(string), offset)
 				}
 				return true
@@ -209,4 +215,16 @@ func (tl *PresenceDataStreamRepo) ExistsPresence(userID string, position int64) 
 		return maxPos.(int64) > position
 	}
 	return false
+}
+
+func (tl *PresenceDataStreamRepo) RegisterPresenceEvent(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *PresenceDataStreamRepo) UnregisterPresenceEvent(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *PresenceDataStreamRepo) broadcastPresenceEvent(userID string, offset int64) {
+	tl.listener.Broadcast(userID, offset)
 }

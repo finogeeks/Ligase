@@ -146,6 +146,7 @@ func (oms *offsetMarks) build() string {
 
 type request struct {
 	ctx       context.Context
+	fsm       *SyncFSM
 	device    *authtypes.Device
 	limit     int
 	start     int64
@@ -299,6 +300,7 @@ func (sm *SyncMng) buildRequest(
 	res.hasNewEvent = false
 	res.MaxRoomOffset = make(map[string]int64)
 	res.offsets = make(map[string]int64)
+	res.fsm = newSyncFSM(res, sm)
 	log.Infof("SyncMng buildRequest traceid:%s now:%d diff:%d user:%s device:%s utlRecv:%d request:%v", res.traceId, now, res.latest-now, device.UserID, device.ID, res.marks.utlRecv, res)
 	return res
 }
@@ -308,6 +310,23 @@ func (sm *SyncMng) isFullSync(req *request) bool {
 }
 
 func (sm *SyncMng) OnSyncRequest(
+	httpReq *types.HttpReq,
+	device *authtypes.Device,
+) (int, *syncapitypes.Response) {
+	start := time.Now().UnixNano() / 1000000
+	log.Debugf("SyncMng request start traceid:%s user:%s dev:%s start:%d", httpReq.TraceId, device.UserID, device.ID, start)
+	lastPos := sm.onlineRepo.GetLastPos(device.UserID, device.ID)
+	req := sm.buildRequest(httpReq, device, start, lastPos)
+	sm.onlineRepo.Pet(device.UserID, device.ID, req.marks.utlRecv, req.timeout)
+	sm.userDeviceActiveRepo.UpdateDevActiveTs(device.UserID, device.ID)
+	sm.dispatch(device.UserID, req)
+
+	statusCode, res := req.fsm.Run()
+
+	return statusCode, res
+}
+
+func (sm *SyncMng) OnSyncRequestOld(
 	httpReq *types.HttpReq,
 	device *authtypes.Device,
 ) (int, *syncapitypes.Response) {

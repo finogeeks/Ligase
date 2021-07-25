@@ -61,6 +61,8 @@ type UserTimeLineRepo struct {
 	roomOffsets     sync.Map
 	roomMutex       cas.Mutex
 	queryHitCounter mon.LabeledCounter
+
+	listener *common.Listener
 }
 
 func NewUserTimeLineRepo(
@@ -68,6 +70,7 @@ func NewUserTimeLineRepo(
 ) *UserTimeLineRepo {
 	tls := new(UserTimeLineRepo)
 	tls.Idg = idg
+	tls.listener = common.NewListener()
 	return tls
 }
 
@@ -130,10 +133,12 @@ func (tl *UserTimeLineRepo) SetReceiptLatest(userID string, offset int64) {
 		if lastoffset < offset {
 			log.Debugf("update receipt lastoffset:%d,offset:%d", lastoffset, offset)
 			tl.receiptLatest.Store(userID, offset)
+			tl.broadcastReceiptUpdate(userID, offset)
 		}
 	} else {
 		log.Debugf("update receipt first offset:%d", offset)
 		tl.receiptLatest.Store(userID, offset)
+		tl.broadcastReceiptUpdate(userID, offset)
 	}
 }
 
@@ -194,7 +199,8 @@ func (tl *UserTimeLineRepo) AddP2PEv(ev *gomatrixserverlib.ClientEvent, user str
 			}
 		}
 	}
-	timespend.Logf(types.DB_EXCEED_TIME, "UserTimeLineRepo.AddP2PEv update roomID:%s,eventNID:%d,user:%s,evoffset:%d,membership:%s", ev.RoomID, ev.EventNID, user, ev.EventOffset, membership)
+	timespend.Logf(types.DB_EXCEED_TIME, "UserTimeLineRepo.AddP2PEv update roomID:%s,eventNID:%d,user:%s,evoffset:%d,membership:%s",
+		ev.RoomID, ev.EventNID, user, ev.EventOffset, membership)
 }
 
 func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
@@ -534,10 +540,12 @@ func (tl *UserTimeLineRepo) UpdateRoomOffset(roomID string, offset int64) {
 		if lastoffset < offset {
 			log.Infof("update roomID:%s lastoffset:%d,offset:%d", roomID, lastoffset, offset)
 			tl.roomOffsets.Store(roomID, offset)
+			tl.broadcastJoinRoomOffsetUpdate(roomID, offset)
 		}
 	} else {
 		log.Infof("update roomID:%s first offset:%d ", roomID, offset)
 		tl.roomOffsets.Store(roomID, offset)
+		tl.broadcastJoinRoomOffsetUpdate(roomID, offset)
 	}
 }
 
@@ -775,4 +783,28 @@ func (tl *UserTimeLineRepo) GetUserCurRoom(user, device string) (room string) {
 		room = val.(string)
 	}
 	return
+}
+
+func (tl *UserTimeLineRepo) RegisterJoinRoomOffsetUpdate(roomID string, cb common.ListenerCallback) {
+	tl.listener.Register(roomID, cb)
+}
+
+func (tl *UserTimeLineRepo) UnregisterJoinRoomOffsetUpdate(roomID string, cb common.ListenerCallback) {
+	tl.listener.Unregister(roomID, cb)
+}
+
+func (tl *UserTimeLineRepo) broadcastJoinRoomOffsetUpdate(roomID string, offset int64) {
+	tl.listener.Broadcast(roomID, offset)
+}
+
+func (tl *UserTimeLineRepo) RegisterReceiptUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *UserTimeLineRepo) UnregisterReceiptUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *UserTimeLineRepo) broadcastReceiptUpdate(userID string, offset int64) {
+	tl.listener.Broadcast(userID, offset)
 }
