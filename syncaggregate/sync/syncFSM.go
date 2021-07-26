@@ -267,8 +267,9 @@ func (fsm *SyncFSM) registerDataChan(rooms map[string]int64) {
 	sm := fsm.sm
 	device := fsm.request.device
 	for k := range rooms {
-		sm.userTimeLine.RegisterJoinRoomOffsetUpdate(k, onData(SyncDataUserEvent, k))
+		sm.userTimeLine.RegisterRoomOffsetUpdate(k, onData(SyncDataUserEvent, device.UserID))
 	}
+	sm.userTimeLine.RegisterNewJoinRoomEvent(device.UserID, onData(SyncDataUserEvent, ""))
 	sm.clientDataStreamRepo.RegisterAccountDataUpdate(device.UserID, onData(SyncDataAccData, ""))
 	curRoomID := fsm.sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)
 	sm.typingConsumer.RegisterTypingEvent(device.UserID, curRoomID, onData(SyncDataTyping, curRoomID))
@@ -280,9 +281,12 @@ func (fsm *SyncFSM) registerDataChan(rooms map[string]int64) {
 
 func (fsm *SyncFSM) unregisterDataChan() {
 	for _, v := range fsm.onDatas[SyncDataUserEvent] {
-		fsm.sm.userTimeLine.UnregisterJoinRoomOffsetUpdate(v.id, v)
+		fsm.sm.userTimeLine.UnregisterRoomOffsetUpdate(v.id, v)
 	}
 	device := fsm.request.device
+	if v, ok := fsm.onDatas[SyncDataUserEvent]; ok {
+		fsm.sm.userTimeLine.UnregisterNewJoinRoomEvent(device.UserID, v[0])
+	}
 	if v, ok := fsm.onDatas[SyncDataAccData]; ok {
 		fsm.sm.clientDataStreamRepo.UnregisterAccountDataUpdate(device.UserID, v[0])
 	}
