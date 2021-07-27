@@ -267,16 +267,16 @@ func (fsm *SyncFSM) registerDataChan(rooms map[string]int64) {
 	sm := fsm.sm
 	device := fsm.request.device
 	for k := range rooms {
-		sm.userTimeLine.RegisterRoomOffsetUpdate(k, onData(SyncDataUserEvent, device.UserID))
+		sm.userTimeLine.RegisterRoomOffsetUpdate(k, onData(SyncDataUserEvent, device.UserID+":"+device.ID))
 	}
-	sm.userTimeLine.RegisterNewJoinRoomEvent(device.UserID, onData(SyncDataUserEvent, ""))
-	sm.clientDataStreamRepo.RegisterAccountDataUpdate(device.UserID, onData(SyncDataAccData, ""))
+	sm.userTimeLine.RegisterNewJoinRoomEvent(device.UserID, onData(SyncDataUserEvent, device.ID))
+	sm.clientDataStreamRepo.RegisterAccountDataUpdate(device.UserID, onData(SyncDataAccData, device.ID))
 	curRoomID := fsm.sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)
-	sm.typingConsumer.RegisterTypingEvent(device.UserID, curRoomID, onData(SyncDataTyping, curRoomID))
-	sm.userTimeLine.RegisterReceiptUpdate(device.UserID, onData(SyncDataUserReceipt, ""))
-	sm.keyChangeRepo.RegisterKeyChangeUpdate(device.UserID, onData(SyncDataKeyChange, ""))
+	sm.typingConsumer.RegisterTypingEvent(device.UserID, curRoomID, onData(SyncDataTyping, device.ID+":"+curRoomID))
+	sm.userTimeLine.RegisterReceiptUpdate(device.UserID, onData(SyncDataUserReceipt, device.ID))
+	sm.keyChangeRepo.RegisterKeyChangeUpdate(device.UserID, onData(SyncDataKeyChange, device.ID))
 	sm.stdEventStreamRepo.RegisterSTDEventUpdate(device.UserID, device.ID, onData(SyncDataSTDEvent, ""))
-	sm.presenceStreamRepo.RegisterPresenceEvent(device.UserID, onData(SyncDataPresence, ""))
+	sm.presenceStreamRepo.RegisterPresenceEvent(device.UserID, onData(SyncDataPresence, device.ID))
 }
 
 func (fsm *SyncFSM) unregisterDataChan() {
