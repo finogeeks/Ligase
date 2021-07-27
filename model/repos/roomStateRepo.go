@@ -100,27 +100,7 @@ func (rs *RoomState) onEvent(ev *gomatrixserverlib.ClientEvent, offset int64, ba
 			//rs.creator = con["creator"].(string)
 			rs.createPos = int64(ev.OriginServerTS)
 		case "m.room.member":
-			log.Debugf("before member =-------==-=-=-==-= %s %s", ev.Type, ev.RoomID)
-			for _, v := range rs.visiableTl {
-				log.Debugf("before member =-------==-=-=-==-= room %#v", *v)
-			}
-			rs.userMemberView.Range(func(k, v interface{}) bool {
-				for _, vv := range v.([]*RangeItem) {
-					log.Debugf("before member =-------==-=-=-==-= user %s %#v", k.(string), *vv)
-				}
-				return true
-			})
 			rs.onMembership(ev, offset)
-			log.Debugf("after member =-------==-=-=-==-= %s %s", ev.Type, ev.RoomID)
-			for _, v := range rs.visiableTl {
-				log.Debugf("after member =-------==-=-=-==-= room %#v", *v)
-			}
-			rs.userMemberView.Range(func(k, v interface{}) bool {
-				for _, vv := range v.([]*RangeItem) {
-					log.Debugf("after member =-------==-=-=-==-= user %s %#v", k.(string), *vv)
-				}
-				return true
-			})
 		case "m.room.power_levels":
 			pl := common.PowerLevelContent{}
 			json.Unmarshal(ev.Content, &pl)
@@ -130,27 +110,7 @@ func (rs *RoomState) onEvent(ev *gomatrixserverlib.ClientEvent, offset int64, ba
 			json.Unmarshal(ev.Content, &jr)
 			rs.joinRule = jr.JoinRule
 		case "m.room.history_visibility": //每个房间都有重演，所以不需要保存历史
-			log.Debugf("before room =-------==-=-=-==-= %s %s %s", ev.Type, ev.RoomID, ev.Content)
-			for _, v := range rs.visiableTl {
-				log.Debugf("before room =-------==-=-=-==-= room %#v", *v)
-			}
-			rs.userMemberView.Range(func(k, v interface{}) bool {
-				for _, vv := range v.([]*RangeItem) {
-					log.Debugf("before room =-------==-=-=-==-= user %s %#v", k.(string), *vv)
-				}
-				return true
-			})
 			rs.onHistoryVisibility(ev, offset)
-			log.Debugf("after room =-------==-=-=-==-= %s %s", ev.Type, ev.RoomID)
-			for _, v := range rs.visiableTl {
-				log.Debugf("after room =-------==-=-=-==-= room %#v", *v)
-			}
-			rs.userMemberView.Range(func(k, v interface{}) bool {
-				for _, vv := range v.([]*RangeItem) {
-					log.Debugf("after room =-------==-=-=-==-= user %s %#v", k.(string), *vv)
-				}
-				return true
-			})
 		case "m.room.visibility":
 			vi := common.VisibilityContent{}
 			json.Unmarshal(ev.Content, &vi)
@@ -197,16 +157,6 @@ func (rs *RoomState) onEvent(ev *gomatrixserverlib.ClientEvent, offset int64, ba
 			}
 		}
 	} else {
-		log.Debugf("before =-------==-=-=-==-= %s %s %s", ev.Type, ev.RoomID, ev.Content)
-		for _, v := range rs.visiableTl {
-			log.Debugf("before =-------==-=-=-==-= room %#v", *v)
-		}
-		rs.userMemberView.Range(func(k, v interface{}) bool {
-			for _, vv := range v.([]*RangeItem) {
-				log.Debugf("before =-------==-=-=-==-= user %s %#v", k.(string), *vv)
-			}
-			return true
-		})
 		switch ev.Type {
 		case "m.room.member":
 			member := external.MemberContent{}
@@ -265,16 +215,6 @@ func (rs *RoomState) onEvent(ev *gomatrixserverlib.ClientEvent, offset int64, ba
 				rs.power = &pl
 			}
 		}
-		log.Debugf("after =-------==-=-=-==-= %s %s", ev.Type, ev.RoomID)
-		for _, v := range rs.visiableTl {
-			log.Debugf("after =-------==-=-=-==-= room %#v", *v)
-		}
-		rs.userMemberView.Range(func(k, v interface{}) bool {
-			for _, vv := range v.([]*RangeItem) {
-				log.Debugf("after =-------==-=-=-==-= user %s %#v", k.(string), *vv)
-			}
-			return true
-		})
 	}
 }
 

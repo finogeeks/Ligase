@@ -17,10 +17,11 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+
 	"github.com/finogeeks/ligase/common"
-	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/types"
+	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
 )
 
@@ -89,7 +90,7 @@ func (s *presenceDataStreamStatements) insertPresenceDataStream(
 			Content: content,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "syncapi_presence_data_stream")
 		return id, nil
 	} else {
 		err = s.insertPresenceDataStreamStmt.QueryRowContext(ctx, id, userID, content).Scan(&pos)

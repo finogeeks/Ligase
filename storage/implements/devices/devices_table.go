@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const devicesSchema = `
@@ -164,7 +164,7 @@ func (s *devicesStatements) processRecover(rows *sql.Rows) (exists bool, err err
 		update.IsRecovery = true
 		update.DeviceDBEvents.DeviceInsert = &deviceInsert
 		update.SetUid(int64(common.CalcStringHashCode64(deviceInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "device_devices")
 		if err2 != nil {
 			log.Errorf("update device cache error: %v", err2)
 			if err == nil {
@@ -205,7 +205,7 @@ func (s *devicesStatements) upsertDevice(
 			LastActiveTs: createdTimeMS,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "device_devices")
 	} else {
 		_, err := s.upsertDeviceStmt.ExecContext(ctx, deviceID, userID, createdTimeMS, displayName, deviceType, identifier, createdTimeMS)
 		return err
@@ -237,7 +237,7 @@ func (s *devicesStatements) deleteDevice(
 			CreateTs: createTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "device_devices")
 	} else {
 		_, err := s.deleteDeviceStmt.ExecContext(ctx, deviceID, userID, createTs)
 		return err
@@ -299,7 +299,7 @@ func (s *devicesStatements) updateDeviceActiveTs(
 			LastActiveTs: lastActiveTs,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "device_devices")
 	} else {
 		_, err := s.updateDeviceTsStmt.ExecContext(ctx, deviceID, userID, lastActiveTs)
 		return err

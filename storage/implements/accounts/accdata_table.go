@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const accountDataSchema = `
@@ -119,7 +119,7 @@ func (s *accountDataStatements) processRecover(rows *sql.Rows) (exists bool, err
 		update.IsRecovery = true
 		update.AccountDBEvents.AccountDataInsert = &accountDataInsert
 		update.SetUid(int64(common.CalcStringHashCode64(accountDataInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "account_data")
 		if err2 != nil {
 			log.Errorf("update account data cache error: %v", err2)
 			if err == nil {
@@ -145,7 +145,7 @@ func (s *accountDataStatements) insertAccountData(
 			Content: content,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "account_data")
 	} else {
 		_, err := s.insertAccountDataStmt.ExecContext(ctx, userID, roomID, dataType, content)
 		return err

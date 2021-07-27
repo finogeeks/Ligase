@@ -163,7 +163,7 @@ func (s *membershipStatements) insertMembership(
 			EventNID:      event_nid,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "roomserver_membership")
 		return nil
 	}
 
@@ -207,7 +207,7 @@ func (s *membershipStatements) updateMembership(
 			Version:    version,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "roomserver_membership")
 		return nil
 	}
 
@@ -239,7 +239,7 @@ func (s *membershipStatements) updateMembershipForgetNID(
 			ForgetID: eventNID,
 		}
 		update.SetUid(roomNID)
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "roomserver_membership")
 		return nil
 	}
 

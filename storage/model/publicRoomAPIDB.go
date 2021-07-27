@@ -16,10 +16,11 @@ package model
 
 import (
 	"context"
+
 	"github.com/finogeeks/ligase/common/uid"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/dbtypes"
 	types "github.com/finogeeks/ligase/model/publicroomstypes"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 type PublicRoomAPIDatabase interface {
@@ -31,7 +32,7 @@ type PublicRoomAPIDatabase interface {
 		ctx context.Context, event gomatrixserverlib.ClientEvent,
 	) error
 	OnIncrementJoinedMembersInRoom(
-		ctx context.Context, roomID string,
+		ctx context.Context, roomID string, n int,
 	) error
 	OnDecrementJoinedMembersInRoom(
 		ctx context.Context, roomID string,

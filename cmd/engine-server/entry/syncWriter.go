@@ -28,6 +28,13 @@ func StartSyncWriter(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
+
 	addConsumer(transportMultiplexer, kafka.Consumer.OutputRoomEventSyncWriter, base.Cfg.MultiInstance.Instance)
 
 	transportMultiplexer.PreStart()

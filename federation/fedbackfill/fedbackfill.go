@@ -191,7 +191,7 @@ func (c *FederationBackFill) AddRequest(evs []gomatrixserverlib.Event, limit boo
 	return nil
 }
 
-func (c *FederationBackFill) OnMessage(subject string, partition int32, data []byte) {
+func (c *FederationBackFill) OnMessage(ctx context.Context, subject string, partition int32, data []byte, rawMsg interface{}) {
 	msg := &model.GobMessage{}
 	err := json.Unmarshal(data, msg)
 	if err != nil {

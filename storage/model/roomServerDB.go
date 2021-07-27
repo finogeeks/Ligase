@@ -16,6 +16,7 @@ package model
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
@@ -26,6 +27,8 @@ import (
 
 type RoomServerDatabase interface {
 	//NewDatabase(driver, createAddr, address, topic string, useAsync bool) (interface{}, error)
+	GetDB() *sql.DB
+
 	SetIDGenerator(idg *uid.UidGenerator)
 
 	WriteDBEvent(update *dbtypes.DBEvent) error

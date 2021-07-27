@@ -151,7 +151,7 @@ func (s *RoomEventFeedConsumer) insertTimeline(msgChan chan types.TimeLineItem) 
 	}
 }
 
-func (s *RoomEventFeedConsumer) OnMessage(topic string, partition int32, data []byte) {
+func (s *RoomEventFeedConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	var output roomserverapi.OutputEvent
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("syncapi: message parse failure", log.KeysAndValues{"error", err})

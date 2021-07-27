@@ -22,9 +22,9 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const userInfoSchema = `
@@ -133,7 +133,7 @@ func (s *userInfoStatements) processRecover(rows *sql.Rows) (exists bool, err er
 		update.IsRecovery = true
 		update.AccountDBEvents.UserInfoInsert = &ui
 		update.SetUid(int64(common.CalcStringHashCode64(ui.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "account_user_info")
 		if err2 != nil {
 			log.Errorf("update user_info cache error: %v", err2)
 			if err == nil {
@@ -162,7 +162,7 @@ func (s *userInfoStatements) upsertUserInfo(
 			State:     state,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "account_user_info")
 	}
 
 	_, err := s.upsertUserInfoStmt.ExecContext(ctx, userID, userName, jobNumber, mobile, landline, email, state)
@@ -186,7 +186,7 @@ func (s *userInfoStatements) initUserInfo(
 			State:     state,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "account_user_info")
 	}
 
 	_, err := s.initUserInfoStmt.ExecContext(ctx, userID, userName, jobNumber, mobile, landline, email, state)
@@ -238,7 +238,7 @@ func (s *userInfoStatements) deleteUserInfo(
 			UserID: userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "account_user_info")
 	}
 
 	isDeleted := 1

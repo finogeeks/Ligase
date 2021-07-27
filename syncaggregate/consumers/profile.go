@@ -102,7 +102,7 @@ func (s *ProfileConsumer) Start() error {
 	return nil
 }
 
-func (s *ProfileConsumer) OnMessage(topic string, partition int32, data []byte) {
+func (s *ProfileConsumer) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	var output types.ProfileStreamUpdate
 	if err := json.Unmarshal(data, &output); err != nil {
 		log.Errorw("output profile consumer log: message parse failure", log.KeysAndValues{"error", err})
@@ -131,7 +131,7 @@ func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
 		if output.Presence.Presence == "offline" && presence.ServerStatus != "offline" {
 			output.Presence.Presence = presence.ServerStatus
 		}
-		s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
+		s.cache.SetPresencesServerStatus(output.UserID, output.Presence.Presence)
 		return true
 	}
 	//set presence is same to lastPresence, not update presence
@@ -142,18 +142,18 @@ func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
 	if presence.ServerStatus != "offline" && output.Presence.Presence == "offline" {
 		return false
 	}
-	s.cache.SetPresencesServerStatus(output.UserID,output.Presence.Presence)
+	s.cache.SetPresencesServerStatus(output.UserID, output.Presence.Presence)
 	log.Debugf("user:%s server status is:%s set precense from:%s to:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
 	return true
 }
 
 func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
-	log.Debugf("recv Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
+	log.Debugf("recv Profile update, user:%s presence:%v", output.UserID, output.Presence.Presence)
 
 	if !s.checkUpdate(output) {
 		return
 	}
-	log.Infof("do Profile update, user:%s presence:%v", output.UserID,  output.Presence.Presence)
+	log.Infof("do Profile update, user:%s presence:%v", output.UserID, output.Presence.Presence)
 	event := &gomatrixserverlib.ClientEvent{}
 	event.Type = "m.presence"
 	event.Sender = output.UserID
@@ -188,7 +188,7 @@ func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
 			return true
 		})
 	}
-	senderDomain,_ := common.DomainFromID(output.UserID)
+	senderDomain, _ := common.DomainFromID(output.UserID)
 	if common.CheckValidDomain(senderDomain, s.cfg.Matrix.ServerName) && isRelate {
 		fedProfile := types.ProfileContent{
 			UserID:       output.UserID,

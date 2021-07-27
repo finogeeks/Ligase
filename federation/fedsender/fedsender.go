@@ -217,7 +217,7 @@ func (c *FederationSender) AddConsumer(domain string) error {
 	return errors.New("addConsumer can't find transport " + underlying)
 }
 
-func (c *FederationSender) OnMessage(topic string, partition int32, data []byte) {
+func (c *FederationSender) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	ev := new(gomatrixserverlib.Event)
 	if err := json.Unmarshal(data, ev); err != nil {
 		log.Errorf("fed-sender: message parse failure err:%v", err)

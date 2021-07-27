@@ -130,13 +130,26 @@ func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
 		return
 	}
 	if spend > types.DB_EXCEED_TIME {
-		log.Warnf("load db exceed %d ms RoomHistoryTimeLineRepo.loadHistory finished room:%s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
+		log.Warnf("load db exceed %d ms RoomHistoryTimeLineRepo.loadHistory finished room:%s evs:%d spend:%d ms", types.DB_EXCEED_TIME, roomID, len(evs), spend)
 	} else {
 		log.Debugf("load db succ RoomHistoryTimeLineRepo.loadHistory finished room:%s spend:%d ms", roomID, spend)
+	}
+	length := len(evs)
+	for i := 0; i < length/2; i++ {
+		ev := evs[i]
+		evs[i] = evs[length-1-i]
+		evs[length-1-i] = ev
+
+		off := offsets[i]
+		offsets[i] = offsets[length-1-i]
+		offsets[length-1-i] = off
 	}
 
 	for idx := len(evs) - 1; idx >= 0; idx-- {
 		tl.AddEv(evs[idx], offsets[idx], false)
+	}
+	if len(evs) == 0 {
+		tl.repo.setDefault(roomID)
 	}
 
 	tl.ready.Store(roomID, true)

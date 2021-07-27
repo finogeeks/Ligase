@@ -120,7 +120,7 @@ func (p *GetMissingEventsProcessor) push(info model.GetMissingEventsInfo) {
 	return
 }
 
-func (p *GetMissingEventsProcessor) OnMessage(topic string, partition int32, data []byte) {
+func (p *GetMissingEventsProcessor) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	var info model.GetMissingEventsInfo
 	json.Unmarshal(data, &info)
 	p.db.InsertMissingEvents(context.TODO(), info.RoomID, info.EventID, info.Limit)

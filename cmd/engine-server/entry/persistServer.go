@@ -18,6 +18,7 @@ import (
 	"github.com/finogeeks/ligase/cachewriter"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
+	"github.com/finogeeks/ligase/dbupdates"
 	"github.com/finogeeks/ligase/dbwriter"
 )
 
@@ -32,4 +33,7 @@ func StartPersistServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	cachewriter.SetupCacheWriterComponent(base)
 	dbwriter.SetupDBWriterComponent(base)
+
+	dbupdates.SetupDBUpdateComponent(base.Cfg)
+	dbupdates.SetupCacheUpdateComponent(base.Cfg)
 }

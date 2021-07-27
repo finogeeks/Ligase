@@ -67,7 +67,7 @@ func (c *FederationDispatch) SetRepo(repo *repos.RoomServerCurStateRepo) {
 	c.Repo = repo
 }
 
-func (c *FederationDispatch) OnMessage(topic string, partition int32, data []byte) {
+func (c *FederationDispatch) OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{}) {
 	log.Infof("fed-dispatch received data topic:%s, data:%s", topic, string(data))
 	var output gomatrixserverlib.Event
 	if err := json.Unmarshal(data, &output); err != nil {

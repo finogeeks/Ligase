@@ -125,7 +125,7 @@ func (s *stdEventsStatements) insertStdEvent(
 			Identifier:   identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(targetUID)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "syncapi_send_to_device")
 		return nil
 	} else {
 		_, err = s.insertStdEventStmt.ExecContext(
@@ -240,7 +240,7 @@ func (s *stdEventsStatements) deleteStdEvent(
 			TargetUID:    userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "syncapi_send_to_device")
 	} else {
 		stmt := s.deleteStdEventStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID, id)
@@ -271,7 +271,7 @@ func (s *stdEventsStatements) deleteMacStdEvent(
 			TargetUID:    userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "syncapi_send_to_device")
 	} else {
 		stmt := s.deleteMacStdEventStmt
 		_, err := stmt.ExecContext(ctx, userID, identifier, deviceID)
@@ -301,7 +301,7 @@ func (s *stdEventsStatements) deleteDeviceStdEvent(
 			TargetUID:    userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "syncapi_send_to_device")
 	} else {
 		stmt := s.deleteDeviceStdEventStmt
 		_, err := stmt.ExecContext(ctx, userID, deviceID)

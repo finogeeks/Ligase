@@ -19,8 +19,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const presenceSchema = `
@@ -103,7 +103,7 @@ func (s *presencesStatements) processRecover(rows *sql.Rows) (exists bool, err e
 		update.IsRecovery = true
 		update.PresenceDBEvents.PresencesInsert = &presencesInsert
 		update.SetUid(int64(common.CalcStringHashCode64(presencesInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "presence_presences")
 		if err2 != nil {
 			log.Errorf("update presence cache error: %v", err2)
 			if err == nil {
@@ -129,7 +129,7 @@ func (s *presencesStatements) upsertPresences(
 			ExtStatusMsg: extStatusMsg,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "presence_presences")
 	} else {
 		_, err := s.upsertPresencesStmt.ExecContext(ctx, userID, status, statusMsg, extStatusMsg)
 		return err

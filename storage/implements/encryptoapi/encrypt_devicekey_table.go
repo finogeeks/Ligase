@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const deviceKeySchema = `
@@ -128,7 +128,7 @@ func (s *deviceKeyStatements) processRecover(rows *sql.Rows) (exists bool, err e
 		update.IsRecovery = true
 		update.E2EDBEvents.KeyInsert = &keyInsert
 		update.SetUid(int64(common.CalcStringHashCode64(keyInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "encrypt_device_key")
 		if err2 != nil {
 			log.Errorf("update deviceKey cache error: %v", err2)
 			if err == nil {
@@ -158,7 +158,7 @@ func (s *deviceKeyStatements) insertDeviceKey(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_device_key")
 	} else {
 		stmt := s.insertDeviceKeyStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID, keyInfo, algorithm, signature, identifier)
@@ -188,7 +188,7 @@ func (s *deviceKeyStatements) deleteDeviceKey(
 			UserID:   userID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_device_key")
 	} else {
 		stmt := s.deleteDeviceKeyStmt
 		_, err := stmt.ExecContext(ctx, deviceID, userID)
@@ -219,7 +219,7 @@ func (s *deviceKeyStatements) deleteMacDeviceKey(
 			Identifier: identifier,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "encrypt_device_key")
 	} else {
 		stmt := s.deleteMacDeviceKeyStmt
 		_, err := stmt.ExecContext(ctx, userID, identifier, deviceID)

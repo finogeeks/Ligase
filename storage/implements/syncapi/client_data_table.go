@@ -94,7 +94,7 @@ func (s *clientDataStreamStatements) insertClientDataStream(
 			StreamType: streamType,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "syncapi_client_data_stream")
 		return id, nil
 	} else {
 		err = s.insertClientDataStreamStmt.QueryRowContext(ctx, id, userID, roomID, dataType, streamType).Scan(&pos)

@@ -15,6 +15,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"log"
 	"sync"
@@ -29,6 +30,7 @@ type IChannel interface {
 	SetDir(dir int)
 	GetDir() int
 	SetHandler(handler IChannelConsumer)
+	Commit(rawMsg []interface{}) error
 
 	Send(topic string, partition int32, keys, bytes []byte) error
 	SendAndRecv(topic string, partition int32, keys, bytes []byte) error
@@ -42,7 +44,7 @@ type IChannel interface {
 }
 
 type IChannelConsumer interface {
-	OnMessage(topic string, partition int32, data []byte)
+	OnMessage(ctx context.Context, topic string, partition int32, data []byte, rawMsg interface{})
 }
 
 const CHANNEL_PUB = 0

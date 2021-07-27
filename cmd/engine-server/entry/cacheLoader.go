@@ -27,6 +27,13 @@ func StartCacheLoader(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	addProducer(transportMultiplexer, kafka.Producer.DBUpdates)
 
+	for _, v := range dbUpdateProducerName {
+		dbUpdates := kafka.Producer.DBUpdates
+		dbUpdates.Topic = dbUpdates.Topic + "_" + v
+		dbUpdates.Name = dbUpdates.Name + "_" + v
+		addProducer(transportMultiplexer, dbUpdates)
+	}
+
 	transportMultiplexer.PreStart()
 	transportMultiplexer.Start()
 

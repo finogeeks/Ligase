@@ -89,7 +89,7 @@ func (s *roomAliasesStatements) insertRoomAlias(
 			RoomID: roomID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(alias)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "roomserver_room_aliases")
 		return nil
 	}
 
@@ -146,7 +146,7 @@ func (s *roomAliasesStatements) deleteRoomAlias(
 			Alias: alias,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(alias)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "roomserver_room_aliases")
 		return nil
 	}
 

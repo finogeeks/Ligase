@@ -255,7 +255,7 @@ func (s *currentRoomStateStatements) upsertRoomState(
 			AddPos:        addedAt,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(event.RoomID)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "syncapi_current_room_state")
 		return nil
 	}
 
@@ -327,7 +327,7 @@ func (s *currentRoomStateStatements) upsertRoomStateRaw2(
 		AddPos:        addedAt,
 	}
 	update.SetUid(int64(common.CalcStringHashCode64(roomId)))
-	s.db.WriteDBEvent(&update)
+	s.db.WriteDBEventWithTbl(&update, "syncapi_current_room_state")
 	return nil
 }
 

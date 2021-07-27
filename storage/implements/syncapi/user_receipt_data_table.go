@@ -79,7 +79,7 @@ func (s *userReceiptDataStatements) insertUserReceiptData(
 			EvtOffset: evtOffset,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		s.db.WriteDBEvent(&update)
+		s.db.WriteDBEventWithTbl(&update, "syncapi_user_receipt_data")
 		return nil
 	} else {
 		_, err = s.insertUserReceiptDataStmt.ExecContext(ctx, evtOffset, roomID, userID, content)

@@ -22,8 +22,8 @@ import (
 	"database/sql"
 
 	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/dbtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 const filterSchema = `
@@ -109,7 +109,7 @@ func (s *filterStatements) processRecover(rows *sql.Rows) (exists bool, err erro
 		update.IsRecovery = true
 		update.AccountDBEvents.FilterInsert = &filterInsert
 		update.SetUid(int64(common.CalcStringHashCode64(filterInsert.UserID)))
-		err2 := s.db.WriteDBEvent(&update)
+		err2 := s.db.WriteDBEventWithTbl(&update, "account_filter")
 		if err2 != nil {
 			log.Errorf("update filter cache error: %v", err2)
 			if err == nil {
@@ -134,7 +134,7 @@ func (s *filterStatements) insertFilter(
 			FilterID: filterID,
 		}
 		update.SetUid(int64(common.CalcStringHashCode64(userID)))
-		return s.db.WriteDBEvent(&update)
+		return s.db.WriteDBEventWithTbl(&update, "account_filter")
 	} else {
 		stmt := s.insertFilterStmt
 		_, err := stmt.ExecContext(ctx, filter, filterID, userID)
