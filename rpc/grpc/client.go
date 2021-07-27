@@ -682,6 +682,10 @@ func (r *Client) QueryRoomState(ctx context.Context, req *roomserverapi.QueryRoo
 		Alias:             helper.ToEvent(resp.Alias),
 		Avatar:            helper.ToEvent(resp.Avatar),
 		GuestAccess:       helper.ToEvent(resp.GuestAccess),
+		Join:              make(map[string]*gomatrixserverlib.Event, len(resp.Join)),
+		Leave:             make(map[string]*gomatrixserverlib.Event, len(resp.Leave)),
+		Invite:            make(map[string]*gomatrixserverlib.Event, len(resp.Invite)),
+		ThirdInvite:       make(map[string]*gomatrixserverlib.Event, len(resp.ThirdInvite)),
 	}
 	for k, v := range resp.Join {
 		result.Join[k] = helper.ToEvent(v)
