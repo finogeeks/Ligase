@@ -134,6 +134,9 @@ func (s *Server) QueryRoomState(ctx context.Context, req *pb.QueryRoomStateReq) 
 		Alias:             helper.ToPBEvent(response.Alias),
 		Avatar:            helper.ToPBEvent(response.Avatar),
 		GuestAccess:       helper.ToPBEvent(response.GuestAccess),
+		Join:              make(map[string]*pb.Event, len(response.Join)),
+		Leave:             make(map[string]*pb.Event, len(response.Leave)),
+		Invite:            make(map[string]*pb.Event, len(response.Invite)),
 	}
 	for k, v := range response.Join {
 		result.Join[k] = helper.ToPBEvent(v)

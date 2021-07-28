@@ -72,11 +72,6 @@ func Entry() {
 
 	handleSignal()
 
-	log.Infof("-------------------------------------")
-	log.Infof("Server build:%s", BUILD)
-	log.Infof("Server version:%s", VERSION)
-	log.Infof("-------------------------------------")
-
 	startGCDebugger(cfg.GcTimer)
 	startFedMonolith()
 

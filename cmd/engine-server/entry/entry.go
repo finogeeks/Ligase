@@ -415,11 +415,6 @@ func Entry() {
 	base.APIMux.NotFoundHandler = http.HandlerFunc(myNotFound)
 	defer base.Close() // nolint: errcheck
 
-	log.Infof("-------------------------------------")
-	log.Infof("Server build:%s", BUILD)
-	log.Infof("Server version:%s", VERSION)
-	log.Infof("-------------------------------------")
-
 	if len(cfg.Log.Files) == 0 {
 		log.Warn("Lack of log files")
 	} else if cfg.Log.RedirectStderr {
