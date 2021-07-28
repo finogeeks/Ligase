@@ -24,9 +24,25 @@ func GetInstance() Monitor {
 	return instance
 }
 
+// filter old mon data
+func filter(metric string) bool {
+	if metric == "dendrite_dbop_counter" ||
+		metric == "syncaggreate_query_hit" ||
+		metric == "syncserver_query_hit" ||
+		metric == "roomserver_query_hit" ||
+		metric == "room_event_process_duration_millisecond" ||
+		metric == "dendrite_kafka_counter" ||
+		metric == "syncwriter_query_hit" ||
+		metric == "storage_query_duration_millisecond" {
+		return false
+	}
+	return true
+}
+
 func newPrometheus() *promMonitor {
 	e := os.Getenv("ENABLE_MONITOR")
 	if "true" == e {
+		log.Println("enabled monitor")
 		port := ":9092"
 		path := "/metrics"
 
@@ -56,7 +72,7 @@ func newPrometheus() *promMonitor {
 }
 
 func (prom *promMonitor) NewCounter(metirc string) Counter {
-	if prom.enable {
+	if prom.enable && filter(metirc) {
 		cnt := prometheus.NewCounter(prometheus.CounterOpts{
 			Name: metirc,
 			Help: "nothing",
@@ -70,7 +86,7 @@ func (prom *promMonitor) NewCounter(metirc string) Counter {
 }
 
 func (prom *promMonitor) NewLabeledCounter(metirc string, labelNames []string) LabeledCounter {
-	if prom.enable {
+	if prom.enable && filter(metirc) {
 		cnt := prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: metirc,
@@ -87,7 +103,7 @@ func (prom *promMonitor) NewLabeledCounter(metirc string, labelNames []string) L
 }
 
 func (prom *promMonitor) NewGauge(metirc string) Gauge {
-	if prom.enable {
+	if prom.enable && filter(metirc){
 		gau := prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: metirc,
 			Help: "nothing",
@@ -101,7 +117,7 @@ func (prom *promMonitor) NewGauge(metirc string) Gauge {
 }
 
 func (prom *promMonitor) NewLabeledGauge(metirc string, labelNames []string) LabeledGauge {
-	if prom.enable {
+	if prom.enable && filter(metirc) {
 		gau := prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: metirc,
@@ -118,7 +134,7 @@ func (prom *promMonitor) NewLabeledGauge(metirc string, labelNames []string) Lab
 }
 
 func (prom *promMonitor) NewSummary(metirc string, quantile map[float64]float64) Summary {
-	if prom.enable {
+	if prom.enable && filter(metirc) {
 		sum := prometheus.NewSummary(prometheus.SummaryOpts{
 			Name:       metirc,
 			Help:       "nothing",
@@ -133,7 +149,7 @@ func (prom *promMonitor) NewSummary(metirc string, quantile map[float64]float64)
 }
 
 func (prom *promMonitor) NewLabeledSummary(metirc string, labelNames []string, quantile map[float64]float64) LabeledSummary {
-	if prom.enable {
+	if prom.enable && filter(metirc) {
 		sum := prometheus.NewSummaryVec(
 			prometheus.SummaryOpts{
 				Name:       metirc,
@@ -151,7 +167,7 @@ func (prom *promMonitor) NewLabeledSummary(metirc string, labelNames []string, q
 }
 
 func (prom *promMonitor) NewHistogram(metirc string, buckets []float64) Histogram {
-	if prom.enable {
+	if prom.enable && filter(metirc) {
 		his := prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    metirc,
 			Help:    "nothing",
@@ -166,7 +182,7 @@ func (prom *promMonitor) NewHistogram(metirc string, buckets []float64) Histogra
 }
 
 func (prom *promMonitor) NewLabeledHistogram(metirc string, labelNames []string, buckets []float64) LabeledHistogram {
-	if prom.enable {
+	if prom.enable && filter(metirc) {
 		his := prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Name:    metirc,

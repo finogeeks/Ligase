@@ -16,6 +16,7 @@ package routing
 
 import (
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 	"strconv"
 	"time"
@@ -143,13 +144,14 @@ func (w *HttpProcessor) Route(path, metricsName, topic string, msgType int32, ap
 				start := time.Now()
 				response := handler(req, nil)
 
-				duration := float64(time.Since(start)) / float64(time.Millisecond)
+				duration := float64(time.Since(start).Milliseconds())
 				code := strconv.Itoa(response.Code)
-				if req.Method != "OPTION" {
+				/*if req.Method != "OPTION" {
 					w.histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)
 					// w.counter.WithLabelValues(req.Method, metricsName, code).Inc()
-				}
-
+				}*/
+				localExporter.ExportProxyHttpRequest(req.Method, metricsName, code)
+				localExporter.ExportProxyHttpDurationRequest(req.Method, metricsName, code, duration)
 				return response
 			}),
 		).Methods(methods...)
@@ -193,12 +195,14 @@ func (w *HttpProcessor) Route(path, metricsName, topic string, msgType int32, ap
 					true,
 				)
 
-				duration := float64(time.Since(start)) / float64(time.Millisecond)
+				duration := float64(time.Since(start).Milliseconds())
 				code := strconv.Itoa(httpCode)
-				if req.Method != "OPTION" {
+				/*if req.Method != "OPTION" {
 					w.histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)
 					// w.counter.WithLabelValues(req.Method, metricsName, code).Inc()
-				}
+				}*/
+				localExporter.ExportProxyHttpRequest(req.Method, metricsName, code)
+				localExporter.ExportProxyHttpDurationRequest(req.Method, metricsName, code, duration)
 			}),
 		).Methods(methods...)
 	} else if apiType == apiconsumer.APITypeUpload {

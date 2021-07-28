@@ -17,6 +17,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 	"strconv"
 	"strings"
@@ -376,9 +377,7 @@ func (sm *SyncMng) OnSyncRequestOld(
 		log.Errorf("SyncMng not ready traceid:%s user:%s dev:%s", req.traceId, req.device.UserID, req.device.ID)
 		return sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
 	}
-
 	statusCode, res := sm.BuildResponse(req)
-
 	now := time.Now().UnixNano() / 1000000
 	if sm.isFullSync(req) {
 		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s presence:%s", req.traceId, req.device.UserID, req.device.ID, res.Presence)
@@ -395,7 +394,6 @@ func (sm *SyncMng) OnSyncRequestOld(
 		log.Infof("SyncMng Increment sync response succ traceid:%s user:%s dev:%s spend:%d ms events:%s",
 			req.traceId, req.device.UserID, req.device.ID, now-start, res)
 	}
-
 	return statusCode, res
 }
 
@@ -467,14 +465,19 @@ func (sm *SyncMng) BuildNotReadyResponse(req *request, now int64) (int, *syncapi
 }
 
 func (sm *SyncMng) BuildResponse(req *request) (int, *syncapitypes.Response) {
+	statusCode := http.StatusOK
 	res := syncapitypes.NewResponse(0)
-	bs := time.Now().UnixNano() / 1000000
+	monStart := time.Now().UnixNano()/1e6
 	ok := sm.buildSyncData(req, res)
-	spend := time.Now().UnixNano()/1000000 - bs
+	spend := float64(time.Now().UnixNano()/1e6-monStart)
+	defer func(){
+		localExporter.ExportSyncAggHttpDurationRequest("GET", "sync", strconv.Itoa(statusCode), spend)
+	}()
 	log.Debugf("traceid:%s buildSyncData spend:%d", req.traceId, spend)
 	if !ok {
 		log.Errorf("SyncMng buildSyncData not ok traceid:%s user:%s dev:%s", req.traceId, req.device.UserID, req.device.ID)
-		return sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
+		statusCode, res = sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
+		return statusCode, res
 	}
 
 	if req.device.IsHuman {
