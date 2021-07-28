@@ -17,7 +17,10 @@ package sync
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"math"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -526,6 +529,11 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			}
 		}
 	}
+	resCode := http.StatusOK
+	if !finished {
+		resCode = http.StatusServiceUnavailable
+	}
+	localExporter.ExportSyncAggHandleDurationRequest(localExporter.METHOD_RPC, "buildSyncData", strconv.Itoa(resCode), float64(spend))
 	if finished {
 		if res.Rooms.Join == nil {
 			res.Rooms.Join = make(map[string]syncapitypes.JoinResponse)

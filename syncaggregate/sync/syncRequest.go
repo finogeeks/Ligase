@@ -17,6 +17,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 	"strconv"
 	"strings"
@@ -389,7 +390,12 @@ func (sm *SyncMng) OnSyncRequest(
 		}
 		//}
 	}
-
+	resCode := http.StatusOK
+	monStart := time.Now()
+	defer func(){
+		duration := float64(time.Since(monStart).Milliseconds())
+		localExporter.ExportSyncAggHttpDurationRequest("GET", "sync", strconv.Itoa(resCode), duration)
+	}()
 	var res *syncapitypes.Response
 	if request.ready == false || request.remoteReady == false {
 		res = syncapitypes.NewResponse(0)
@@ -397,6 +403,7 @@ func (sm *SyncMng) OnSyncRequest(
 		now := time.Now().UnixNano() / 1000000
 		if sm.isFullSync(request) && request.device.IsHuman == true {
 			log.Errorf("SyncMng OnSyncRequest still not ready failed traceid:%s user:%s dev:%s last:%d spend:%d ms errcode:%d", request.traceId, request.device.UserID, device.ID, lastPos, now-start, http.StatusServiceUnavailable)
+			resCode = http.StatusServiceUnavailable
 			return http.StatusServiceUnavailable, res
 		} else {
 			log.Infof("SyncMng OnSyncRequest still not ready succ traceid:%s user:%s dev:%s last:%d spend:%d ms", request.traceId, request.device.UserID, device.ID, lastPos, now-start)
@@ -414,6 +421,7 @@ func (sm *SyncMng) OnSyncRequest(
 			now := time.Now().UnixNano() / 1000000
 			if sm.isFullSync(request) && request.device.IsHuman == true {
 				log.Errorf("SyncMng OnSyncRequest failed ready traceid:%s user:%s dev:%s spend:%d ms errcode:%d", request.traceId, request.device.UserID, request.device.ID, now-start, http.StatusServiceUnavailable)
+				resCode = http.StatusServiceUnavailable
 				return http.StatusServiceUnavailable, res
 			} else {
 				log.Warnf("SyncMng OnSyncRequest succ ready traceid:%s user:%s dev:%s spend:%d ms", request.traceId, request.device.UserID, request.device.ID, now-start)

@@ -17,6 +17,8 @@ package consumers
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -219,6 +221,7 @@ func (s *PushConsumer) PrintStaticData(static *push.StaticObj) {
 	static.Percent.RuleCache = fmt.Sprintf("%.2f", float64(cacheAvg)/float64(static.TotalSpend)*100) + "%"
 	static.Percent.RuleHandle = fmt.Sprintf("%.2f", float64(ruleAvg)/float64(static.TotalSpend)*100) + "%"
 	static.Percent.SenderCache = fmt.Sprintf("%.2f", float64(static.SenderCache)/float64(static.TotalSpend)*100) + "%"
+	localExporter.ExportSyncAggHandleDurationRequest(localExporter.METHOD_GENERAL, "handlePush", strconv.Itoa(http.StatusOK), float64(static.TotalSpend/1000))
 	log.Infof("traceid:%s PushConsumer static:%+v", static.TraceId, static)
 }
 
