@@ -1,7 +1,7 @@
 #!/bin/sh
 export LOG_DIR=/opt/ligase/log
 export ENABLE_MONITOR=true
-export MONITOR_PORT=7000
+export MONITOR_PORT=9092
 
 if [ "$SERVICE_NAME" = "front" ]
 then
