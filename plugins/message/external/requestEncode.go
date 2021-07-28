@@ -1891,3 +1891,11 @@ func (externalReq *GetOnlineCountRequest) Encode() ([]byte, error) {
 func (externalReq *GetOnlineUsersRequest) Encode() ([]byte, error) {
 	return json.Marshal(externalReq)
 }
+
+func (externalReq *GetSyncServerMetricsRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}
+
+func (externalReq *SyncServerMetrics) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}

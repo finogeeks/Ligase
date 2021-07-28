@@ -21,6 +21,7 @@ import (
 	"context"
 	jsonRaw "encoding/json"
 	"fmt"
+	"github.com/finogeeks/ligase/common/exporter"
 	"time"
 
 	"github.com/finogeeks/ligase/common"
@@ -346,6 +347,7 @@ func (s *RoomEventFeedConsumer) parseRelatesContent(redactEv gomatrixserverlib.C
 }
 
 func (s *RoomEventFeedConsumer) processMessageEv(ev *gomatrixserverlib.ClientEvent) {
+	exporter.SyncServerMsgInc(ev.RoomID)
 	var content map[string]interface{}
 	err := json.Unmarshal(ev.Content, &content)
 	if err != nil {

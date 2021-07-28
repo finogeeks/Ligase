@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
@@ -271,6 +272,7 @@ func listenHTTPS(cmd *serverCmdPar) {
 }
 
 func logSysPorformance(cmd *serverCmdPar) {
+	log.Info("sys porformance enabled")
 	go func() {
 		name := *cmd.procName
 		name = strings.Replace(name, "-", "_", -1)
@@ -414,7 +416,7 @@ func Entry() {
 	base := basecomponent.NewBaseDendrite(cfg, *cmdLine.procName)
 	base.APIMux.NotFoundHandler = http.HandlerFunc(myNotFound)
 	defer base.Close() // nolint: errcheck
-
+	localExporter.InitMon()
 	if len(cfg.Log.Files) == 0 {
 		log.Warn("Lack of log files")
 	} else if cfg.Log.RedirectStderr {

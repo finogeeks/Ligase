@@ -17,6 +17,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 	"strconv"
 	"strings"
@@ -471,10 +472,15 @@ func (sm *SyncMng) BuildResponse(req *request) (int, *syncapitypes.Response) {
 	bs := time.Now().UnixNano() / 1000000
 	ok := sm.buildSyncData(req, res)
 	spend := time.Now().UnixNano()/1000000 - bs
+	resCode := http.StatusOK
+	defer func() {
+		localExporter.ExportSyncAggHttpDurationRequest("GET", "sync", strconv.Itoa(resCode), float64(spend))
+	}()
 	log.Debugf("traceid:%s buildSyncData spend:%d", req.traceId, spend)
 	if !ok {
 		log.Errorf("SyncMng buildSyncData not ok traceid:%s user:%s dev:%s", req.traceId, req.device.UserID, req.device.ID)
-		return sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
+		resCode, res = sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
+		return resCode, res
 	}
 
 	if req.device.IsHuman {

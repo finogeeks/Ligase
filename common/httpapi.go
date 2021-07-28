@@ -15,6 +15,7 @@
 package common
 
 import (
+	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -22,15 +23,15 @@ import (
 	"strings"
 	"time"
 
-	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/jsonerror"
+	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/model/authtypes"
-	"github.com/finogeeks/ligase/model/service"
+	hm "github.com/finogeeks/ligase/skunkworks/monitor/go-client/httpmonitor"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 
@@ -80,11 +81,12 @@ func MakeAuthAPI(
 
 		duration := float64(time.Since(start)) / float64(time.Millisecond)
 		code := strconv.Itoa(res.Code)
-		if req.Method != "OPTION" {
+		/*if req.Method != "OPTION" {
 			histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)
 			// counter.WithLabelValues(req.Method, metricsName, code).Inc()
-		}
-
+		}*/
+		localExporter.ExportProxyHttpRequest(req.Method, metricsName, code)
+		localExporter.ExportProxyHttpDurationRequest(req.Method, metricsName, code, duration)
 		return res
 	}
 	return MakeExternalAPI(metricsName, h)
@@ -210,11 +212,12 @@ func MakeFedAPI(
 
 		duration := float64(time.Since(start)) / float64(time.Millisecond)
 		code := strconv.Itoa(res.Code)
-		if req.Method != "OPTION" {
+		/*if req.Method != "OPTION" {
 			histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)
 			// counter.WithLabelValues(req.Method, metricsName, code).Inc()
-		}
-
+		}*/
+		localExporter.ExportProxyHttpRequest(req.Method, metricsName, code)
+		localExporter.ExportProxyHttpDurationRequest(req.Method, metricsName, code, duration)
 		return res
 	}
 	return MakeExternalAPI(metricsName, h)
