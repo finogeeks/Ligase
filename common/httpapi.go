@@ -79,7 +79,7 @@ func MakeAuthAPI(
 
 		res := f(req, device)
 
-		duration := float64(time.Since(start).Milliseconds())
+		duration := float64(time.Since(start)) / float64(time.Millisecond)
 		code := strconv.Itoa(res.Code)
 		/*if req.Method != "OPTION" {
 			histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)
@@ -210,7 +210,7 @@ func MakeFedAPI(
 		// }
 		res := f(req, fedReq)
 
-		duration := float64(time.Since(start).Milliseconds())
+		duration := float64(time.Since(start)) / float64(time.Millisecond)
 		code := strconv.Itoa(res.Code)
 		/*if req.Method != "OPTION" {
 			histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)

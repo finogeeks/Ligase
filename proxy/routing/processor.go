@@ -144,7 +144,7 @@ func (w *HttpProcessor) Route(path, metricsName, topic string, msgType int32, ap
 				start := time.Now()
 				response := handler(req, nil)
 
-				duration := float64(time.Since(start).Milliseconds())
+				duration := float64(time.Since(start)) / float64(time.Millisecond)
 				code := strconv.Itoa(response.Code)
 				/*if req.Method != "OPTION" {
 					w.histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)
@@ -195,7 +195,7 @@ func (w *HttpProcessor) Route(path, metricsName, topic string, msgType int32, ap
 					true,
 				)
 
-				duration := float64(time.Since(start).Milliseconds())
+				duration := float64(time.Since(start)) / float64(time.Millisecond)
 				code := strconv.Itoa(httpCode)
 				/*if req.Method != "OPTION" {
 					w.histogram.WithLabelValues(req.Method, metricsName, code).Observe(duration)
