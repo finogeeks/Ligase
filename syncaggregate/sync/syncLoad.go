@@ -148,11 +148,13 @@ func (sm *SyncMng) callSyncLoad(req *request) {
 			req.marks.utlRecv = curUtl
 		}
 		if offsets == nil {
-			log.Infof("traceid:%s before full sync load, token info userId:%s device:%s utl:%s", req.traceId, req.device.UserID, req.device.ID, req.marks.utlRecv)
+			log.Infof("traceid:%s before full sync load, token info userId:%s device:%s utl:%s",
+				req.traceId, req.device.UserID, req.device.ID, req.marks.utlRecv)
 			req.isFullSync = true
 		} else {
 			//token offsets is too large
-			//log.Infof("traceid:%s before incream sync load, token info userId:%s device:%s utl:%s offsets:%+v", req.traceId, req.device.UserID, req.device.ID, req.marks.utlRecv, offsets)
+			// log.Infof("traceid:%s before incream sync load, token info userId:%s device:%s utl:%s offsets:%+v",
+			// 	req.traceId, req.device.UserID, req.device.ID, req.marks.utlRecv, offsets)
 			req.offsets = offsets
 			err = sm.buildIncreamSyncRequset(req)
 			if err != nil {
@@ -190,10 +192,15 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 			req.remoteReady = true
 			req.remoteFinished = true
 			req.isFullSync = true
-			log.Infof("SyncMng processRequest return not load traceid:%s slot:%d user:%s device:%s", req.traceId, req.slot, user, req.device.ID)
+			log.Infof("SyncMng processRequest return not load traceid:%s slot:%d user:%s device:%s",
+				req.traceId, req.slot, user, req.device.ID)
 			return
 		}
-		go sm.callSyncLoad(req)
+		remoteFinishedCh := make(chan struct{}, 1)
+		go func() {
+			sm.callSyncLoad(req)
+			remoteFinishedCh <- struct{}{}
+		}()
 		if req.device.IsHuman == true {
 			start := time.Now().UnixNano()
 			sm.clientDataStreamRepo.LoadHistory(user, false)
@@ -237,8 +244,11 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 		} else {
 			req.ready = true
 		}
+		<-remoteFinishedCh
+		req.fsm.OnLoadReady()
 	} else {
-		log.Warnf("SyncMng processRequest not load ready traceid:%s slot:%d user:%s device:%s", req.traceId, req.slot, user, req.device.ID)
+		log.Warnf("SyncMng processRequest not load ready traceid:%s slot:%d user:%s device:%s",
+			req.traceId, req.slot, user, req.device.ID)
 		req.ready = false
 	}
 }
@@ -277,7 +287,8 @@ func (sm *SyncMng) buildLoadRequest(req *request) {
 		}
 		request.JoinedRooms = append(request.JoinedRooms, roomID)
 	}
-	log.Debugf("SyncMng.callSyncLoad remote load request start traceid:%s slot:%d user:%s device:%s utl:%d fullstate:%t joins:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, req.isFullSync, len(req.joinRooms))
+	log.Debugf("SyncMng.callSyncLoad remote load request start traceid:%s slot:%d user:%s device:%s utl:%d fullstate:%t joins:%d",
+		req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, req.isFullSync, len(req.joinRooms))
 	sm.sendSyncLoadReqAndHandle(req, requestMap)
 }
 
@@ -314,11 +325,13 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 			}
 			timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*1000000)
 			defer cancel()
-			log.Debugf("SyncMng.callSyncLoad load traceid:%s slot:%d user %s device %s instance:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, instance)
+			log.Debugf("SyncMng.callSyncLoad load traceid:%s slot:%d user %s device %s instance:%d",
+				req.traceId, req.slot, req.device.UserID, req.device.ID, instance)
 			result, err := sm.rpcCli.SyncLoad(timeoutCtx, syncReq)
 			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {
-				log.Errorf("call rpc for syncServer load traceid:%s slot:%d spend:%d ms user %s device %s topic:%s error %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, types.SyncServerTopicDef, err)
+				log.Errorf("call rpc for syncServer load traceid:%s slot:%d spend:%d ms user %s device %s topic:%s error %v",
+					req.traceId, req.slot, spend, req.device.UserID, req.device.ID, types.SyncServerTopicDef, err)
 				req.remoteReady = false
 				return
 			}
@@ -330,10 +343,12 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 				time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 			}
 			if result.Ready == true {
-				log.Debugf("SyncMng.callSyncLoad traceid:%s slot:%d spend:%d ms user %s device %s instance %d response true", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance)
+				log.Debugf("SyncMng.callSyncLoad traceid:%s slot:%d spend:%d ms user %s device %s instance %d response true",
+					req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance)
 				syncReq.LoadReady = true
 			} else {
-				log.Warnf("SyncMng.callSyncLoad traceid:%s slot:%d spend:%d ms user %s device %s instance %d response false", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance)
+				log.Warnf("SyncMng.callSyncLoad traceid:%s slot:%d spend:%d ms user %s device %s instance %d response false",
+					req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance)
 			}
 		}(ctx, instance, syncReq, req)
 	}
@@ -362,5 +377,6 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 		req.remoteReady = false
 	}
 	es := time.Now().UnixNano() / 1000000
-	log.Infof("SyncLoad.sendSyncLoadReqAndHandle traceid:%s slot:%d user:%s device:%s spend:%d ms remoteReady:%t remoteFinished:%t", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs, req.remoteReady, req.remoteFinished)
+	log.Infof("SyncLoad.sendSyncLoadReqAndHandle traceid:%s slot:%d user:%s device:%s spend:%d ms remoteReady:%t remoteFinished:%t",
+		req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs, req.remoteReady, req.remoteFinished)
 }

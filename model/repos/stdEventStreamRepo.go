@@ -46,6 +46,8 @@ type STDEventStreamRepo struct {
 	mutexes    []sync.Mutex
 
 	queryHitCounter mon.LabeledCounter
+
+	listener *common.Listener
 }
 
 func NewSTDEventStreamRepo(
@@ -63,6 +65,7 @@ func NewSTDEventStreamRepo(
 	tls.delay = delay
 	tls.chanSize = chanSize
 	tls.mutexes = make([]sync.Mutex, chanSize)
+	tls.listener = common.NewListener()
 
 	tls.startFlush()
 	return tls
@@ -136,6 +139,7 @@ func (tl *STDEventStreamRepo) addSTDEventStream(dataStream *types.StdEvent, offs
 
 	if loaded == false {
 		tl.updatedKey.Store(key, true)
+		tl.broadcastSTDEventUpdate(key, stdStream)
 	}
 }
 
@@ -372,4 +376,16 @@ func (tl *STDEventStreamRepo) GetUnReadStreamsFrom(targetUserID, targetDeviceID 
 		resp = append(resp, *feed)
 	}
 	return resp, upper, nil
+}
+
+func (tl *STDEventStreamRepo) RegisterSTDEventUpdate(userID, deviceID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID+":"+deviceID, cb)
+}
+
+func (tl *STDEventStreamRepo) UnregisterSTDEventUpdate(userID, deviceID string, cb common.ListenerCallback) {
+	tl.listener.Unregister(userID+":"+deviceID, cb)
+}
+
+func (tl *STDEventStreamRepo) broadcastSTDEventUpdate(key string, stream *feedstypes.STDEventStream) {
+	tl.listener.Broadcast(key, stream)
 }

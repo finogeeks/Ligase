@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/log"
@@ -33,6 +34,8 @@ type ClientDataStreamRepo struct {
 	loading sync.Map
 
 	queryHitCounter mon.LabeledCounter
+
+	listener *common.Listener
 }
 
 func NewClientDataStreamRepo(
@@ -42,6 +45,7 @@ func NewClientDataStreamRepo(
 ) *ClientDataStreamRepo {
 	tls := new(ClientDataStreamRepo)
 	tls.repo = NewTimeLineRepo(bukSize, 500, true, maxEntries, gcPerNum)
+	tls.listener = common.NewListener()
 
 	return tls
 }
@@ -56,15 +60,17 @@ func (tl *ClientDataStreamRepo) SetMonitor(queryHitCounter mon.LabeledCounter) {
 
 func (tl *ClientDataStreamRepo) AddClientDataStream(dataStream *types.ActDataStreamUpdate, offset int64) {
 	tl.LoadHistory(dataStream.UserID, true)
-	tl.addClientDataStream(dataStream, offset)
+	tl.addClientDataStream(dataStream, offset, true)
 }
 
-func (tl *ClientDataStreamRepo) addClientDataStream(dataStream *types.ActDataStreamUpdate, offset int64) {
+func (tl *ClientDataStreamRepo) addClientDataStream(dataStream *types.ActDataStreamUpdate, offset int64, broadcast bool) {
 	clientDataStream := new(feedstypes.ClientDataStream)
 	clientDataStream.DataStream = dataStream
 	clientDataStream.Offset = offset
 
 	tl.repo.add(dataStream.UserID, clientDataStream)
+
+	tl.BroadcastAccountDataUpdate(dataStream.UserID, clientDataStream)
 }
 
 func (tl *ClientDataStreamRepo) LoadHistory(userID string, sync bool) {
@@ -152,7 +158,7 @@ func (tl *ClientDataStreamRepo) loadHistory(userID string) {
 	if streams != nil {
 		for idx := range streams {
 			empty = false
-			tl.addClientDataStream(&streams[idx], offsets[idx])
+			tl.addClientDataStream(&streams[idx], offsets[idx], false)
 		}
 	}
 
@@ -181,4 +187,16 @@ func (tl *ClientDataStreamRepo) ExistsAccountDataUpdate(position int64, userID s
 	}
 
 	return false
+}
+
+func (tl *ClientDataStreamRepo) RegisterAccountDataUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *ClientDataStreamRepo) UnregisterAccountDataUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Unregister(userID, cb)
+}
+
+func (tl *ClientDataStreamRepo) BroadcastAccountDataUpdate(userID string, val interface{}) {
+	tl.listener.Broadcast(userID, val)
 }

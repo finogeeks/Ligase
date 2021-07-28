@@ -61,6 +61,8 @@ type UserTimeLineRepo struct {
 	roomOffsets     sync.Map
 	roomMutex       cas.Mutex
 	queryHitCounter mon.LabeledCounter
+
+	listener *common.Listener
 }
 
 func NewUserTimeLineRepo(
@@ -68,6 +70,7 @@ func NewUserTimeLineRepo(
 ) *UserTimeLineRepo {
 	tls := new(UserTimeLineRepo)
 	tls.Idg = idg
+	tls.listener = common.NewListener()
 	return tls
 }
 
@@ -130,10 +133,12 @@ func (tl *UserTimeLineRepo) SetReceiptLatest(userID string, offset int64) {
 		if lastoffset < offset {
 			log.Debugf("update receipt lastoffset:%d,offset:%d", lastoffset, offset)
 			tl.receiptLatest.Store(userID, offset)
+			tl.broadcastReceiptUpdate(userID, offset)
 		}
 	} else {
 		log.Debugf("update receipt first offset:%d", offset)
 		tl.receiptLatest.Store(userID, offset)
+		tl.broadcastReceiptUpdate(userID, offset)
 	}
 }
 
@@ -183,6 +188,7 @@ func (tl *UserTimeLineRepo) AddP2PEv(ev *gomatrixserverlib.ClientEvent, user str
 				storeMap(userJoin, ev.RoomID, ev.EventOffset)
 				deleteMap(userInvite, ev.RoomID)
 				deleteMap(userLeave, ev.RoomID)
+				tl.broadcastNewJoinRoomEvent(user)
 			case "leave", "ban":
 				deleteMap(userJoin, ev.RoomID)
 				deleteMap(userInvite, ev.RoomID)
@@ -191,10 +197,12 @@ func (tl *UserTimeLineRepo) AddP2PEv(ev *gomatrixserverlib.ClientEvent, user str
 				deleteMap(userJoin, ev.RoomID)
 				storeMap(userInvite, ev.RoomID, ev.EventOffset)
 				deleteMap(userLeave, ev.RoomID)
+				tl.broadcastNewJoinRoomEvent(user)
 			}
 		}
 	}
-	timespend.Logf(types.DB_EXCEED_TIME, "UserTimeLineRepo.AddP2PEv update roomID:%s,eventNID:%d,user:%s,evoffset:%d,membership:%s", ev.RoomID, ev.EventNID, user, ev.EventOffset, membership)
+	timespend.Logf(types.DB_EXCEED_TIME, "UserTimeLineRepo.AddP2PEv update roomID:%s,eventNID:%d,user:%s,evoffset:%d,membership:%s",
+		ev.RoomID, ev.EventNID, user, ev.EventOffset, membership)
 }
 
 func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
@@ -534,10 +542,12 @@ func (tl *UserTimeLineRepo) UpdateRoomOffset(roomID string, offset int64) {
 		if lastoffset < offset {
 			log.Infof("update roomID:%s lastoffset:%d,offset:%d", roomID, lastoffset, offset)
 			tl.roomOffsets.Store(roomID, offset)
+			tl.broadcastRoomOffsetUpdate(roomID, offset)
 		}
 	} else {
 		log.Infof("update roomID:%s first offset:%d ", roomID, offset)
 		tl.roomOffsets.Store(roomID, offset)
+		tl.broadcastRoomOffsetUpdate(roomID, offset)
 	}
 }
 
@@ -608,17 +618,11 @@ func (tl *UserTimeLineRepo) GetLeaveRoomOffset(roomID, user string) int64 {
 	}
 }
 
-func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, traceId string) (bool, int64) {
-	curUtl, token, err := tl.LoadToken(user, device, utl)
-	//load token from redis err
-	if err != nil {
-		log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", traceId, user, device, utl, err)
-		return false, utl
-	}
+func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, token map[string]int64, user, device, traceId string) bool {
 	//load token miss, cur handle is full sync
 	if token == nil {
 		log.Infof("traceId:%s user:%s device:%s utl:%d load token miss", traceId, user, device, utl)
-		return true, curUtl
+		return true
 	}
 	//compare token room offset
 	for roomID, offset := range token {
@@ -628,11 +632,11 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 			if membership == "join" {
 				if tl.GetJoinMembershipOffset(user, roomID) > 0 {
 					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
-					return true, curUtl
+					return true
 				}
 			} else {
 				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
-				return true, curUtl
+				return true
 			}
 		}
 	}
@@ -645,7 +649,7 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 			if _, ok := token[key.(string)]; ok {
 				return true
 			} else {
-				if tl.GetJoinMembershipOffset(user, key.(string)) > 0 {
+				if value.(int64) > 0 {
 					hasNewJoined = true
 					return false
 				} else {
@@ -656,7 +660,7 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 	}
 	if hasNewJoined {
 		log.Infof("traceId:%s user:%s device:%s utl:%d join new room has event", traceId, user, device, utl)
-		return true, curUtl
+		return true
 	}
 	//has new invite
 	hasNewInvite := false
@@ -673,7 +677,7 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 	}
 	if hasNewInvite {
 		log.Infof("traceId:%s user:%s device:%s utl:%d invite new room has event", traceId, user, device, utl)
-		return true, curUtl
+		return true
 	}
 	//has new leave
 	hasNewLeave := false
@@ -695,9 +699,9 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, trace
 	}
 	if hasNewLeave {
 		log.Infof("traceId:%s user:%s device:%s utl:%d leave new room has event", traceId, user, device, utl)
-		return true, curUtl
+		return true
 	}
-	return false, curUtl
+	return false
 }
 
 func (tl *UserTimeLineRepo) ExistsUserReceiptUpdate(pos int64, user string) (bool, int64) {
@@ -781,4 +785,40 @@ func (tl *UserTimeLineRepo) GetUserCurRoom(user, device string) (room string) {
 		room = val.(string)
 	}
 	return
+}
+
+func (tl *UserTimeLineRepo) RegisterRoomOffsetUpdate(roomID string, cb common.ListenerCallback) {
+	tl.listener.Register(roomID, cb)
+}
+
+func (tl *UserTimeLineRepo) UnregisterRoomOffsetUpdate(roomID string, cb common.ListenerCallback) {
+	tl.listener.Unregister(roomID, cb)
+}
+
+func (tl *UserTimeLineRepo) broadcastRoomOffsetUpdate(roomID string, offset int64) {
+	tl.listener.Broadcast(roomID, offset)
+}
+
+func (tl *UserTimeLineRepo) RegisterNewJoinRoomEvent(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *UserTimeLineRepo) UnregisterNewJoinRoomEvent(userID string, cb common.ListenerCallback) {
+	tl.listener.Unregister(userID, cb)
+}
+
+func (tl *UserTimeLineRepo) broadcastNewJoinRoomEvent(userID string) {
+	tl.listener.Broadcast(userID, nil)
+}
+
+func (tl *UserTimeLineRepo) RegisterReceiptUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *UserTimeLineRepo) UnregisterReceiptUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *UserTimeLineRepo) broadcastReceiptUpdate(userID string, offset int64) {
+	tl.listener.Broadcast(userID, offset)
 }

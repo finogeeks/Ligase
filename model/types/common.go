@@ -15,6 +15,8 @@
 package types
 
 import (
+	"context"
+
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	jsoniter "github.com/json-iterator/go"
@@ -198,15 +200,16 @@ type RoomMsgContent struct {
 }
 
 type HttpReq struct {
-	TimeOut     string `json:"time_out,omitempty"`
-	FullState   string `json:"full_state,omitempty"`
-	SetPresence string `json:"set_presence,omitempty"`
-	Filter      string `json:"filter,omitempty"`
-	From        string `json:"from,omitempty"`
-	Since       string `json:"since,omitempty"`
-	Limit       string `json:"limit,omitempty"`
-	Dir         string `json:"dir,omitempty"`
-	TraceId     string `json:"trace_id,omitempty"`
+	Ctx         context.Context `json:"-"`
+	TimeOut     string          `json:"time_out,omitempty"`
+	FullState   string          `json:"full_state,omitempty"`
+	SetPresence string          `json:"set_presence,omitempty"`
+	Filter      string          `json:"filter,omitempty"`
+	From        string          `json:"from,omitempty"`
+	Since       string          `json:"since,omitempty"`
+	Limit       string          `json:"limit,omitempty"`
+	Dir         string          `json:"dir,omitempty"`
+	TraceId     string          `json:"trace_id,omitempty"`
 }
 
 type JoinedRoomContent struct {

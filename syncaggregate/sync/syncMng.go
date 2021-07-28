@@ -453,7 +453,8 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 		request.JoinedRooms = append(request.JoinedRooms, roomID)
 	}
 	bs := time.Now().UnixNano() / 1000000
-	log.Debugf("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d", req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms), maxReceiptOffset)
+	log.Debugf("SyncMng.buildSyncData remote sync request start traceid:%s slot:%d user:%s device:%s utl:%d joins:%d maxReceiptOffset:%d",
+		req.traceId, req.slot, req.device.UserID, req.device.ID, req.marks.utlRecv, len(req.joinRooms), maxReceiptOffset)
 	var wg sync.WaitGroup
 	ctx := context.TODO()
 	for instance, syncReq := range requestMap {
@@ -495,11 +496,13 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 				time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 			}
 			if err != nil {
-				log.Errorf("SyncMng.buildSyncData rpc error,traceid:%s slot:%d device %s user %s error %v", req.traceId, req.slot, req.device.ID, req.device.UserID, err)
+				log.Errorf("SyncMng.buildSyncData rpc error,traceid:%s slot:%d device %s user %s error %v",
+					req.traceId, req.slot, req.device.ID, req.device.UserID, err)
 				return
 			}
 			spend := time.Now().UnixNano()/1000000 - bs
-			log.Debugf("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v", req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
+			log.Debugf("SyncMng.buildSyncData traceid:%s slot:%d spend:%d ms user %s device %s instance %d MaxReceiptOffset:%d response %v",
+				req.traceId, req.slot, spend, req.device.UserID, req.device.ID, instance, maxReceiptOffset, response.AllLoaded)
 			if response.AllLoaded {
 				syncReq.SyncReady = true
 				sm.addSyncData(req, res, response)
@@ -509,7 +512,8 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 	wg.Wait()
 	es := time.Now().UnixNano() / 1000000
 	spend := es - bs
-	log.Debugf("SyncMng.buildSyncData remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
+	log.Debugf("SyncMng.buildSyncData remote sync request end traceid:%s slot:%d user:%s device:%s spend:%d ms",
+		req.traceId, req.slot, req.device.UserID, req.device.ID, es-bs)
 	finished := true
 	if req.isFullSync {
 		for _, syncReq := range requestMap {
@@ -543,10 +547,12 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			req.marks.kcProcess = 1
 		}
 		sm.freshToken(req, res)
-		log.Infof("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, finished, spend)
+		log.Infof("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t spend:%d ms",
+			req.traceId, req.slot, req.device.UserID, req.device.ID, finished, spend)
 		return true
 	} else {
-		log.Warnf("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t spend:%d ms", req.traceId, req.slot, req.device.UserID, req.device.ID, finished, spend)
+		log.Warnf("SyncMng.buildSyncData update utl request end traceid:%s slot:%d user:%s device:%s finish:%t spend:%d ms",
+			req.traceId, req.slot, req.device.UserID, req.device.ID, finished, spend)
 		return false
 	}
 }

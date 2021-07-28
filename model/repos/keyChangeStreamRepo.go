@@ -40,6 +40,7 @@ type KeyChangeStreamRepo struct {
 	loading             sync.Map
 
 	queryHitCounter mon.LabeledCounter
+	listener        *common.Listener
 }
 
 func NewKeyChangeStreamRepo(
@@ -49,6 +50,7 @@ func NewKeyChangeStreamRepo(
 	tls.repo = new(sync.Map)
 	tls.userTimeLine = userTimeLine
 	tls.OneTimeKeyCountInfo = new(sync.Map)
+	tls.listener = common.NewListener()
 
 	return tls
 }
@@ -116,9 +118,11 @@ func (tl *KeyChangeStreamRepo) AddKeyChangeStream(dataStream *types.KeyChangeStr
 				if maxPos, ok := tl.maxPosition.Load(key.(string)); ok {
 					if maxPos.(int64) < offset {
 						tl.maxPosition.Store(key.(string), offset)
+						tl.broadcastKeyChangeUpdate(key.(string), offset)
 					}
 				} else {
 					tl.maxPosition.Store(key.(string), offset)
+					tl.broadcastKeyChangeUpdate(key.(string), offset)
 				}
 				return true
 			})
@@ -240,4 +244,16 @@ func (tl *KeyChangeStreamRepo) GetUserLatestOffset(userID string) int64 {
 		return maxPos.(int64)
 	}
 	return int64(-1)
+}
+
+func (tl *KeyChangeStreamRepo) RegisterKeyChangeUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Register(userID, cb)
+}
+
+func (tl *KeyChangeStreamRepo) UnregisterKeyChangeUpdate(userID string, cb common.ListenerCallback) {
+	tl.listener.Unregister(userID, cb)
+}
+
+func (tl *KeyChangeStreamRepo) broadcastKeyChangeUpdate(userID string, offset int64) {
+	tl.listener.Broadcast(userID, offset)
 }
