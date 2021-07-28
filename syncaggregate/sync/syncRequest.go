@@ -391,9 +391,9 @@ func (sm *SyncMng) OnSyncRequest(
 		//}
 	}
 	resCode := http.StatusOK
-	monStart := time.Now()
+	monStart := time.Now().UnixNano()/1e6
 	defer func(){
-		duration := float64(time.Since(monStart).Milliseconds())
+		duration := float64(time.Now().UnixNano()/1e6 - monStart)
 		localExporter.ExportSyncAggHttpDurationRequest("GET", "sync", strconv.Itoa(resCode), duration)
 	}()
 	var res *syncapitypes.Response
