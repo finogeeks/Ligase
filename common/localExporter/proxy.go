@@ -5,7 +5,7 @@ func ExportProxyHttpRequest(method, path, code string){
 }
 
 func ExportProxyHttpDurationRequest(method, path, code string, dur float64){
-	if path == "initial_sync" || path == "sync" {
+	if path == "initial_sync" || path == "sync" || path == "syncserver_metrics" {
 		return
 	}
 	httpDuration.WithLabelValues(CHAT_PROXY, Instance, method, path, code).Observe(dur)

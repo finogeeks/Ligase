@@ -472,11 +472,11 @@ func (sm *SyncMng) BuildResponse(req *request) (int, *syncapitypes.Response) {
 	bs := time.Now().UnixNano() / 1000000
 	ok := sm.buildSyncData(req, res)
 	spend := time.Now().UnixNano()/1000000 - bs
-	log.Debugf("traceid:%s buildSyncData spend:%d", req.traceId, spend)
 	resCode := http.StatusOK
 	defer func() {
 		localExporter.ExportSyncAggHttpDurationRequest("GET", "sync", strconv.Itoa(resCode), float64(spend))
 	}()
+	log.Debugf("traceid:%s buildSyncData spend:%d", req.traceId, spend)
 	if !ok {
 		log.Errorf("SyncMng buildSyncData not ok traceid:%s user:%s dev:%s", req.traceId, req.device.UserID, req.device.ID)
 		resCode, res = sm.BuildNotReadyResponse(req, time.Now().UnixNano()/1000000)
