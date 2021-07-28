@@ -403,7 +403,6 @@ func (c *KafkaChannel) startConsumer() error {
 	return nil
 }
 
-<<<<<<< HEAD
 func (c *KafkaChannel) SubscribeTopic(topic string) error {
 	c.subTopics = append(c.subTopics, topic)
 	err := c.consumer.SubscribeTopics(c.subTopics, nil)
@@ -414,11 +413,6 @@ func (c *KafkaChannel) SubscribeTopic(topic string) error {
 	return nil
 }
 
-func (c *KafkaChannel) preStartProducer(broker string, statsInterval int) error {
-	if c.producer == nil {
-		err := c.createTopic(broker, c.topic)
-		if err != nil {
-=======
 func (c *KafkaChannel) recreateProducer() error {
 	p, err := c.createProducer(c.broker, false)
 	if err != nil {
@@ -436,7 +430,6 @@ func (c *KafkaChannel) recreateProducer() error {
 func (c *KafkaChannel) createProducer(broker string, createTopic bool) (*kafka.Producer, error) {
 	if createTopic {
 		if err := c.createTopic(broker, c.topic); err != nil {
->>>>>>> fix: kafka out of order
 			log.Errorf("Failed to create topic:%s err:%v", c.topic, err)
 			return nil, err
 		}
