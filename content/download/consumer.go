@@ -435,7 +435,7 @@ func (p *DownloadConsumer) download(userID, domain, netdiskID, thumbnailType str
 			return err
 		}
 
-		log.Infof("federation Download write file success domain: qa.sumscope.cloud.com netdiskID: 71612e73756d73636f70652e636c6f75642e636f6d60f66eaf617e900001ebad5e", domain, netdiskID)
+		log.Infof("federation Download write file success domain: %s netdiskID: %s", domain, netdiskID)
 
 		header = response.Header
 		return nil
