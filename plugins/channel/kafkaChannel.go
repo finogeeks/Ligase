@@ -119,6 +119,16 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 		log.Warn("create topic is empty")
 		return nil
 	}
+
+	numPartitions := adapter.GetKafkaNumPartitions()
+	replicationFactor := adapter.GetKafkaReplicaFactor()
+	maxDur, err := time.ParseDuration("60s")
+	if err != nil {
+		log.Errorln("ParseDuration err: ", err)
+		return err
+	}
+
+	ctx := context.Background()
 	a, err := kafka.NewAdminClient(&kafka.ConfigMap{
 		"bootstrap.servers": broker})
 	if err != nil {
@@ -127,37 +137,6 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 	}
 	defer a.Close()
 
-	ctx := context.Background()
-	md, err := a.GetMetadata(&topic, false, 5000)
-	if err != nil {
-		log.Errorln("Failed to get kafka meta data: ", err)
-		return err
-	}
-
-	numPartitions := adapter.GetKafkaNumPartitions()
-	replicationFactor := adapter.GetKafkaReplicaFactor()
-
-	if topicInfo, ok := md.Topics[topic]; ok && len(topicInfo.Partitions) > 0 {
-		log.Infof("kafka topic %s already create", topic)
-		if len(topicInfo.Partitions) != numPartitions {
-			log.Warnf("kafka topic:%s partition %d expect %d", topic, len(topicInfo.Partitions), numPartitions)
-		}
-		for _, vv := range topicInfo.Partitions {
-			if len(vv.Replicas) != replicationFactor {
-				log.Warnf("kafka topic:%s partition:%d reeplicas %d expect %d", topic, vv.ID, len(vv.Replicas), replicationFactor)
-			}
-		}
-		if topic != c.topic {
-			c.cacheTopics.Store(topic, true)
-		}
-		return nil
-	}
-
-	maxDur, err := time.ParseDuration("60s")
-	if err != nil {
-		log.Errorln("ParseDuration err: ", err)
-		return err
-	}
 	results, err := a.CreateTopics(
 		ctx,
 		[]kafka.TopicSpecification{{
@@ -170,6 +149,7 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 		log.Errorln("Failed to create topic: ", err)
 		return err
 	}
+
 	// check results
 	for _, result := range results {
 		if result.Error.Code() != kafka.ErrNoError && result.Error.Code() != kafka.ErrTopicAlreadyExists {
@@ -177,9 +157,29 @@ func (c *KafkaChannel) createTopic(broker, topic string) error {
 			return result.Error
 		}
 	}
+
 	if topic != c.topic {
 		c.cacheTopics.Store(topic, true)
 	}
+
+	md, err := a.GetMetadata(&topic, false, 5000)
+	if err != nil {
+		log.Errorln("Failed to get kafka meta data: ", err)
+		return err
+	}
+
+	if topicInfo, ok := md.Topics[topic]; ok && len(topicInfo.Partitions) > 0 {
+		log.Infof("kafka topic %s already create", topic)
+		if len(topicInfo.Partitions) != numPartitions {
+			log.Warnf("kafka topic:%s partition %d expect %d", topic, len(topicInfo.Partitions), numPartitions)
+		}
+		for _, vv := range topicInfo.Partitions {
+			if len(vv.Replicas) != replicationFactor {
+				log.Warnf("kafka topic:%s partition:%d reeplicas %d expect %d", topic, vv.ID, len(vv.Replicas), replicationFactor)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -281,43 +281,55 @@ func (c *KafkaChannel) Commit(rawMsgs []interface{}) error {
 	return err
 }
 
-func (c *KafkaChannel) startProducer() error {
-	c.startChan()
-	go func() {
-		for e := range c.producer.Events() {
-			switch ev := e.(type) {
-			case *kafka.Message:
-				m := ev
-				if m.TopicPartition.Error != nil {
-					log.Errorf("async Failed to delivery topic:%s partition:%d msg:%s err:%s", *m.TopicPartition.Topic, m.TopicPartition.Partition, string(m.Value), m.TopicPartition.Error.Error())
-					//kafka异常报此错误时，需要重试，不重试会造成丢消息, 由配置确定是程序自动重试还是由调用者重试
-					if retry, retries := c.pubRetry(m); retry {
-						c.pubAsync(*m)
-						log.Errorf("async re produce failed msg:%s to topic:%s retries:%d again", string(m.Value), *m.TopicPartition.Topic, retries)
-					}
-				} else {
-					log.Debugf("async Delivered message:%s to topic %s [%d] at offset %v", string(m.Value), *m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
-				}
-			case *kafka.Stats:
-				// https://github.com/edenhill/librdkafka/blob/master/STATISTICS.md
-				var stats map[string]interface{}
-				err := json.Unmarshal([]byte(ev.String()), &stats)
-				if err != nil {
-					log.Infof("kafka producer stats: json unmarshall error: %s, stats: %v", err, ev.String())
-				}
-				log.Infof("kafka producer stats, tx: %v, rx: %v, txmsgs: %v, rxmsgs: %v", stats["tx"], stats["rx"], stats["txmsgs"], stats["rxmsgs"])
-				log.Debugf("Kafka producer stats (all): %v", ev.String())
-
-				// try to do sth on "callback" when the stat is unusual
-				// go statsCallback(e.String())
-			default:
-				if c.start == false {
-					return
-				}
-			}
+func (c *KafkaChannel) processAsyncReport() {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("producer panic: %#v", e)
+			go c.processAsyncReport()
 		}
 	}()
 
+	for e := range c.producer.Events() {
+		switch ev := e.(type) {
+		case *kafka.Message:
+			m := ev
+			if m.TopicPartition.Error != nil {
+				log.Errorf("async Failed to delivery topic:%s partition:%d msg:%s err:%s", *m.TopicPartition.Topic, m.TopicPartition.Partition, string(m.Value), m.TopicPartition.Error.Error())
+				if m.TopicPartition.Error.(kafka.Error).Code() == kafka.ErrOutOfOrderSequenceNumber {
+					c.recreateProducer()
+					panic("out of order sequence number, restart producer")
+				}
+				//kafka异常报此错误时，需要重试，不重试会造成丢消息, 由配置确定是程序自动重试还是由调用者重试
+				if retry, retries := c.pubRetry(m); retry {
+					c.pubAsync(*m)
+					log.Errorf("async re produce failed msg:%s to topic:%s retries:%d again", string(m.Value), *m.TopicPartition.Topic, retries)
+				}
+			} else {
+				log.Debugf("async Delivered message:%s to topic %s [%d] at offset %v", string(m.Value), *m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
+			}
+		case *kafka.Stats:
+			// https://github.com/edenhill/librdkafka/blob/master/STATISTICS.md
+			var stats map[string]interface{}
+			err := json.Unmarshal([]byte(ev.String()), &stats)
+			if err != nil {
+				log.Infof("kafka producer stats: json unmarshall error: %s, stats: %v", err, ev.String())
+			}
+			log.Infof("kafka producer stats, tx: %v, rx: %v, txmsgs: %v, rxmsgs: %v", stats["tx"], stats["rx"], stats["txmsgs"], stats["rxmsgs"])
+			log.Debugf("Kafka producer stats (all): %v", ev.String())
+
+			// try to do sth on "callback" when the stat is unusual
+			// go statsCallback(e.String())
+		default:
+			if c.start == false {
+				return
+			}
+		}
+	}
+}
+
+func (c *KafkaChannel) startProducer() error {
+	c.startChan()
+	go c.processAsyncReport()
 	return nil
 }
 
@@ -401,37 +413,64 @@ func (c *KafkaChannel) SubscribeTopic(topic string) error {
 	return nil
 }
 
-func (c *KafkaChannel) preStartProducer(broker string, statsInterval int) error {
-	if c.producer == nil {
-		err := c.createTopic(broker, c.topic)
-		if err != nil {
-			log.Errorf("Failed to create topic:%s err:%v", c.topic, err)
-			return err
-		}
-		pc := kafka.ConfigMap{
-			"bootstrap.servers":        broker,
-			"go.produce.channel.size":  10000,
-			"go.batch.producer":        false,
-			"socket.timeout.ms":        5000,
-			"session.timeout.ms":       5000,
-			"reconnect.backoff.max.ms": 5000,
-			"default.topic.config": kafka.ConfigMap{
-				"message.timeout.ms": 6000,
-			},
-		}
-		if adapter.GetKafkaEnableIdempotence() {
-			pc.SetKey("enable.idempotence", true)
-		}
-		p, err := kafka.NewProducer(&pc)
-		if err != nil {
-			log.Errorf("Failed to create producer: %v", err)
-			return err
-		}
-		c.slot = 64
-		c.chanSize = 64
-		c.producer = p
+func (c *KafkaChannel) recreateProducer() error {
+	p, err := c.createProducer(c.broker, false)
+	if err != nil {
+		return err
 	}
 
+	old := c.producer
+	c.producer = p
+	c.slot = 64
+	c.chanSize = 64
+	old.Close()
+	return nil
+}
+
+func (c *KafkaChannel) createProducer(broker string, createTopic bool) (*kafka.Producer, error) {
+	if createTopic {
+		if err := c.createTopic(broker, c.topic); err != nil {
+			log.Errorf("Failed to create topic:%s err:%v", c.topic, err)
+			return nil, err
+		}
+	}
+
+	pc := kafka.ConfigMap{
+		"bootstrap.servers":        broker,
+		"go.produce.channel.size":  10000,
+		"go.batch.producer":        false,
+		"socket.timeout.ms":        5000,
+		"session.timeout.ms":       5000,
+		"reconnect.backoff.max.ms": 5000,
+		"default.topic.config": kafka.ConfigMap{
+			"message.timeout.ms": 6000,
+		},
+	}
+	if adapter.GetKafkaEnableIdempotence() {
+		pc.SetKey("enable.idempotence", true)
+	}
+	p, err := kafka.NewProducer(&pc)
+	if err != nil {
+		log.Errorf("Failed to create producer: %v", err)
+		return nil, err
+	}
+
+	return p, nil
+}
+
+func (c *KafkaChannel) preStartProducer(broker string, statsInterval int) error {
+	if c.producer != nil {
+		return nil
+	}
+
+	p, err := c.createProducer(broker, true)
+	if err != nil {
+		return err
+	}
+
+	c.slot = 64
+	c.chanSize = 64
+	c.producer = p
 	return nil
 }
 
@@ -625,6 +664,13 @@ func (c *KafkaChannel) pubSync(msg kafka.Message, deliveryChan chan kafka.Event,
 			spend := time.Now().UnixNano()/1000000 - bs
 			m := e.(*kafka.Message)
 			if m.TopicPartition.Error != nil {
+				if m.TopicPartition.Error.(kafka.Error).Code() == kafka.ErrOutOfOrderSequenceNumber {
+					c.recreateProducer()
+					log.Errorln("out of order sequence number, restart producer")
+					close(deliveryChan)
+					result <- m.TopicPartition.Error
+					return
+				}
 				//logger.GetLogger().Errorf("sync Failed to delivery topic:%s partition:%d msg:%s err:%s", *m.TopicPartition.Topic, m.TopicPartition.Partition, string(m.Value), m.TopicPartition.Error.Error())
 				//kafka异常报此错误时，需要重试，不重试会造成丢消息, 由配置确定是程序自动重试还是由调用者重试
 				if retry, retries := c.pubRetry(&msg); retry {
