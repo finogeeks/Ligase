@@ -36,7 +36,7 @@ func SetupSyncWriterComponent(
 	qureyHitCounter := monitor.NewLabeledCounter("syncwriter_query_hit", []string{"target", "repo", "func"})
 	cache := base.PrepareCache()
 	roomHistory := repos.NewRoomHistoryTimeLineRepo(4, maxEntries, gcPerNum)
-	rsCurState := new(repos.RoomCurStateRepo)
+	rsCurState := repos.NewRoomCurStateRepo(base)
 	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum)
 	displayNameRepo := repos.NewDisplayNameRepo()
 

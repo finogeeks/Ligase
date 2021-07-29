@@ -595,6 +595,6 @@ metrics:
     sync_server:
         # large: 人数 >= 1000; big: 1000 >人数 >= 300; middle: 300 > 人数 >= 100; small: 100 > 人数;
         room_scale:
-            large: 1000     # 大
+            large: 1000     # 超大
             middle: 300     # 中
             small: 100      # 小

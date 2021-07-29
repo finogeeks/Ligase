@@ -7,12 +7,7 @@ import (
 	"sync"
 )
 
-const (
-	ROOM_SCALE_LARGE = "超大"
-	ROOM_SCALE_BIG = "大"
-	ROOM_SCALE_MIDDLE = "中"
-	ROOM_SCALE_SMALL = "小"
-)
+
 
 type SyncServerExporter struct {
 	roomCurState *repos.RoomCurStateRepo
@@ -58,43 +53,7 @@ func (s *SyncServerExporter) getInstance() int {
 }
 
 func (s *SyncServerExporter) getRoomScale() external.RoomScaleMetrics {
-	roomScale := external.RoomScaleMetrics{
-		Large: external.RoomScale{
-			Label: ROOM_SCALE_LARGE,
-			Count: 0,
-			MsgCount: 0,
-		},
-		Big: external.RoomScale{
-			Label: ROOM_SCALE_BIG,
-			Count: 0,
-			MsgCount: 0,
-		},
-		Middle: external.RoomScale{
-			Label: ROOM_SCALE_MIDDLE,
-			Count: 0,
-			MsgCount: 0,
-		},
-		Small: external.RoomScale{
-			Label: ROOM_SCALE_SMALL,
-			Count: 0,
-			MsgCount: 0,
-		},
-	}
-	repo := s.roomCurState.GetRoomStateRepo()
-	repo.Range(func(k, v interface{}) bool {
-		rs := v.(*repos.RoomState)
-		count := rs.GetJoinCount()
-		if count < s.base.Cfg.Metrics.SyncServer.RoomScale.Small {
-			roomScale.Small.Count++
-		} else if count >= s.base.Cfg.Metrics.SyncServer.RoomScale.Small && count < s.base.Cfg.Metrics.SyncServer.RoomScale.Middle {
-			roomScale.Middle.Count++
-		} else if count >= s.base.Cfg.Metrics.SyncServer.RoomScale.Middle && count < s.base.Cfg.Metrics.SyncServer.RoomScale.Large {
-			roomScale.Big.Count++
-		} else{
-			roomScale.Large.Count++
-		}
-		return true
-	})
+	roomScale := s.roomCurState.GetRoomScale()
 	roomScale.Large.MsgCount = s.data.Msg.Large
 	roomScale.Big.MsgCount = s.data.Msg.Big
 	roomScale.Middle.MsgCount = s.data.Msg.Middle
