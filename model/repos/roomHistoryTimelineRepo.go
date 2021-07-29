@@ -134,16 +134,6 @@ func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
 	} else {
 		log.Debugf("load db succ RoomHistoryTimeLineRepo.loadHistory finished room:%s spend:%d ms", roomID, spend)
 	}
-	length := len(evs)
-	for i := 0; i < length/2; i++ {
-		ev := evs[i]
-		evs[i] = evs[length-1-i]
-		evs[length-1-i] = ev
-
-		off := offsets[i]
-		offsets[i] = offsets[length-1-i]
-		offsets[length-1-i] = off
-	}
 
 	for idx := len(evs) - 1; idx >= 0; idx-- {
 		tl.AddEv(evs[idx], offsets[idx], false)
