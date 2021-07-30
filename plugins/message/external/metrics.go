@@ -1,6 +1,12 @@
 package external
 
 // --- syncserver begin ---
+const (
+	ROOM_SCALE_LARGE = "超大"
+	ROOM_SCALE_BIG = "大"
+	ROOM_SCALE_MIDDLE = "中"
+	ROOM_SCALE_SMALL = "小"
+)
 
 type GetSyncServerMetricsRequest struct {
 	Inst 	string 		`json:"inst"`

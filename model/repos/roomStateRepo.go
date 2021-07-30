@@ -15,6 +15,7 @@
 package repos
 
 import (
+	"github.com/finogeeks/ligase/common/basecomponent"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -645,6 +646,11 @@ type RoomCurStateRepo struct {
 	roomState sync.Map
 	count 	  int64
 	persist   model.SyncAPIDatabase
+	base *basecomponent.BaseDendrite
+}
+
+func NewRoomCurStateRepo(base *basecomponent.BaseDendrite,) *RoomCurStateRepo{
+	return &RoomCurStateRepo{base:base}
 }
 
 type RoomCurStateLoadedData struct {
@@ -699,6 +705,45 @@ func (repo *RoomCurStateRepo) removeRoomState(roomID string) {
 	repo.roomState.Delete(roomID)
 }
 
-func (repo *RoomCurStateRepo) GetRoomStateRepo() (r sync.Map) {
-	return repo.roomState
+func (repo *RoomCurStateRepo) GetRoomScale() external.RoomScaleMetrics {
+	roomScale := external.RoomScaleMetrics{
+		Large: external.RoomScale{
+			Label: external.ROOM_SCALE_LARGE,
+			Count: 0,
+			MsgCount: 0,
+		},
+		Big: external.RoomScale{
+			Label: external.ROOM_SCALE_BIG,
+			Count: 0,
+			MsgCount: 0,
+		},
+		Middle: external.RoomScale{
+			Label: external.ROOM_SCALE_MIDDLE,
+			Count: 0,
+			MsgCount: 0,
+		},
+		Small: external.RoomScale{
+			Label: external.ROOM_SCALE_SMALL,
+			Count: 0,
+			MsgCount: 0,
+		},
+	}
+	repo.roomState.Range(func(k interface{}, v interface{}) bool {
+		rs, ok := v.(*RoomState)
+		if !ok {
+			return true
+		}
+		count := rs.GetJoinCount()
+		if count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Small {
+			roomScale.Small.Count++
+		} else if count >= repo.base.Cfg.Metrics.SyncServer.RoomScale.Small && count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Middle {
+			roomScale.Middle.Count++
+		} else if count >= repo.base.Cfg.Metrics.SyncServer.RoomScale.Middle && count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Large {
+			roomScale.Big.Count++
+		} else{
+			roomScale.Large.Count++
+		}
+		return true
+	})
+	return roomScale
 }
