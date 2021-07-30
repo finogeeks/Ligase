@@ -60,7 +60,7 @@ func SetupSyncServerComponent(
 	qureyHitCounter := monitor.NewLabeledCounter("syncserver_query_hit", []string{"target", "repo", "func"})
 
 	roomHistory := repos.NewRoomHistoryTimeLineRepo(4, maxEntries, gcPerNum)
-	rsCurState := new(repos.RoomCurStateRepo)
+	rsCurState := repos.NewRoomCurStateRepo(base)
 	exporter.SyncServerExporterMetrics(rsCurState, base)
 	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum)
 
