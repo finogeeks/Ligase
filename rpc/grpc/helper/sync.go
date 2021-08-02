@@ -136,7 +136,9 @@ func ToClientEvent2(event *pb.ClientEvent) *gomatrixserverlib.ClientEvent {
 	if event.StateKey != "" {
 		stateKey = &event.StateKey
 	} else {
-		stateKey = &emptyString
+		if event.Type != "m.room.message" && event.Type != "m.room.encrypted" {
+			stateKey = &emptyString
+		}
 	}
 	return &gomatrixserverlib.ClientEvent{
 		Content:        event.Content,
