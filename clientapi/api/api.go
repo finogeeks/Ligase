@@ -221,7 +221,7 @@ func (ReqPostCreateRoom) Process(consumer interface{}, msg core.Coder, device *a
 	userID := device.UserID
 	return routing.CreateRoom(
 		context.Background(), req, userID, c.Cfg, c.accountDB,
-		c.rsRpcCli, c.cacheIn, c.idg, c.complexCache,
+		c.rsRpcCli, c.cacheIn, c.idg, c.complexCache, c.federation,
 	)
 }
 
