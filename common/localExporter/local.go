@@ -11,6 +11,8 @@ var (
 	httpRequest  mon.LabeledCounter
 	httpDuration mon.LabeledHistogram
 	handleDuration mon.LabeledHistogram
+	grpcRequest mon.LabeledCounter
+	grpcDuration mon.LabeledHistogram
 	Instance string
 )
 
@@ -24,6 +26,10 @@ func init(){
 	// 主要服务操作步骤耗时统计
 	handleDuration = monitor.NewLabeledHistogram("chat_handle_requests_duration_milliseconds",
 		[]string{"server_name","srv_inst", "method", "path", "code"},
+		[]float64{10.0, 50.0, 100.0, 500.0, 1000.0, 3000.0},)
+	// grpc时延统计
+	grpcDuration = monitor.NewLabeledHistogram("chat_grpc_requests_duration_milliseconds",
+		[]string{"from","to", "srv_inst", "method","code"},
 		[]float64{10.0, 50.0, 100.0, 500.0, 1000.0, 3000.0},)
 }
 
@@ -49,6 +55,11 @@ const (
 func exportHandleDurationRequest(serverName, method, path, code string, dur float64){
 	handleDuration.WithLabelValues(serverName, Instance, method, path, code).Observe(dur)
 }
+
+func ExportGrpcRequestDuration(from, to, method, code string, dur float64){
+	grpcDuration.WithLabelValues(from, to, Instance, method, code).Observe(dur)
+}
+
 
 
 
