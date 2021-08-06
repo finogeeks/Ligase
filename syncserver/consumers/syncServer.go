@@ -21,6 +21,7 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service"
@@ -30,6 +31,7 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
+	"github.com/finogeeks/ligase/syncserver/extra"
 )
 
 type SyncServer struct {
@@ -141,6 +143,14 @@ func (s *SyncServer) SyncProcess(req *syncapitypes.SyncServerRequest) (*syncapit
 	} else {
 		result = s.processIncrementSync(req)
 	}
+
+	device := authtypes.Device{
+		UserID:  req.UserID,
+		IsHuman: req.IsHuman,
+	}
+	timespend := common.NewTimeSpend()
+	extra.ExpandSyncData(s.rsCurState, &device, s.displayNameRepo, result)
+	timespend.Logf(types.DB_EXCEED_TIME, "responseSync expand hint traceid:%s", req.TraceID)
 	return result, nil
 }
 
