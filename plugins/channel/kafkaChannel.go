@@ -37,11 +37,13 @@ type KafkaConsumerConf interface {
 	AutoCommitIntervalMS() *int
 	TopicAutoOffsetReset() *string
 	GoChannelEnable() *bool
+	MaxPollIntervalMs() *int
 }
 
 const (
 	DefaultTimeOut          = 10
 	DefaultEnableAutoCommit = true
+	DefaultMaxPollIntervalMs = 300000
 )
 
 type msgContext struct {
@@ -359,42 +361,51 @@ func (c *KafkaChannel) startConsumer() error {
 				go evHandler()
 			}
 		}()
-		for c.start == true {
-			select {
-			case ev := <-c.consumer.Events():
-				switch e := ev.(type) {
-				case kafka.AssignedPartitions:
-					c.consumer.Assign(e.Partitions)
-					log.Infof("consumer assigned partitions: %v", e)
-				case kafka.RevokedPartitions:
-					c.consumer.Unassign()
-					log.Infof("consumer unassigned partitions: %v", e)
-				case *kafka.Message:
-					//log.Infof("consumer %% Message on topic:%s partition:%d offset:%d val:%s grp:%s", *e.TopicPartition.Topic, e.TopicPartition.Partition, e.TopicPartition.Offset, string(e.Value), t.consumerGroup)
-					onMessage(c.handler, e)
-				case kafka.PartitionEOF:
-					log.Infof("consumer Reached: %v", e)
-				case kafka.Error:
-					log.Errorf("consumer Error: %v", e)
-				case *kafka.Stats:
-					// https://github.com/edenhill/librdkafka/blob/master/STATISTICS.md
-					var stats map[string]interface{}
-					err = json.Unmarshal([]byte(e.String()), &stats)
-					if err != nil {
-						log.Warnf("Kafka consumer stats: json unmarshall error: %s, stats: %v", err, e.String())
-					}
-					log.Debugf("Kafka consumer stats, tx: %v, rx: %v, rxmsgs: %v, txmsgs: %v", stats["tx"], stats["rx"], stats["rxmsgs"], stats["txmsgs"])
-					log.Debugf("kafka consumer stats (all): %v", e.String())
 
-					brokerRaw := stats["brokers"].(map[string]interface{})
-					bInfo := make(map[string]map[string]interface{})
-					for k, v := range brokerRaw {
-						bInfo[k] = v.(map[string]interface{})
-						log.Debugf("kafka consumer stats for brokers: %v, state: %v, tx: %v, rx: %v", k, bInfo[k]["state"], bInfo[k]["tx"], bInfo[k]["rx"])
-					}
-					// try to do sth on "callback" when the stat is unusual
-					// go statsCallback(e.String())
+		maxPollIntervalMs := DefaultMaxPollIntervalMs
+		if c.conf != nil {
+			conf := c.conf.(KafkaConsumerConf)
+			if conf.MaxPollIntervalMs() != nil {
+				maxPollIntervalMs = *conf.MaxPollIntervalMs()
+			}
+		}
+
+		for c.start == true {
+			ev := c.consumer.Poll(maxPollIntervalMs - 1)
+			switch e := ev.(type) {
+			case kafka.AssignedPartitions:
+				c.consumer.Assign(e.Partitions)
+				log.Infof("consumer assigned partitions: %v", e)
+			case kafka.RevokedPartitions:
+				c.consumer.Unassign()
+				log.Infof("consumer unassigned partitions: %v", e)
+			case *kafka.Message:
+				//log.Infof("consumer %% Message on topic:%s partition:%d offset:%d val:%s grp:%s", *e.TopicPartition.Topic, e.TopicPartition.Partition, e.TopicPartition.Offset, string(e.Value), t.consumerGroup)
+				onMessage(c.handler, e)
+			case kafka.PartitionEOF:
+				log.Infof("consumer Reached: %v", e)
+			case kafka.Error:
+				log.Errorf("consumer Error: %v", e)
+			case kafka.OffsetsCommitted:
+				log.Infof("consumer offset commited %s", e)
+			case *kafka.Stats:
+				// https://github.com/edenhill/librdkafka/blob/master/STATISTICS.md
+				var stats map[string]interface{}
+				err = json.Unmarshal([]byte(e.String()), &stats)
+				if err != nil {
+					log.Warnf("Kafka consumer stats: json unmarshall error: %s, stats: %v", err, e.String())
 				}
+				log.Debugf("Kafka consumer stats, tx: %v, rx: %v, rxmsgs: %v, txmsgs: %v", stats["tx"], stats["rx"], stats["rxmsgs"], stats["txmsgs"])
+				log.Debugf("kafka consumer stats (all): %v", e.String())
+
+				brokerRaw := stats["brokers"].(map[string]interface{})
+				bInfo := make(map[string]map[string]interface{})
+				for k, v := range brokerRaw {
+					bInfo[k] = v.(map[string]interface{})
+					log.Debugf("kafka consumer stats for brokers: %v, state: %v, tx: %v, rx: %v", k, bInfo[k]["state"], bInfo[k]["tx"], bInfo[k]["rx"])
+				}
+				// try to do sth on "callback" when the stat is unusual
+				// go statsCallback(e.String())
 			}
 		}
 	}
@@ -480,6 +491,7 @@ func (c *KafkaChannel) preStartConsumer(broker string, statsInterval int) error 
 		autoCommitIntervalMS := 5000
 		topicAutoOffsetReset := "latest"
 		goChannelEnable := true
+		maxPollIntervalMs := DefaultMaxPollIntervalMs
 		if c.conf != nil {
 			conf := c.conf.(KafkaConsumerConf)
 			if conf.EnableAutoCommit() != nil {
@@ -494,6 +506,9 @@ func (c *KafkaChannel) preStartConsumer(broker string, statsInterval int) error 
 			if conf.GoChannelEnable() != nil {
 				goChannelEnable = *conf.GoChannelEnable()
 			}
+			if conf.MaxPollIntervalMs() != nil {
+				maxPollIntervalMs = *conf.MaxPollIntervalMs()
+			}
 		}
 		log.Infof("kafka consumer config topic:%s enableAutoCommit:%t autoCommitIntervalMS:%d topicAutoOffsetReset:%s goChannelEnable:%t", c.topic, enableAutoCommit, autoCommitIntervalMS, topicAutoOffsetReset, goChannelEnable)
 		s, err := kafka.NewConsumer(&kafka.ConfigMap{
@@ -506,6 +521,7 @@ func (c *KafkaChannel) preStartConsumer(broker string, statsInterval int) error 
 			"auto.commit.interval.ms":         autoCommitIntervalMS,
 			"default.topic.config":            kafka.ConfigMap{"auto.offset.reset": topicAutoOffsetReset}, //earliest
 			"statistics.interval.ms":          statsInterval,
+			"max.poll.interval.ms": maxPollIntervalMs,
 			// "enable.partition.eof":            true
 		})
 

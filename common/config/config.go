@@ -144,6 +144,7 @@ type Dendrite struct {
 			ReplicaFactor     int  `yaml:"replica_factor"`
 			NumPartitions     int  `yaml:"num_partitions"`
 			NumProducers      int  `yaml:"num_producers"`
+			MaxPollIntervalMs int  `yaml:"max_poll_interval_ms"`
 		} `yaml:"common_cfg"`
 		Producer struct {
 			OutputRoomEvent    ProducerConf `yaml:"output_room_event"`
@@ -530,12 +531,12 @@ type Dendrite struct {
 	} `yaml:"sync"`
 
 	Metrics struct {
-		SyncServer SyncServerMetrics  `yaml:"sync_server"`
+		SyncServer SyncServerMetrics `yaml:"sync_server"`
 	} `yaml:"metrics"`
 }
 
 type SyncServerMetrics struct {
-	RoomScale  struct {
+	RoomScale struct {
 		Large  int64 `yaml:"large"`
 		Middle int64 `yaml:"middle"`
 		Small  int64 `yaml:"small"`
@@ -580,10 +581,11 @@ type ConsumerConf struct {
 	Underlying string `yaml:"underlying"`
 	Name       string `yaml:"name"`
 
-	AutoCommit       *bool   `yaml:"enable_auto_commit,omitempty"`
-	CommitIntervalMS *int    `yaml:"auto_commit_interval_ms,omitempty"`
-	AutoOffsetReset  *string `yaml:"topic_auto_offset_reset,omitempty"`
-	EnableGoChannel  *bool   `yaml:"go_channel_enable,omitempty"`
+	AutoCommit        *bool   `yaml:"enable_auto_commit,omitempty"`
+	CommitIntervalMS  *int    `yaml:"auto_commit_interval_ms,omitempty"`
+	AutoOffsetReset   *string `yaml:"topic_auto_offset_reset,omitempty"`
+	EnableGoChannel   *bool   `yaml:"go_channel_enable,omitempty"`
+	MaxPollInterval *int    `yaml:"max_poll_interval_ms,omitempty"`
 }
 
 func (c *ConsumerConf) EnableAutoCommit() *bool {
@@ -600,6 +602,10 @@ func (c *ConsumerConf) TopicAutoOffsetReset() *string {
 
 func (c *ConsumerConf) GoChannelEnable() *bool {
 	return c.EnableGoChannel
+}
+
+func (c *ConsumerConf) MaxPollIntervalMs() *int {
+	return c.MaxPollInterval
 }
 
 type ProducerConf struct {
