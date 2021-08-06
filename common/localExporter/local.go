@@ -13,6 +13,7 @@ var (
 	handleDuration mon.LabeledHistogram
 	grpcRequest mon.LabeledCounter
 	grpcDuration mon.LabeledHistogram
+	socketCount mon.LabeledGauge
 	Instance string
 )
 
@@ -31,6 +32,8 @@ func init(){
 	grpcDuration = monitor.NewLabeledHistogram("chat_grpc_requests_duration_milliseconds",
 		[]string{"from","to", "srv_inst", "method","code"},
 		[]float64{10.0, 50.0, 100.0, 500.0, 1000.0, 3000.0},)
+	// 服务socket使用情况
+	socketCount = monitor.NewLabeledGauge("chat_socket_count",[]string{"server_name", "srv_inst", "proto", "socket_state"})
 }
 
 // must after config load over

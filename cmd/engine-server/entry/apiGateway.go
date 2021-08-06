@@ -55,5 +55,5 @@ func StartApiGateWay(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	tokenFilter := filter.NewSimpleFilter(deviceDB)
 	tokenFilter.Load()
 
-	proxy.SetupProxy(base, cache, rpcCli, rsRpcCli, tokenFilter)
+	proxy.SetupProxy(base, cache, rpcCli, rsRpcCli, tokenFilter, getBindPort(*cmd.httpBindAddr))
 }
