@@ -17,8 +17,8 @@ package common
 import (
 	"context"
 
-	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/finogeeks/ligase/storage/model"
 )
 

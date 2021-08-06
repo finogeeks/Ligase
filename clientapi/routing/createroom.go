@@ -24,18 +24,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/plugins/message/internals"
-
 	"github.com/finogeeks/ligase/clientapi/httputil"
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
+	"github.com/finogeeks/ligase/core"
+	fed "github.com/finogeeks/ligase/federation/fedreq"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	log "github.com/finogeeks/ligase/skunkworks/log"
@@ -93,6 +93,7 @@ func CreateRoom(ctx context.Context, r *external.PostCreateRoomRequest, userID s
 	cache service.Cache,
 	idg *uid.UidGenerator,
 	complexCache *common.ComplexCache,
+	federation *fed.Federation,
 ) (int, core.Coder) {
 	// TODO (#267): Check room ID doesn't clash with an existing one, and we
 	//              probably shouldn't be using pseudo-random strings, maybe GUIDs?
@@ -104,7 +105,7 @@ func CreateRoom(ctx context.Context, r *external.PostCreateRoomRequest, userID s
 		nid, _ := idg.Next()
 		roomID = fmt.Sprintf("!%d:%s", nid, domainID)
 	}
-	return createRoom(ctx, r, userID, cfg, roomID, domainID, accountDB, rpcCli, cache, idg, complexCache)
+	return createRoom(ctx, r, userID, cfg, roomID, domainID, accountDB, rpcCli, cache, idg, complexCache, federation)
 }
 
 // createRoom implements /createRoom
@@ -112,7 +113,7 @@ func CreateRoom(ctx context.Context, r *external.PostCreateRoomRequest, userID s
 func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 	userID string, cfg config.Dendrite, roomID, domainID string,
 	accountDB model.AccountsDatabase, rpcCli roomserverapi.RoomserverRPCAPI, cache service.Cache,
-	idg *uid.UidGenerator, complexCache *common.ComplexCache,
+	idg *uid.UidGenerator, complexCache *common.ComplexCache, federation *fed.Federation,
 ) (int, core.Coder) {
 	bs := time.Now().UnixNano() / 1000000
 	defer func(bs int64, roomID, userID string) {
@@ -314,7 +315,21 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 
 	for _, invitor := range r.Invite {
 
-		displayName, avatarURL, _ := complexCache.GetProfileByUserID(invitor)
+		displayName, avatarURL, err := complexCache.GetProfileByUserID(invitor)
+		if err != nil {
+			domain, err := common.DomainFromID(invitor)
+			if err == nil && !common.CheckValidDomain(domain, cfg.Matrix.ServerName) {
+				log.Infof("get profile from fedration %s", invitor)
+				resp, err := federation.LookupProfile(domain, userID)
+				if err != nil {
+					log.Errorf("get profile from federation error %v", err)
+				} else {
+					avatarURL = resp.AvatarURL
+					displayName = resp.DisplayName
+					complexCache.SetProfile(ctx, userID, resp.DisplayName, resp.AvatarURL)
+				}
+			}
+		}
 
 		membershipContent := external.MemberContent{
 			Membership:  "invite",
