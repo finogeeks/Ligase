@@ -20,7 +20,11 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
+	"github.com/finogeeks/ligase/common/netstat"
+	"runtime"
 	"sync"
+	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/basecomponent"
@@ -50,6 +54,7 @@ func SetupProxy(
 	rpcClient rpc.RpcClient,
 	rsRpcCli roomserverapi.RoomserverRPCAPI,
 	tokenFilter *filter.SimpleFilter,
+	bindPort int,
 ) {
 	bridge.SetupBridge(base.Cfg)
 
@@ -83,10 +88,66 @@ func SetupProxy(
 	//if err := loadCert(keyDB); err != nil {
 	//	log.Panicf("proxy load certs failed, err: %v", err)
 	//}
-
+	if bindPort != -1 {
+		go socketsStatus(uint16(bindPort))
+	}
 	routing.Setup(
 		base.APIMux, *base.Cfg, cache, rpcClient, rsRpcCli, tokenFilter, feddomains, keyDB,
 	)
+}
+
+func socketsStatus(bindPort uint16){
+	if runtime.GOOS != "linux" {
+		return
+	}
+	d := time.Second * 60
+	t := time.NewTicker(d)
+	defer t.Stop()
+	for {
+		<- t.C
+		err := getSockets(bindPort)
+		if err != nil {
+			log.Println("get socket err:", err.Error())
+		}
+	}
+}
+
+func getSockets(bindPort uint16) error {
+	tabs, err := netstat.TCPSocks(func(s *netstat.SockTabEntry) bool {
+		return s.LocalAddr.Port == bindPort
+	})
+	if err != nil {
+		return err
+	}
+	tcp4Sockets := make(map[string]int)
+	for _, tab := range tabs {
+		if _, ok := tcp4Sockets[tab.State.String()]; ok {
+			tcp4Sockets[tab.State.String()]++
+		}else{
+			tcp4Sockets[tab.State.String()] = 1
+		}
+	}
+	tabs, err = netstat.TCP6Socks(func(s *netstat.SockTabEntry) bool {
+		return s.LocalAddr.Port == bindPort
+	})
+	if err != nil {
+		return err
+	}
+	tcp6Sockets := make(map[string]int)
+	for _, tab := range tabs {
+		if _, ok := tcp6Sockets[tab.State.String()]; ok {
+			tcp6Sockets[tab.State.String()]++
+		}else{
+			tcp6Sockets[tab.State.String()] = 1
+		}
+	}
+	for k, v := range tcp4Sockets {
+		localExporter.ExportProxySocketCount("tcp4", k, float64(v))
+	}
+	for k, v := range tcp6Sockets {
+		localExporter.ExportProxySocketCount("tcp6", k, float64(v))
+	}
+	return nil
 }
 
 func loadCert(keyDB model.KeyDatabase) error {

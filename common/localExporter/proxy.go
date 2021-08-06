@@ -14,3 +14,7 @@ func ExportProxyHttpDurationRequest(method, path, code string, dur float64){
 func ExportProxyHandleDurationRequest(method, path, code string, dur float64){
 	exportHandleDurationRequest(CHAT_PROXY, method, path, code, dur)
 }
+
+func ExportProxySocketCount(proto,state string, val float64) {
+	socketCount.WithLabelValues(CHAT_PROXY, Instance, proto, state).Set(val)
+}
