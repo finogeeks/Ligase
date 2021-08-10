@@ -373,8 +373,7 @@ func (c *KafkaChannel) startConsumer() error {
 
 		for c.start == true {
 			ev := c.consumer.Poll(maxPollIntervalMs - 1)
-			log.Infof("==========================================%s\n", ev.String())
-			log.Infoln(reflect.TypeOf(ev))
+			log.Infoln("=================================event type is :", reflect.TypeOf(ev))
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
 				c.consumer.Assign(e.Partitions)
@@ -518,7 +517,7 @@ func (c *KafkaChannel) preStartConsumer(broker string, statsInterval int) error 
 			"bootstrap.servers":               broker,
 			"group.id":                        c.grp,
 			"session.timeout.ms":              20000,
-			"go.events.channel.enable":        goChannelEnable,
+			"go.events.channel.enable":        false,
 			"go.application.rebalance.enable": true,
 			"enable.auto.commit":              enableAutoCommit,
 			"auto.commit.interval.ms":         autoCommitIntervalMS,
