@@ -372,6 +372,7 @@ func (c *KafkaChannel) startConsumer() error {
 
 		for c.start == true {
 			ev := c.consumer.Poll(maxPollIntervalMs - 1)
+			log.Infof("==========================================%s\n", ev.String())
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
 				c.consumer.Assign(e.Partitions)
@@ -380,7 +381,7 @@ func (c *KafkaChannel) startConsumer() error {
 				c.consumer.Unassign()
 				log.Infof("consumer unassigned partitions: %v", e)
 			case *kafka.Message:
-				//log.Infof("consumer %% Message on topic:%s partition:%d offset:%d val:%s grp:%s", *e.TopicPartition.Topic, e.TopicPartition.Partition, e.TopicPartition.Offset, string(e.Value), t.consumerGroup)
+				log.Infof("===============================consumer %% Message on topic:%s partition:%d offset:%d val:%s\n", *e.TopicPartition.Topic, e.TopicPartition.Partition, e.TopicPartition.Offset, string(e.Value))
 				onMessage(c.handler, e)
 			case kafka.PartitionEOF:
 				log.Infof("consumer Reached: %v", e)
