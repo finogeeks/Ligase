@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
@@ -32,6 +33,12 @@ import (
 	"github.com/finogeeks/ligase/skunkworks/util/cas"
 	"github.com/finogeeks/ligase/storage/model"
 )
+
+type UserTokens struct {
+	LastTime int64
+	Utl      int64
+	Tokens   map[string]int64
+}
 
 type UserTimeLineRepo struct {
 	persist model.SyncAPIDatabase
@@ -62,6 +69,8 @@ type UserTimeLineRepo struct {
 	roomMutex       cas.Mutex
 	queryHitCounter mon.LabeledCounter
 
+	userToken sync.Map
+
 	listener *common.Listener
 }
 
@@ -71,6 +80,7 @@ func NewUserTimeLineRepo(
 	tls := new(UserTimeLineRepo)
 	tls.Idg = idg
 	tls.listener = common.NewListener()
+	go tls.clean()
 	return tls
 }
 
@@ -727,6 +737,16 @@ func (tl *UserTimeLineRepo) GetUserLatestReceiptOffset(user string, isHuman bool
 }
 
 func (tl *UserTimeLineRepo) LoadToken(user, device string, utl int64) (int64, map[string]int64, error) {
+	if val, ok := tl.userToken.Load(user + "_" + device); ok {
+		userTokens := val.(*UserTokens)
+		if userTokens.Utl == utl {
+			userTokens.LastTime = time.Now().Unix()
+			log.Infof("UserTimeLineRepo.LoadToken use cache, user:%s device:%s utl:%d", user, device, utl)
+			return utl, userTokens.Tokens, nil
+		}
+	}
+
+	log.Infof("UserTimeLineRepo.LoadToken use redis, user:%s device:%s utl:%d", user, device, utl)
 	token, err := tl.cache.GetToken(user, device, utl)
 	//get token err, return err
 	if err != nil {
@@ -734,6 +754,11 @@ func (tl *UserTimeLineRepo) LoadToken(user, device string, utl int64) (int64, ma
 	}
 	//has token, return token
 	if token != nil {
+		tl.userToken.Store(user+"_"+device, &UserTokens{
+			LastTime: time.Now().Unix(),
+			Utl:      utl,
+			Tokens:   token,
+		})
 		return utl, token, nil
 	} else {
 		//not has token
@@ -742,7 +767,15 @@ func (tl *UserTimeLineRepo) LoadToken(user, device string, utl int64) (int64, ma
 			return 0, nil, nil
 		} else {
 			//get latest token
-			return tl.cache.GetLastValidToken(user, device)
+			utl, token, err := tl.cache.GetLastValidToken(user, device)
+			if err == nil {
+				tl.userToken.Store(user+"_"+device, &UserTokens{
+					LastTime: time.Now().Unix(),
+					Utl:      utl,
+					Tokens:   token,
+				})
+			}
+			return utl, token, err
 		}
 	}
 }
@@ -752,6 +785,20 @@ func (tl *UserTimeLineRepo) UpdateToken(user, device string, utl int64, roomOffs
 	defer func(timespend *common.TimeSpend) {
 		log.Infof("update user:%s device:%s token spend:%d ms", user, device, timespend.MS())
 	}(timespend)
+
+	if val, ok := tl.userToken.Load(user + "_" + device); ok {
+		userTokens := val.(*UserTokens)
+		userTokens.LastTime = time.Now().Unix()
+		userTokens.Utl = utl
+		userTokens.Tokens = roomOffsets
+	} else {
+		tl.userToken.Store(user+"_"+device, &UserTokens{
+			LastTime: time.Now().Unix(),
+			Utl:      utl,
+			Tokens:   roomOffsets,
+		})
+	}
+
 	err := tl.cache.SetToken(user, device, utl, roomOffsets)
 	if err != nil {
 		log.Errorf("update user:%s device:%s utl:%d err:%v", user, device, utl, err)
@@ -821,4 +868,28 @@ func (tl *UserTimeLineRepo) UnregisterReceiptUpdate(userID string, cb common.Lis
 
 func (tl *UserTimeLineRepo) broadcastReceiptUpdate(userID string, offset int64) {
 	tl.listener.Broadcast(userID, offset)
+}
+
+func (tl *UserTimeLineRepo) clean() {
+	t := time.NewTimer(time.Second * 60) //60s timer
+	for {
+		select {
+		case <-t.C:
+			left := 0
+			now := time.Now().Unix()
+			tl.userToken.Range(func(key, value interface{}) bool {
+				userTokens := value.(*UserTokens)
+				if now > userTokens.LastTime+3600 {
+					tl.userToken.Delete(key)
+				} else {
+					left++
+				}
+				return true
+			})
+			t.Reset(time.Second * 60)
+			if left > 0 {
+				log.Infof("UserTimeLineRepo cache token user count %d", left)
+			}
+		}
+	}
 }
