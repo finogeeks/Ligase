@@ -15,6 +15,7 @@
 package channel
 
 import (
+	"reflect"
 	"context"
 	"encoding/json"
 	"errors"
@@ -373,6 +374,7 @@ func (c *KafkaChannel) startConsumer() error {
 		for c.start == true {
 			ev := c.consumer.Poll(maxPollIntervalMs - 1)
 			log.Infof("==========================================%s\n", ev.String())
+			log.Infoln(reflect.TypeOf(ev))
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
 				c.consumer.Assign(e.Partitions)
