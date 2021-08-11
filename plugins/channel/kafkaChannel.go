@@ -36,13 +36,12 @@ type KafkaConsumerConf interface {
 	EnableAutoCommit() *bool
 	AutoCommitIntervalMS() *int
 	TopicAutoOffsetReset() *string
-	GoChannelEnable() *bool
 	MaxPollIntervalMs() *int
 }
 
 const (
-	DefaultTimeOut          = 10
-	DefaultEnableAutoCommit = true
+	DefaultTimeOut           = 10
+	DefaultEnableAutoCommit  = true
 	DefaultMaxPollIntervalMs = 300000
 )
 
@@ -380,7 +379,6 @@ func (c *KafkaChannel) startConsumer() error {
 				c.consumer.Unassign()
 				log.Infof("consumer unassigned partitions: %v", e)
 			case *kafka.Message:
-				//log.Infof("consumer %% Message on topic:%s partition:%d offset:%d val:%s grp:%s", *e.TopicPartition.Topic, e.TopicPartition.Partition, e.TopicPartition.Offset, string(e.Value), t.consumerGroup)
 				onMessage(c.handler, e)
 			case kafka.PartitionEOF:
 				log.Infof("consumer Reached: %v", e)
@@ -490,7 +488,6 @@ func (c *KafkaChannel) preStartConsumer(broker string, statsInterval int) error 
 		enableAutoCommit := DefaultEnableAutoCommit
 		autoCommitIntervalMS := 5000
 		topicAutoOffsetReset := "latest"
-		goChannelEnable := true
 		maxPollIntervalMs := DefaultMaxPollIntervalMs
 		if c.conf != nil {
 			conf := c.conf.(KafkaConsumerConf)
@@ -503,25 +500,22 @@ func (c *KafkaChannel) preStartConsumer(broker string, statsInterval int) error 
 			if conf.TopicAutoOffsetReset() != nil {
 				topicAutoOffsetReset = *conf.TopicAutoOffsetReset()
 			}
-			if conf.GoChannelEnable() != nil {
-				goChannelEnable = *conf.GoChannelEnable()
-			}
 			if conf.MaxPollIntervalMs() != nil {
 				maxPollIntervalMs = *conf.MaxPollIntervalMs()
 			}
 		}
-		log.Infof("kafka consumer config topic:%s enableAutoCommit:%t autoCommitIntervalMS:%d topicAutoOffsetReset:%s goChannelEnable:%t", c.topic, enableAutoCommit, autoCommitIntervalMS, topicAutoOffsetReset, goChannelEnable)
+		log.Infof("kafka consumer config topic:%s enableAutoCommit:%t autoCommitIntervalMS:%d topicAutoOffsetReset:%s maxPollIntervalMs:%d", c.topic, enableAutoCommit, autoCommitIntervalMS, topicAutoOffsetReset, maxPollIntervalMs)
 		s, err := kafka.NewConsumer(&kafka.ConfigMap{
 			"bootstrap.servers":               broker,
 			"group.id":                        c.grp,
 			"session.timeout.ms":              20000,
-			"go.events.channel.enable":        goChannelEnable,
+			"go.events.channel.enable":        false,
 			"go.application.rebalance.enable": true,
 			"enable.auto.commit":              enableAutoCommit,
 			"auto.commit.interval.ms":         autoCommitIntervalMS,
 			"default.topic.config":            kafka.ConfigMap{"auto.offset.reset": topicAutoOffsetReset}, //earliest
 			"statistics.interval.ms":          statsInterval,
-			"max.poll.interval.ms": maxPollIntervalMs,
+			"max.poll.interval.ms":            maxPollIntervalMs,
 			// "enable.partition.eof":            true
 		})
 
