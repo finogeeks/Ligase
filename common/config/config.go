@@ -581,11 +581,10 @@ type ConsumerConf struct {
 	Underlying string `yaml:"underlying"`
 	Name       string `yaml:"name"`
 
-	AutoCommit        *bool   `yaml:"enable_auto_commit,omitempty"`
-	CommitIntervalMS  *int    `yaml:"auto_commit_interval_ms,omitempty"`
-	AutoOffsetReset   *string `yaml:"topic_auto_offset_reset,omitempty"`
-	EnableGoChannel   *bool   `yaml:"go_channel_enable,omitempty"`
-	MaxPollInterval *int    `yaml:"max_poll_interval_ms,omitempty"`
+	AutoCommit       *bool   `yaml:"enable_auto_commit,omitempty"`
+	CommitIntervalMS *int    `yaml:"auto_commit_interval_ms,omitempty"`
+	AutoOffsetReset  *string `yaml:"topic_auto_offset_reset,omitempty"`
+	MaxPollInterval  *int    `yaml:"max_poll_interval_ms,omitempty"`
 }
 
 func (c *ConsumerConf) EnableAutoCommit() *bool {
@@ -598,10 +597,6 @@ func (c *ConsumerConf) AutoCommitIntervalMS() *int {
 
 func (c *ConsumerConf) TopicAutoOffsetReset() *string {
 	return c.AutoOffsetReset
-}
-
-func (c *ConsumerConf) GoChannelEnable() *bool {
-	return c.EnableGoChannel
 }
 
 func (c *ConsumerConf) MaxPollIntervalMs() *int {
