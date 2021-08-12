@@ -17,6 +17,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 
 	"github.com/finogeeks/ligase/common"
@@ -82,6 +83,9 @@ func (ReqGetSync) Process(consumer interface{}, msg core.Coder, device *authtype
 		Since:       req.Since,
 		TraceId:     fmt.Sprintf("%d", traceId),
 	}
-
+	localExporter.ExportSyncNumberSameTime("inc")
+	defer func(){
+		localExporter.ExportSyncNumberSameTime("dec")
+	}()
 	return c.sm.OnSyncRequest(&httpReq, device)
 }

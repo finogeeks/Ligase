@@ -14,6 +14,7 @@ var (
 	grpcRequest mon.LabeledCounter
 	grpcDuration mon.LabeledHistogram
 	socketCount mon.LabeledGauge
+	syncNumberSameTime mon.LabeledGauge
 	Instance string
 )
 
@@ -34,6 +35,8 @@ func init(){
 		[]float64{10.0, 50.0, 100.0, 500.0, 1000.0, 3000.0},)
 	// 服务socket使用情况
 	socketCount = monitor.NewLabeledGauge("chat_socket_count",[]string{"server_name", "srv_inst", "proto", "socket_state"})
+	// 同时sync的用户数量
+	syncNumberSameTime = monitor.NewLabeledGauge("sync_number_same_time", []string{"server_name", "srv_inst"})
 }
 
 // must after config load over
