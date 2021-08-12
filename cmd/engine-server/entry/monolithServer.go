@@ -40,6 +40,7 @@ import (
 	"github.com/finogeeks/ligase/syncaggregate"
 	"github.com/finogeeks/ligase/syncserver"
 	"github.com/finogeeks/ligase/syncwriter"
+	"strconv"
 )
 
 var dbUpdateProducerName = []string{
@@ -192,7 +193,7 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	//tokenrewrite.SetupTokenRewrite(rpcClient, base.Cfg)
 	syncwriter.SetupSyncWriterComponent(base, rpcCli)
 	syncaggregate.SetupSyncAggregateComponent(base, cache, rpcCli, idg, complexCache)
-	proxy.SetupProxy(base, cache, rpcCli, rsRpcCli, newTokenFilter)
+	proxy.SetupProxy(base, cache, rpcCli, rsRpcCli, newTokenFilter, getBindPort(*cmd.httpBindAddr))
 	bgmng.SetupBgMngComponent(base, deviceDB, cache, encryptDB, syncDB, serverConfDB, rpcCli, tokenFilter, base.Cfg.DeviceMng.ScanUnActive, base.Cfg.DeviceMng.KickUnActive)
 	rcsserver.SetupRCSServerComponent(base, rpcCli)
 	consumer := consumers.NewDismissRoomConsumer(
@@ -208,4 +209,15 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 	if err := consumer.Start(); err != nil {
 		log.Panicf("failed to start settings consumer err:%v", err)
 	}
+}
+
+func getBindPort(httpBindAddr string) int {
+	if len(httpBindAddr) > 0 && httpBindAddr[0] == ':' {
+		bindPort, err := strconv.Atoi(httpBindAddr[1:])
+		if err != nil {
+			return -1
+		}
+		return bindPort
+	}
+	return -1
 }

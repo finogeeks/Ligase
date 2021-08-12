@@ -11,6 +11,10 @@ var (
 	httpRequest  mon.LabeledCounter
 	httpDuration mon.LabeledHistogram
 	handleDuration mon.LabeledHistogram
+	grpcRequest mon.LabeledCounter
+	grpcDuration mon.LabeledHistogram
+	socketCount mon.LabeledGauge
+	syncNumberSameTime mon.LabeledGauge
 	Instance string
 )
 
@@ -25,6 +29,14 @@ func init(){
 	handleDuration = monitor.NewLabeledHistogram("chat_handle_requests_duration_milliseconds",
 		[]string{"server_name","srv_inst", "method", "path", "code"},
 		[]float64{10.0, 50.0, 100.0, 500.0, 1000.0, 3000.0},)
+	// grpc时延统计
+	grpcDuration = monitor.NewLabeledHistogram("chat_grpc_requests_duration_milliseconds",
+		[]string{"from","to", "srv_inst", "method","code"},
+		[]float64{10.0, 50.0, 100.0, 500.0, 1000.0, 3000.0},)
+	// 服务socket使用情况
+	socketCount = monitor.NewLabeledGauge("chat_socket_count",[]string{"server_name", "srv_inst", "proto", "socket_state"})
+	// 同时sync的用户数量
+	syncNumberSameTime = monitor.NewLabeledGauge("chat_sync_number_same_time", []string{"server_name", "srv_inst"})
 }
 
 // must after config load over
@@ -49,6 +61,11 @@ const (
 func exportHandleDurationRequest(serverName, method, path, code string, dur float64){
 	handleDuration.WithLabelValues(serverName, Instance, method, path, code).Observe(dur)
 }
+
+func ExportGrpcRequestDuration(from, to, method, code string, dur float64){
+	grpcDuration.WithLabelValues(from, to, Instance, method, code).Observe(dur)
+}
+
 
 
 
