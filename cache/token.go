@@ -90,7 +90,7 @@ func (rc *RedisCache) GetTokenUtls(userID, device string) (utls []int64, err err
 	if err != nil || us == nil {
 		return []int64{}, err
 	}
-	for k, _ := range us {
+	for k := range us {
 		utl, err := strconv.ParseInt(k, 10, 64)
 		if err == nil {
 			utls = append(utls, utl)
