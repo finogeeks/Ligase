@@ -36,7 +36,7 @@ func init(){
 	// 服务socket使用情况
 	socketCount = monitor.NewLabeledGauge("chat_socket_count",[]string{"server_name", "srv_inst", "proto", "socket_state"})
 	// 同时sync的用户数量
-	syncNumberSameTime = monitor.NewLabeledGauge("sync_number_same_time", []string{"server_name", "srv_inst"})
+	syncNumberSameTime = monitor.NewLabeledGauge("chat_sync_number_same_time", []string{"server_name", "srv_inst"})
 }
 
 // must after config load over
