@@ -18,11 +18,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/finogeeks/ligase/common/localExporter"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -119,7 +120,7 @@ func (r *Client) SyncLoad(ctx context.Context, req *syncapitypes.SyncServerReque
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.SyncLoad(ctx, helper.ToSyncProcessReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "SyncLoad", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -139,7 +140,7 @@ func (r *Client) SyncProcess(ctx context.Context, req *syncapitypes.SyncServerRe
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.SyncProcess(ctx, helper.ToSyncProcessReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "SyncProcess", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -160,7 +161,7 @@ func (r *Client) GetPusherByDevice(ctx context.Context, req *pushapitypes.ReqPus
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPusherByDevice(ctx, helper.ToGetPusherByDeviceReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "GetPusherByDevice", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -181,7 +182,7 @@ func (r *Client) GetPushRuleByUser(ctx context.Context, req *pushapitypes.ReqPus
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPushRuleByUser(ctx, helper.ToGetPushRuleByUser(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "GetPushRuleByUser", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -201,7 +202,7 @@ func (r *Client) GetPushDataBatch(ctx context.Context, req *pushapitypes.ReqPush
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPushDataBatch(ctx, helper.ToGetPushDataBatch(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_SERVER, localExporter.CHAT_SYNC_SERVER, "GetPushDataBatch", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -221,7 +222,7 @@ func (r *Client) GetPusherBatch(ctx context.Context, req *pushapitypes.ReqPushUs
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPusherBatch(ctx, helper.ToGetPusherBatchReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_SERVER, localExporter.CHAT_SYNC_SERVER, "GetPusherBatch", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -279,7 +280,7 @@ func (r *Client) OnUnRead(ctx context.Context, req *syncapitypes.SyncUnreadReque
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.OnUnread(ctx, helper.ToOnUnreadReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "OnUnRead", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -346,7 +347,7 @@ func (r *Client) GetOnlinePresence(ctx context.Context, userID string) (*types.O
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncAggregateClient(conn)
 	rsp, err := c.GetOnlinePresence(ctx, &pb.GetOnlinePresenceReq{UserID: userID})
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_FRONT, localExporter.CHAT_SYNC_AGG, "GetOnlinePresence", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
@@ -554,8 +555,10 @@ func (r *Client) VerifyToken(ctx context.Context, req *types.VerifyTokenRequest)
 		return nil, err
 	}
 	result := &types.VerifyTokenResponse{
-		Error:  rsp.Error,
-		Device: *helper.ToDevice(rsp.Device),
+		Error: rsp.Error,
+	}
+	if rsp.Device != nil {
+		result.Device = *helper.ToDevice(rsp.Device)
 	}
 	cl.end(result)
 	return result, nil
