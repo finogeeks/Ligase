@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -27,9 +28,8 @@ import (
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/core"
 	log "github.com/finogeeks/ligase/skunkworks/log"
-
-	// "github.com/confluentinc/confluent-kafka-go/kafka"
 	"gopkg.in/confluentinc/confluent-kafka-go.v1/kafka"
+	// "github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 type KafkaConsumerConf interface {
@@ -43,6 +43,11 @@ const (
 	DefaultTimeOut           = 10
 	DefaultEnableAutoCommit  = true
 	DefaultMaxPollIntervalMs = 300000
+)
+
+var (
+	commitRetryTimes    = 2
+	commitRetryInterval = 1000
 )
 
 type msgContext struct {
@@ -73,6 +78,26 @@ type KafkaChannel struct {
 
 func init() {
 	core.RegisterChannel("kafka", NewKafkaChannel)
+	val, ok := os.LookupEnv("KAFKA_CONSUMER_COMMIT_RETRY_TIMES")
+	if ok {
+		times, err := strconv.Atoi(val)
+		if err == nil {
+			if times < 1 {
+				times = 1
+			}
+			commitRetryTimes = times
+		}
+	}
+	val, ok = os.LookupEnv("KAFKA_CONSUMER_COMMIT_RETRY_INTERVAL")
+	if ok {
+		interval, err := strconv.Atoi(val)
+		if err == nil {
+			if interval < 100 {
+				interval = 100
+			}
+			commitRetryInterval = interval
+		}
+	}
 }
 
 func NewKafkaChannel(conf interface{}) (core.IChannel, error) {
@@ -253,8 +278,8 @@ func (c *KafkaChannel) Commit(rawMsgs []interface{}) error {
 		return nil
 	}
 
-	partitionsMsgArr := []*kafka.Message{}
 	partitionsMsg := make(map[string]map[int32]bool)
+	msgOffsets := []kafka.TopicPartition{}
 	for i := len(rawMsgs) - 1; i >= 0; i-- {
 		rawMsg := rawMsgs[i]
 		if v, ok := rawMsg.(*kafka.Message); ok {
@@ -264,20 +289,27 @@ func (c *KafkaChannel) Commit(rawMsgs []interface{}) error {
 				tempMap = make(map[int32]bool)
 				partitionsMsg[topic] = tempMap
 			}
-			if !tempMap[v.TopicPartition.Partition] {
+			if v.TopicPartition.Error == nil && !tempMap[v.TopicPartition.Partition] {
 				tempMap[v.TopicPartition.Partition] = true
-				partitionsMsgArr = append(partitionsMsgArr, v)
+				topicPartition := v.TopicPartition
+				topicPartition.Offset++
+				msgOffsets = append(msgOffsets, topicPartition)
 			}
 		}
 	}
+	ts := time.Now().UnixNano()
 	var err error
-	for i := len(partitionsMsgArr) - 1; i >= 0; i-- {
-		v := partitionsMsgArr[i]
-		_, err0 := c.consumer.CommitMessage(v)
-		if err0 != nil {
-			log.Errorf("kafka commit offset error %s", v)
-			err = err0
+	for i := 0; i < commitRetryTimes; i++ {
+		_, err = c.consumer.CommitOffsets(msgOffsets)
+		if err != nil {
+			log.Errorf("kafka commit offset %d error %s", ts, err)
+			time.Sleep(time.Millisecond * time.Duration(commitRetryInterval))
+			continue
 		}
+		if i > 0 {
+			log.Infof("kafka commit offset %d success", ts)
+		}
+		break
 	}
 	return err
 }
@@ -350,6 +382,9 @@ func (c *KafkaChannel) startConsumer() error {
 				log.Errorf("channel consumer panic: %#v", e)
 			}
 		}()
+		if msg.TopicPartition.Error != nil {
+			log.Errorf("consumer topic %v partition %d offset %d error: %s", msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, msg.TopicPartition.Error)
+		}
 		consumer.OnMessage(context.Background(), *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.Value, msg)
 	}
 	var evHandler func()

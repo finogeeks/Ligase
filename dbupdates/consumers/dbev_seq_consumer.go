@@ -3,6 +3,7 @@ package consumers
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/finogeeks/ligase/common/config"
@@ -22,6 +23,10 @@ type DBEventSeqConsumer struct {
 	commiter  dbupdatetypes.KafkaCommiter
 	msgChan   chan dbupdatetypes.DBEventDataInput
 	batchKeys map[int64]bool
+
+	commitQue      []interface{}
+	commitQueMutex sync.Mutex
+	committing     bool
 }
 
 func newDBEventSeqConsumer(
@@ -114,6 +119,7 @@ func (c *DBEventSeqConsumer) OnMessage(ctx context.Context, topic string, partit
 	}
 
 	if output.IsRecovery {
+		c.CommitMessageLazy(rawMsg)
 		return //recover from db, just need to write cache
 	}
 	c.msgChan <- dbupdatetypes.DBEventDataInput{
@@ -127,5 +133,43 @@ func (c *DBEventSeqConsumer) CommitMessage(rawMsg []interface{}) {
 	err := c.commiter.Commit(rawMsg)
 	if err != nil {
 		log.Errorf("DBEVentDataConsumer commit error %v", err)
+	}
+}
+
+func (c *DBEventSeqConsumer) CommitMessageLazy(rawMsg interface{}) {
+	startCommit := false
+	c.commitQueMutex.Lock()
+	c.commitQue = append(c.commitQue, rawMsg)
+	if !c.committing {
+		c.committing = true
+		startCommit = true
+	}
+	c.commitQueMutex.Unlock()
+
+	if startCommit {
+		go func() {
+			noDataTimes := 0
+			for {
+				time.Sleep(time.Second * 3)
+
+				var que []interface{}
+
+				c.commitQueMutex.Lock()
+				que = c.commitQue
+				c.commitQue = nil
+				if len(que) == 0 {
+					noDataTimes++
+					if noDataTimes > 10 {
+						c.committing = false
+						c.commitQueMutex.Unlock()
+						break
+					}
+				} else {
+					noDataTimes = 0
+				}
+				c.commitQueMutex.Unlock()
+				c.CommitMessage(que)
+			}
+		}()
 	}
 }
