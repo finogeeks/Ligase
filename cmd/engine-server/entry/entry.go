@@ -271,27 +271,27 @@ func listenHTTPS(cmd *serverCmdPar) {
 	}()
 }
 
-func logSysPorformance(cmd *serverCmdPar) {
+func logSysPorformance(cmd *serverCmdPar, instanceId string) {
 	log.Info("sys porformance enabled")
 	go func() {
 		name := *cmd.procName
 		name = strings.Replace(name, "-", "_", -1)
 		monitor := mon.GetInstance()
 		t := time.NewTimer(time.Second * time.Duration(60))
-		memGauge := monitor.NewLabeledGauge(name+"_mem_gauge", []string{"app", "index"})
-		routineGauge := monitor.NewLabeledGauge(name+"_goroutine_gauge", []string{"app"})
+		memGauge := monitor.NewLabeledGauge("chat_sys_mem_gauge", []string{"server_name", "srv_inst", "index"})
+		routineGauge := monitor.NewLabeledGauge("chat_sys_goroutine_gauge", []string{"server_name", "srv_inst"})
 		for {
 			select {
 			case <-t.C:
 				state := new(runtime.MemStats)
 				runtime.ReadMemStats(state)
-				memGauge.WithLabelValues(name, "alloc").Set(float64(state.Alloc / 1000))
-				memGauge.WithLabelValues(name, "sys").Set(float64(state.Sys / 1000))
-				memGauge.WithLabelValues(name, "alloctime").Set(float64(state.Mallocs))
-				memGauge.WithLabelValues(name, "freetime").Set(float64(state.Frees))
-				memGauge.WithLabelValues(name, "gc").Set(float64(state.NumGC))
-				memGauge.WithLabelValues(name, "heapobjects").Set(float64(state.HeapObjects))
-				routineGauge.WithLabelValues(name).Set(float64(runtime.NumGoroutine()))
+				memGauge.WithLabelValues(name, instanceId, "alloc").Set(float64(state.Alloc / 1000))
+				memGauge.WithLabelValues(name, instanceId, "sys").Set(float64(state.Sys / 1000))
+				memGauge.WithLabelValues(name, instanceId, "alloctime").Set(float64(state.Mallocs))
+				memGauge.WithLabelValues(name, instanceId, "freetime").Set(float64(state.Frees))
+				memGauge.WithLabelValues(name, instanceId, "gc").Set(float64(state.NumGC))
+				memGauge.WithLabelValues(name, instanceId, "heapobjects").Set(float64(state.HeapObjects))
+				routineGauge.WithLabelValues(name, instanceId).Set(float64(runtime.NumGoroutine()))
 				log.Infof("mem: alloc %d, sys %d, alloctime %d, freetime %d, gc %d heapobjects %d, routine %d, cpu %d",
 					state.Alloc/1000, state.Sys/1000, state.Mallocs, state.Frees, state.NumGC, state.HeapObjects, runtime.NumGoroutine(), runtime.NumCPU())
 				t.Reset(time.Second * 15)
@@ -449,7 +449,7 @@ func Entry() {
 	}
 
 	if *cmdLine.logPorf == true {
-		logSysPorformance(cmdLine)
+		logSysPorformance(cmdLine, strconv.Itoa(base.Cfg.Matrix.InstanceId))
 	}
 
 	if err := lifecycle.RunAfterStartup(); err != nil {

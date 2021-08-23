@@ -17,6 +17,7 @@ package repos
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"sync"
 	"time"
 
@@ -27,24 +28,25 @@ import (
 )
 
 type UserReceiptRepo struct {
-	persist model.SyncAPIDatabase
-	receipt *sync.Map
-	updated *sync.Map
-	delay   int
-	ready   sync.Map
-	loading sync.Map
-
+	persist         model.SyncAPIDatabase
+	receipt         *sync.Map
+	updated         *sync.Map
+	delay           int
+	ready           sync.Map
+	loading         sync.Map
+	srv             string
 	queryHitCounter mon.LabeledCounter
 }
 
 func NewUserReceiptRepo(
 	delay int,
+	srv string,
 ) *UserReceiptRepo {
 	tls := new(UserReceiptRepo)
 	tls.receipt = new(sync.Map)
 	tls.updated = new(sync.Map)
 	tls.delay = delay
-
+	tls.srv = srv
 	tls.startFlush()
 	return tls
 }
@@ -141,9 +143,11 @@ func (tl *UserReceiptRepo) loadHistory(userID, roomID string) {
 	evtOffset, content, err := tl.persist.GetUserHistoryReceiptData(context.TODO(), roomID, userID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
+		localExporter.ExportDbOperDuration(tl.srv, "UserReceiptRepo", "loadHistory", "500", float64(spend))
 		log.Errorf("load db failed UserReceiptRepo load history roomID:%s user:%s spend:%d ms err: %v", roomID, userID, spend, err)
 		return
 	}
+	localExporter.ExportDbOperDuration(tl.srv, "UserReceiptRepo", "loadHistory", "200", float64(spend))
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms UserReceiptRepo.loadHistory finished room:%s user:%s spend:%d ms", types.DB_EXCEED_TIME, roomID, userID, spend)
 	} else {

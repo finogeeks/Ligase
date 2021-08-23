@@ -59,19 +59,19 @@ func SetupSyncServerComponent(
 	monitor := mon.GetInstance()
 	qureyHitCounter := monitor.NewLabeledCounter("syncserver_query_hit", []string{"target", "repo", "func"})
 
-	roomHistory := repos.NewRoomHistoryTimeLineRepo(4, maxEntries, gcPerNum)
+	roomHistory := repos.NewRoomHistoryTimeLineRepo(4, maxEntries, gcPerNum, "sync_server")
 	rsCurState := repos.NewRoomCurStateRepo(base)
 	exporter.SyncServerExporterMetrics(rsCurState, base)
-	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum)
+	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum, "sync_server")
 
-	receiptDataStreamRepo := repos.NewReceiptDataStreamRepo(flushDelay, 100, true)
+	receiptDataStreamRepo := repos.NewReceiptDataStreamRepo(flushDelay, 100, true, "sync_server")
 	receiptDataStreamRepo.SetPersist(syncDB)
 	receiptDataStreamRepo.SetMonitor(qureyHitCounter)
 
 	displayNameRepo := repos.NewDisplayNameRepo()
 	readCountRepo := repos.NewReadCountRepo(flushDelay)
 	readCountRepo.SetCache(cacheIn)
-	userReceiptRepo := repos.NewUserReceiptRepo(flushDelay)
+	userReceiptRepo := repos.NewUserReceiptRepo(flushDelay, "sync_server")
 
 	eventReadStreamRepo := repos.NewEventReadStreamRepo()
 	eventReadStreamRepo.SetPersist(syncDB)

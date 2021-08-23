@@ -35,9 +35,9 @@ func SetupSyncWriterComponent(
 	monitor := mon.GetInstance()
 	qureyHitCounter := monitor.NewLabeledCounter("syncwriter_query_hit", []string{"target", "repo", "func"})
 	cache := base.PrepareCache()
-	roomHistory := repos.NewRoomHistoryTimeLineRepo(4, maxEntries, gcPerNum)
+	roomHistory := repos.NewRoomHistoryTimeLineRepo(4, maxEntries, gcPerNum, "sync_writer")
 	rsCurState := repos.NewRoomCurStateRepo(base)
-	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum)
+	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum, "sync_writer")
 	displayNameRepo := repos.NewDisplayNameRepo()
 
 	roomHistory.SetPersist(syncDB)
