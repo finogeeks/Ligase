@@ -72,7 +72,7 @@ func ExportGrpcRequestDuration(from, to, method, code string, dur float64){
 }
 
 func ExportDbOperDuration(serverName, repo, method, code string, dur float64) {
-	dbOperDuration.WithLabelValues(serverName, repo, method, code).Observe(dur)
+	dbOperDuration.WithLabelValues(serverName, Instance, repo, method, code).Observe(dur)
 }
 
 
