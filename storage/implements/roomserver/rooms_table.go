@@ -20,6 +20,7 @@ package roomserver
 import (
 	"context"
 	"database/sql"
+	"github.com/finogeeks/ligase/model/types"
 
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
@@ -64,6 +65,8 @@ const selectAllRoomsSQL = "select room_id, room_nid from roomserver_rooms limit 
 
 const updateRoomDepthSQL = "UPDATE roomserver_rooms Set depth = $1 where room_nid = $2"
 
+const selectRoomsDomainOffsetSQL = "SELECT a.room_id, b.domain, b.offsets FROM roomserver_rooms a, roomserver_room_domains b WHERE a.room_nid = b.room_nid"
+
 type roomStatements struct {
 	db                        *Database
 	insertRoomNIDStmt         *sql.Stmt
@@ -72,6 +75,7 @@ type roomStatements struct {
 	selectRoomInfoStmt        *sql.Stmt
 	selectAllRoomsStmt        *sql.Stmt
 	updateRoomDepthStmt       *sql.Stmt
+	selectRoomsDomainOffsetStmt   *sql.Stmt
 }
 
 func (s *roomStatements) getSchema() string {
@@ -94,6 +98,7 @@ func (s *roomStatements) prepare(db *sql.DB, d *Database) (err error) {
 		{&s.selectRoomInfoStmt, selectRoomInfoSQL},
 		{&s.selectAllRoomsStmt, selectAllRoomsSQL},
 		{&s.updateRoomDepthStmt, updateRoomDepthSQL},
+		{&s.selectRoomsDomainOffsetStmt, selectRoomsDomainOffsetSQL},
 	}.prepare(db)
 }
 
@@ -245,4 +250,24 @@ func (s *roomStatements) updateRoomDepth(ctx context.Context, depth, roomNid int
 func (s *roomStatements) onUpdateRoomDepth(ctx context.Context, depth, roomNid int64) error {
 	_, err := s.updateRoomDepthStmt.ExecContext(ctx, depth, roomNid)
 	return err
+}
+
+func (s *roomStatements) selectRoomsDomainOffset(
+	ctx context.Context,
+) ([]types.RoomDomainOffset, error) {
+	stmt := s.selectRoomsDomainOffsetStmt
+	rows, err := stmt.QueryContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	roomsDomainOffset := []types.RoomDomainOffset{}
+	for rows.Next() {
+		var roomDomainOffset types.RoomDomainOffset
+		if err = rows.Scan(&roomDomainOffset.RoomID, &roomDomainOffset.Domain, &roomDomainOffset.Offset); err != nil {
+			return nil, err
+		}
+		roomsDomainOffset = append(roomsDomainOffset, roomDomainOffset)
+	}
+	return roomsDomainOffset, nil
 }

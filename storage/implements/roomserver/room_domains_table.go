@@ -41,6 +41,7 @@ const upsertRoomDomainsSQL = "" +
 const selectRoomDomainsSQL = "" +
 	"SELECT domain, offsets FROM roomserver_room_domains WHERE room_nid = $1"
 
+
 type roomDomainsStatements struct {
 	db                    *Database
 	upsertRoomDomainsStmt *sql.Stmt

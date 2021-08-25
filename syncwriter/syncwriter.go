@@ -15,6 +15,7 @@
 package syncwriter
 
 import (
+	"context"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/model/repos"
 	rpcService "github.com/finogeeks/ligase/rpc"
@@ -29,6 +30,7 @@ func SetupSyncWriterComponent(
 	rpcCli rpcService.RpcClient,
 ) {
 	syncDB := base.CreateSyncDB()
+	roomDB := base.CreateRoomDB()
 	maxEntries := base.Cfg.Lru.MaxEntries
 	gcPerNum := base.Cfg.Lru.GcPerNum
 
@@ -39,9 +41,11 @@ func SetupSyncWriterComponent(
 	rsCurState := repos.NewRoomCurStateRepo(base)
 	rsTimeline := repos.NewRoomStateTimeLineRepo(4, rsCurState, maxEntries, gcPerNum, "sync_writer")
 	displayNameRepo := repos.NewDisplayNameRepo()
-
+	roomHistory.SetCfg(base.Cfg)
+	roomHistory.SetRoomPersist(roomDB)
 	roomHistory.SetPersist(syncDB)
 	roomHistory.SetMonitor(qureyHitCounter)
+	roomHistory.LoadAllDomainMaxStream(context.Background())
 	roomHistory.SetCache(cache)
 	rsCurState.SetPersist(syncDB)
 

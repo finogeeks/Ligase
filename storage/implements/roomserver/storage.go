@@ -20,6 +20,7 @@ package roomserver
 import (
 	"context"
 	"database/sql"
+	"github.com/finogeeks/ligase/model/types"
 	"time"
 
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -758,4 +759,12 @@ func (d *Database) GetHistoryEvents(ctx context.Context, roomNID int64, limit in
 	}
 
 	return evs, nids, nil
+}
+
+func (d *Database) SelectRoomsDomainOffset(ctx context.Context) ([]types.RoomDomainOffset, error) {
+	start := time.Now()
+	roomsDomainOffset, err := d.statements.selectRoomsDomainOffset(ctx)
+	duration := float64(time.Since(start)) / float64(time.Millisecond)
+	d.qryDBGauge.WithLabelValues("SelectRoomsDomainOffset").Set(duration)
+	return roomsDomainOffset, err
 }
