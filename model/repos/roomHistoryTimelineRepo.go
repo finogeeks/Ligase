@@ -16,6 +16,8 @@ package repos
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
 	"sync"
 	"time"
 
@@ -41,8 +43,11 @@ type RoomHistoryTimeLineRepo struct {
 	roomMinStream          sync.Map
 	domainMaxOffset        sync.Map
 	loadingDomainMaxOffset sync.Map
-
+	isLoadingMaxStream     bool
+	hasloadMaxStream       bool
 	queryHitCounter mon.LabeledCounter
+	roomPersist            model.RoomServerDatabase
+	cfg              	   *config.Dendrite
 }
 
 type RoomHistoryLoadedData struct {
@@ -63,6 +68,10 @@ func NewRoomHistoryTimeLineRepo(
 	tls.roomMutex = new(sync.Mutex)
 
 	return tls
+}
+
+func (tl *RoomHistoryTimeLineRepo) SetCfg(cfg *config.Dendrite){
+	tl.cfg = cfg
 }
 
 func (tl *RoomHistoryTimeLineRepo) GetLoadedData() *RoomHistoryLoadedData {
@@ -92,6 +101,10 @@ func (tl *RoomHistoryTimeLineRepo) GetLoadedData() *RoomHistoryLoadedData {
 
 func (tl *RoomHistoryTimeLineRepo) SetPersist(db model.SyncAPIDatabase) {
 	tl.persist = db
+}
+
+func (tl *RoomHistoryTimeLineRepo) SetRoomPersist(db model.RoomServerDatabase) {
+	tl.roomPersist = db
 }
 
 func (tl *RoomHistoryTimeLineRepo) SetCache(cache service.Cache) {
@@ -419,4 +432,39 @@ func (tl *RoomHistoryTimeLineRepo) LoadRoomLatest(rooms []syncapitypes.SyncRoom)
 		tl.queryHitCounter.WithLabelValues("cache", "RoomHistoryTimeLineRepo", "LoadRoomLatest").Add(1)
 	}
 	return nil
+}
+
+func (tl *RoomHistoryTimeLineRepo) isRelated(roomID string) bool {
+	return common.IsRelatedRequest(roomID, tl.cfg.MultiInstance.Instance, tl.cfg.MultiInstance.Total, tl.cfg.MultiInstance.MultiWrite)
+}
+
+func (tl *RoomHistoryTimeLineRepo) LoadAllDomainMaxStream(ctx context.Context) {
+	if tl.hasloadMaxStream || tl.isLoadingMaxStream {
+		return
+	}
+	tl.isLoadingMaxStream = true
+	roomsDomainOffset, err := tl.roomPersist.SelectRoomsDomainOffset(ctx)
+	if err != nil {
+		log.Errorf("loadAllDomainMaxStream err:%s", err.Error())
+		tl.hasloadMaxStream = false
+		tl.isLoadingMaxStream = false
+		return
+	}
+	for _, item := range roomsDomainOffset {
+		if !tl.isRelated(item.RoomID){
+			continue
+		}
+		if val, ok := tl.domainMaxOffset.Load(item.RoomID); ok {
+			domainOffset := val.(*sync.Map)
+			if _, exsit := domainOffset.Load(item.Domain); !exsit {
+				domainOffset.Store(item.Domain, item.Offset)
+			}
+		} else {
+			domainMap := new(sync.Map)
+			domainMap.Store(item.Domain, item.Offset)
+			tl.domainMaxOffset.Store(item.RoomID, domainMap)
+		}
+	}
+	tl.hasloadMaxStream = true
+	tl.isLoadingMaxStream = false
 }

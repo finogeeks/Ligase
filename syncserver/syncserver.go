@@ -52,6 +52,7 @@ func SetupSyncServerComponent(
 ) {
 	syncDB := base.CreateSyncDB()
 	pushDB := base.CreatePushApiDB()
+	roomDB := base.CreateRoomDB()
 	maxEntries := base.Cfg.Lru.MaxEntries
 	gcPerNum := base.Cfg.Lru.GcPerNum
 	flushDelay := base.Cfg.FlushDelay
@@ -76,10 +77,12 @@ func SetupSyncServerComponent(
 	eventReadStreamRepo := repos.NewEventReadStreamRepo()
 	eventReadStreamRepo.SetPersist(syncDB)
 	eventReadStreamRepo.SetMonitor(qureyHitCounter)
-
+	roomHistory.SetRoomPersist(roomDB)
 	roomHistory.SetPersist(syncDB)
 	roomHistory.SetMonitor(qureyHitCounter)
 	roomHistory.SetCache(cacheIn)
+	roomHistory.SetCfg(base.Cfg)
+	roomHistory.LoadAllDomainMaxStream(context.Background())
 	rsCurState.SetPersist(syncDB)
 
 	rsTimeline.SetPersist(syncDB)

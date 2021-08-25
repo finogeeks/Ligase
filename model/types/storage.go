@@ -34,3 +34,9 @@ type AlHolder struct {
 	DeviceID,
 	SupportedAlgorithm string
 }
+
+type RoomDomainOffset struct {
+	RoomID string
+	Domain string
+	Offset int64
+}
