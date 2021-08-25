@@ -15,6 +15,7 @@
 package syncwriter
 
 import (
+	"context"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/model/repos"
 	rpcService "github.com/finogeeks/ligase/rpc"
@@ -44,7 +45,7 @@ func SetupSyncWriterComponent(
 	roomHistory.SetRoomPersist(roomDB)
 	roomHistory.SetPersist(syncDB)
 	roomHistory.SetMonitor(qureyHitCounter)
-	//roomHistory.LoadAllDomainMaxStream(context.Background())
+	roomHistory.LoadAllDomainMaxStream(context.Background())
 	roomHistory.SetCache(cache)
 	rsCurState.SetPersist(syncDB)
 
