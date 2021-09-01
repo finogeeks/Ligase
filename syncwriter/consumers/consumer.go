@@ -600,7 +600,7 @@ func (s *RoomEventConsumer) onBackFillEvent(
 		s.processReactionEv(&ev)
 	}
 
-	err := s.db.WriteEvent(ctx, &ev, []gomatrixserverlib.ClientEvent{}, msg.AddsStateEventIDs, msg.RemovesStateEventIDs, msg.TransactionID, -ev.EventOffset, ev.DomainOffset, ev.Depth, domain, int64(ev.OriginServerTS))
+	err := s.db.WriteEvent(ctx, &ev, []gomatrixserverlib.ClientEvent{}, msg.AddsStateEventIDs, msg.RemovesStateEventIDs, msg.TransactionID, ev.EventOffset, ev.DomainOffset, ev.Depth, domain, int64(ev.OriginServerTS))
 	if err != nil {
 		log.Errorw("syncwriter: write event failure", log.KeysAndValues{"event_id", string(ev.EventID), "error", err, "add", msg.AddsStateEventIDs, "del", msg.RemovesStateEventIDs})
 		return err
