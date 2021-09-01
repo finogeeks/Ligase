@@ -142,10 +142,3 @@ func (s *DBEventDataConsumer) OnMessage(ctx context.Context, topic string, parti
 
 	return
 }
-
-func (s *DBEventDataConsumer) ConsumerMessage(rawMsg []interface{}) {
-	err := s.channel.Commit(rawMsg)
-	if err != nil {
-		log.Errorf("DBEventDataConsumer commit error %v", err)
-	}
-}
