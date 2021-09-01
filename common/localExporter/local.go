@@ -15,6 +15,7 @@ var (
 	grpcDuration mon.LabeledHistogram
 	socketCount mon.LabeledGauge
 	syncNumberSameTime mon.LabeledGauge
+	dbOperDuration mon.LabeledHistogram
 	Instance string
 )
 
@@ -37,6 +38,10 @@ func init(){
 	socketCount = monitor.NewLabeledGauge("chat_socket_count",[]string{"server_name", "srv_inst", "proto", "socket_state"})
 	// 同时sync的用户数量
 	syncNumberSameTime = monitor.NewLabeledGauge("chat_sync_number_same_time", []string{"server_name", "srv_inst"})
+	// db访问时延
+	dbOperDuration = monitor.NewLabeledHistogram("chat_db_oper_duration_milliseconds",
+		[]string{"server_name","srv_inst", "repo", "method", "code"},
+		[]float64{100.0, 500.0, 1000.0, 3000.0, 5000.0},)
 }
 
 // must after config load over
@@ -66,6 +71,9 @@ func ExportGrpcRequestDuration(from, to, method, code string, dur float64){
 	grpcDuration.WithLabelValues(from, to, Instance, method, code).Observe(dur)
 }
 
+func ExportDbOperDuration(serverName, repo, method, code string, dur float64) {
+	dbOperDuration.WithLabelValues(serverName, Instance, repo, method, code).Observe(dur)
+}
 
 
 

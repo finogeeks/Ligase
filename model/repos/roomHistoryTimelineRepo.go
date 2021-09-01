@@ -16,6 +16,7 @@ package repos
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"sync"
 	"time"
 
@@ -41,8 +42,8 @@ type RoomHistoryTimeLineRepo struct {
 	roomMinStream          sync.Map
 	domainMaxOffset        sync.Map
 	loadingDomainMaxOffset sync.Map
-
-	queryHitCounter mon.LabeledCounter
+	srv                    string
+	queryHitCounter        mon.LabeledCounter
 }
 
 type RoomHistoryLoadedData struct {
@@ -57,11 +58,12 @@ func NewRoomHistoryTimeLineRepo(
 	bukSize,
 	maxEntries,
 	gcPerNum int,
+	srv string,
 ) *RoomHistoryTimeLineRepo {
 	tls := new(RoomHistoryTimeLineRepo)
 	tls.repo = NewTimeLineRepo(bukSize, 128, true, maxEntries, gcPerNum)
 	tls.roomMutex = new(sync.Mutex)
-
+	tls.srv = srv
 	return tls
 }
 
@@ -126,9 +128,11 @@ func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
 	evs, offsets, err := tl.persist.GetHistoryEvents(context.TODO(), roomID, 50) //注意是倒序的event，需要排列下
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
+		localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "loadHistory", "500", float64(spend))
 		log.Errorf("load db failed RoomHistoryTimeLineRepo load room:%s history spend:%d ms err:%v", roomID, spend, err)
 		return
 	}
+	localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "loadHistory", "200", float64(spend))
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms RoomHistoryTimeLineRepo.loadHistory finished room:%s evs:%d spend:%d ms", types.DB_EXCEED_TIME, roomID, len(evs), spend)
 	} else {
@@ -286,9 +290,11 @@ func (tl *RoomHistoryTimeLineRepo) LoadRoomMinStream(roomID string) int64 {
 	pos, err := tl.persist.SelectOutputMinStream(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
+		localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "LoadRoomMinStream", "500", float64(spend))
 		log.Errorf("load db failed RoomHistoryTimeLineRepo.SelectOutputMinStream roomID:%s spend:%d ms err %v", roomID, spend, err)
 		return -1
 	}
+	localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "LoadRoomMinStream", "200", float64(spend))
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms RoomHistoryTimeLineRepo.SelectOutputMinStream roomID:%s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
 	} else {
@@ -319,13 +325,16 @@ func (tl *RoomHistoryTimeLineRepo) LoadDomainMaxStream(roomID string) (*sync.Map
 				time.Sleep(time.Millisecond * 3)
 				continue
 			}
-
 			defer tl.loadingDomainMaxOffset.Delete(roomID)
+			bs := time.Now().UnixNano() / 1000000
 			domains, offsets, err := tl.persist.SelectDomainMaxOffset(context.TODO(), roomID)
+			spend := time.Now().UnixNano()/1000000 - bs
 			if err != nil {
+				localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "LoadDomainMaxStream", "500", float64(spend))
 				log.Errorf("RoomHistoryTimeLineRepo GetDomainMaxStream roomID %s err %v", roomID, err)
 				return nil, err
 			}
+			localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "LoadDomainMaxStream", "200", float64(spend))
 			domainMap := new(sync.Map)
 			for index, domain := range domains {
 				domainMap.Store(domain, offsets[index])
@@ -400,9 +409,11 @@ func (tl *RoomHistoryTimeLineRepo) LoadRoomLatest(rooms []syncapitypes.SyncRoom)
 		roomMap, err := tl.persist.GetRoomLastOffsets(context.TODO(), loadRooms)
 		spend := time.Now().UnixNano()/1000000 - bs
 		if err != nil {
+			localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "LoadRoomLatest", "500", float64(spend))
 			log.Errorf("load db failed RoomHistoryTimeLineRepo.LoadRoomLatest spend:%d ms err:%v", spend, err)
 			return err
 		}
+		localExporter.ExportDbOperDuration(tl.srv, "RoomHistoryTimeLineRepo", "LoadRoomLatest", "200", float64(spend))
 		if spend > types.DB_EXCEED_TIME {
 			log.Warnf("load db exceed %d ms RoomHistoryTimeLineRepo.LoadRoomLatest spend:%d ms", types.DB_EXCEED_TIME, spend)
 		} else {

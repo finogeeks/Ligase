@@ -16,6 +16,7 @@ package repos
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"strings"
 	"sync"
 	"time"
@@ -33,21 +34,21 @@ type ReceiptStreamContent struct {
 }
 
 type ReceiptDataStreamRepo struct {
-	roomCurState  *RoomCurStateRepo
-	rsTimeline    *RoomStateTimeLineRepo
-	persist       model.SyncAPIDatabase
-	container     *sync.Map
-	loading       sync.Map
-	ready         sync.Map //ready for loading
-	userMaxStream *sync.Map
-	roomLatest    *sync.Map
-	delay         int
-	tlSize        int
-	updatedRoom   *sync.Map
-	roomMutex     *sync.Mutex
-	userMutex     *sync.Mutex
-	flushDB       bool
-
+	roomCurState    *RoomCurStateRepo
+	rsTimeline      *RoomStateTimeLineRepo
+	persist         model.SyncAPIDatabase
+	container       *sync.Map
+	loading         sync.Map
+	ready           sync.Map //ready for loading
+	userMaxStream   *sync.Map
+	roomLatest      *sync.Map
+	delay           int
+	tlSize          int
+	updatedRoom     *sync.Map
+	roomMutex       *sync.Mutex
+	userMutex       *sync.Mutex
+	flushDB         bool
+	srv             string
 	queryHitCounter mon.LabeledCounter
 }
 
@@ -55,6 +56,7 @@ func NewReceiptDataStreamRepo(
 	delay int,
 	tlSize int,
 	flushDB bool,
+	srv string,
 ) *ReceiptDataStreamRepo {
 	tls := new(ReceiptDataStreamRepo)
 	tls.container = new(sync.Map)
@@ -66,7 +68,7 @@ func NewReceiptDataStreamRepo(
 	tls.roomMutex = new(sync.Mutex)
 	tls.userMutex = new(sync.Mutex)
 	tls.flushDB = flushDB
-
+	tls.srv = srv
 	if flushDB {
 		tls.startFlush()
 	}
@@ -210,8 +212,10 @@ func (tl *ReceiptDataStreamRepo) LoadRoomLatest(rooms []string) {
 		spend := time.Now().UnixNano()/1000000 - bs
 		rooms := strings.Join(loadRooms, ",")
 		if err != nil {
+			localExporter.ExportDbOperDuration(tl.srv, "ReceiptDataStreamRepo", "GetRoomReceiptLastOffsets", "500", float64(spend))
 			log.Errorf("load db failed ReceiptDataStreamRepo.LoadRoomLatest loadrooms:%s spend:%d ms  err:%v", rooms, spend, err)
 		} else {
+			localExporter.ExportDbOperDuration(tl.srv, "ReceiptDataStreamRepo", "GetRoomReceiptLastOffsets", "200", float64(spend))
 			if spend > types.DB_EXCEED_TIME {
 				log.Warnf("load db exceed %d ms ReceiptDataStreamRepo.LoadRoomLatest loadrooms:%s spend:%d ms", types.DB_EXCEED_TIME, rooms, spend)
 			} else {
@@ -274,9 +278,11 @@ func (tl *ReceiptDataStreamRepo) loadHistory(roomID string) {
 	streams, offsets, err := tl.persist.GetHistoryReceiptDataStream(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
+		localExporter.ExportDbOperDuration(tl.srv, "ReceiptDataStreamRepo", "loadHistory", "500", float64(spend))
 		log.Errorf("load db failed ReceiptDataStreamRepo load history %s spend:%d ms err: %v", roomID, spend, err)
 		return
 	}
+	localExporter.ExportDbOperDuration(tl.srv, "ReceiptDataStreamRepo", "loadHistory", "200", float64(spend))
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms ReceiptDataStreamRepo.loadHistory finished %s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
 	} else {

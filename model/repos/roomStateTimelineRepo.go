@@ -16,6 +16,7 @@ package repos
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"sync"
 	"time"
 
@@ -41,7 +42,7 @@ type RoomStateTimeLineRepo struct {
 	stateReady    sync.Map
 	streamLoading sync.Map
 	streamReady   sync.Map
-
+	srv string
 	QueryHitCounter mon.LabeledCounter
 }
 
@@ -56,12 +57,13 @@ func NewRoomStateTimeLineRepo(
 	rsRepo *RoomCurStateRepo,
 	maxEntries,
 	gcPerNum int,
+	srv string,
 ) *RoomStateTimeLineRepo {
 	tls := new(RoomStateTimeLineRepo)
 	tls.repo = NewTimeLineRepo(bukSize, 128, false, maxEntries, gcPerNum)
 	tls.streamRepo = NewTimeLineRepo(bukSize, 128, false, maxEntries, gcPerNum)
 	tls.rsRepo = rsRepo
-
+	tls.srv = srv
 	return tls
 }
 
@@ -182,9 +184,11 @@ func (tl *RoomStateTimeLineRepo) loadStates(roomID string) {
 	evs, offsets, err := tl.persist.GetStateEventsForRoom(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
+		localExporter.ExportDbOperDuration(tl.srv, "RoomStateTimeLineRepo", "loadStates", "500", float64(spend))
 		log.Errorf("load db failed RoomStateTimeLineRepo load room %s state spend:%d ms err: %v", roomID, spend, err)
 		return
 	}
+	localExporter.ExportDbOperDuration(tl.srv, "RoomStateTimeLineRepo", "loadStates", "200", float64(spend))
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms RoomStateTimeLineRepo.loadStates finished %s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
 	} else {
@@ -204,9 +208,11 @@ func (tl *RoomStateTimeLineRepo) loadStateStreams(roomID string) {
 	evs, offsets, err := tl.persist.GetStateEventsStreamForRoom(context.TODO(), roomID)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
+		localExporter.ExportDbOperDuration(tl.srv, "RoomStateTimeLineRepo", "loadStateStreams", "500", float64(spend))
 		log.Errorf("load db failed RoomStateTimeLineRepo load room %s state stream spend:%d ms err: %v", roomID, spend, err)
 		return
 	}
+	localExporter.ExportDbOperDuration(tl.srv, "RoomStateTimeLineRepo", "loadStateStreams", "200", float64(spend))
 	if spend > types.DB_EXCEED_TIME {
 		log.Warnf("load db exceed %d ms RoomStateTimeLineRepo.loadStateStreams finished %s spend:%d ms", types.DB_EXCEED_TIME, roomID, spend)
 	} else {
