@@ -121,7 +121,7 @@ func (ReqPutLRURoom) Process(consumer interface{}, msg core.Coder, device *autht
 	}
 
 	c.rmHsTimeline.LoadHistory(req.RoomID, false)
-	//c.rmHsTimeline.LoadDomainMaxStream(req.RoomID)
+	c.rmHsTimeline.LoadDomainMaxStream(req.RoomID)
 	c.rmHsTimeline.LoadRoomMinStream(req.RoomID)
 	c.rsTimeline.LoadStreamStates(req.RoomID, false)
 	c.rsTimeline.LoadStates(req.RoomID, false)
