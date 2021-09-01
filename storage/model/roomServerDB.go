@@ -17,6 +17,7 @@ package model
 import (
 	"context"
 	"database/sql"
+	"github.com/finogeeks/ligase/model/types"
 
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/uid"
@@ -156,4 +157,5 @@ type RoomServerDatabase interface {
 	GetRoomEventByNID(ctx context.Context, eventNID int64) ([]byte, error)
 
 	GetHistoryEvents(ctx context.Context, roomNID int64, limit int) ([]*gomatrixserverlib.Event, []int64, error)
+	SelectRoomsDomainOffset(ctx context.Context) ([]types.RoomDomainOffset, error)
 }
