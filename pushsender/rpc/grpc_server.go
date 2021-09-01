@@ -167,6 +167,9 @@ func (s *Server) pushData(
 	data *pushapitypes.PushPubContents,
 	pushContent *pushapitypes.PushPubContent,
 ) {
+	if pushContent == nil || pushContent.Pushers == nil {
+		return
+	}
 	for _, pusher := range pushContent.Pushers.Pushers {
 		var url string
 		pushChannel := "ios"
