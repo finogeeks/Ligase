@@ -82,7 +82,7 @@ func SetupSyncServerComponent(
 	roomHistory.SetMonitor(qureyHitCounter)
 	roomHistory.SetCache(cacheIn)
 	roomHistory.SetCfg(base.Cfg)
-	roomHistory.LoadAllDomainMaxStream(context.Background())
+	//roomHistory.LoadAllDomainMaxStream(context.Background())
 	rsCurState.SetPersist(syncDB)
 
 	rsTimeline.SetPersist(syncDB)
