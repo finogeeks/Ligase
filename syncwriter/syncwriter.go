@@ -15,7 +15,6 @@
 package syncwriter
 
 import (
-	"context"
 	"github.com/finogeeks/ligase/common/basecomponent"
 	"github.com/finogeeks/ligase/model/repos"
 	rpcService "github.com/finogeeks/ligase/rpc"
