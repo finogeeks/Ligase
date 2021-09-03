@@ -23,6 +23,7 @@ import (
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/syncwriter/api"
 	"github.com/finogeeks/ligase/syncwriter/consumers"
+	"context"
 )
 
 func SetupSyncWriterComponent(
