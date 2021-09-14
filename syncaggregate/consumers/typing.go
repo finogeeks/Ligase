@@ -21,6 +21,7 @@ import (
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
+	"github.com/finogeeks/ligase/skunkworks/log"
 )
 
 type TypingConsumer struct {
@@ -67,6 +68,12 @@ func (s *TypingConsumer) StartCalculate() {
 
 func (s *TypingConsumer) startProduce() error {
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("TypingConsumer startProduce panic recovered err %#v", e)
+				go s.startProduce()
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(s.delay))
 		for {
 			select {
@@ -129,7 +136,16 @@ func (s *TypingConsumer) startProduce() error {
 }
 
 func (s *TypingConsumer) startCalculate() error {
-	go func() {
+	var poc1 func()
+	var poc2 func()
+	var poc3 func()
+	poc1 = func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("TypingConsumer startCalculate poc1 panic recovered err %#v", e)
+				go poc1()
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(s.calculateDelay))
 		for {
 			select {
@@ -154,9 +170,15 @@ func (s *TypingConsumer) startCalculate() error {
 				t.Reset(time.Millisecond * time.Duration(s.calculateDelay))
 			}
 		}
-	}()
+	}
 
-	go func() {
+	poc2 = func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("TypingConsumer startCalculate poc2 panic recovered err %#v", e)
+				go poc1()
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(s.calculateDelay))
 		for {
 			select {
@@ -194,9 +216,15 @@ func (s *TypingConsumer) startCalculate() error {
 				t.Reset(time.Millisecond * time.Duration(s.calculateDelay))
 			}
 		}
-	}()
+	}
 
-	go func() {
+	poc3 = func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("TypingConsumer startCalculate poc3 panic recovered err %#v", e)
+				go poc1()
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(s.calculateDelay))
 		for {
 			select {
@@ -214,7 +242,11 @@ func (s *TypingConsumer) startCalculate() error {
 				t.Reset(time.Millisecond * time.Duration(s.calculateDelay))
 			}
 		}
-	}()
+	}
+
+	go poc1()
+	go poc2()
+	go poc3()
 
 	return nil
 }

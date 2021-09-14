@@ -17,13 +17,14 @@ package sync
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/common/localExporter"
 
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
@@ -138,6 +139,11 @@ func (sm *SyncMng) OnBatchStateChange(batch []*types.NotifyDeviceState) {
 	}
 	log.Infof("cron notify online device len:%d", len(batch))
 	go func(batch []*types.NotifyDeviceState) {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("SyncMng OnBatchStateChange panic recovered err %#v", e)
+			}
+		}()
 		for _, state := range batch {
 			state.DeviceID = common.GetDeviceMac(state.DeviceID)
 			sm.sendStateChange(state)
@@ -470,6 +476,11 @@ func (sm *SyncMng) buildSyncData(req *request, res *syncapitypes.Response) bool 
 			maxReceiptOffset int64,
 			res *syncapitypes.Response,
 		) {
+			defer func() {
+				if e := recover(); e != nil {
+					log.Errorf("SyncMng buildSyncData panic recovered err %#v", e)
+				}
+			}()
 			defer wg.Done()
 			syncReq.RequestType = "sync"
 			syncReq.UserID = req.device.UserID

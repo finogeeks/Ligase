@@ -37,6 +37,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Payload struct {
 	ctx context.Context
 	req *pushapitypes.PushPubContents
@@ -101,7 +109,13 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) PushData(ctx context.Context, req *pb.PushDataReq) (*pb.Empty, error) {
+func (s *Server) PushData(ctx context.Context, req *pb.PushDataReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer PushData panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	traceId, _ := s.idg.Next()
 	log.Infof("traceid:%d PushDataConsumer cb roomID:%s eventID:%s", traceId, req.Input.RoomID, req.Input.EventID)
 
@@ -129,6 +143,11 @@ func (s *Server) startWorker(msgChan chan Payload) {
 }
 
 func (s *Server) doPushData(data *pushapitypes.PushPubContents) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer doPushData panic recovered err %#v", e)
+		}
+	}()
 	bs := time.Now().UnixNano() / 1000000
 	defer func(bs int64) {
 		spend := time.Now().UnixNano()/1000000 - bs
@@ -145,6 +164,11 @@ func (s *Server) doPushData(data *pushapitypes.PushPubContents) {
 }
 
 func (s *Server) SetPushFailTimes(pusher pushapitypes.PusherWitchInterfaceData, pusherKey string, success bool, traceId string) int {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer UpdateToken panic recovered err %#v", e)
+		}
+	}()
 	log.Infof("traceid:%s SetPushFailTimes userId:%s deviceId:%s pusherKey:%s success:%t", traceId, pusher.UserName, pusher.DeviceID, pusherKey, success)
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -261,6 +285,11 @@ func (s *Server) createNotify(data *pushapitypes.PushPubContents, pushContent *p
 }
 
 func (s *Server) doPush(url string, request []byte, pusher pushapitypes.PusherWitchInterfaceData, traceId string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer doPush panic recovered err %#v", e)
+		}
+	}()
 	code, body, err := s.HttpRequest(url, request, traceId)
 	if err != nil {
 		log.Errorw("http request error", log.KeysAndValues{"traceid", traceId, "userId", pusher.UserName, "deviceId", pusher.DeviceID, "content", string(request), "error", err})

@@ -32,6 +32,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Result struct {
 	resp *pb.HandleEventByRcsRsp
 	err  error
@@ -92,7 +100,13 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (r *Server) HandleEventByRcs(ctx context.Context, req *pb.Event) (*pb.HandleEventByRcsRsp, error) {
+func (r *Server) HandleEventByRcs(ctx context.Context, req *pb.Event) (resp *pb.HandleEventByRcsRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer HandleEventByRcs panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	event := helper.ToEvent(req)
 
 	ch := make(chan Result)
@@ -115,7 +129,8 @@ func (r *Server) startWorker(msgChan chan Payload) {
 func (r *Server) process(ctx context.Context, event *gomatrixserverlib.Event) (resp *pb.HandleEventByRcsRsp, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("rcsserver handleEvent panic %v", e)
+			err = fmt.Errorf("rcsserver handleEvent panic recovered  %v", e)
+			err = toErr(e)
 		}
 	}()
 	ev, _ := json.Marshal(event)

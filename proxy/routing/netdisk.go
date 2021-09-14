@@ -110,7 +110,7 @@ func (r *CombineReader) Read(p []byte) (n int, err error) {
 	n, err = r.reader.Read(p)
 	defer func() {
 		if e := recover(); e != nil {
-			log.Errorf("fed upload err: %v", err)
+			log.Errorf("fed upload panic recovered err: %v", err)
 		}
 	}()
 	if n > 0 && r.wErr == nil {

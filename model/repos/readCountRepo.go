@@ -51,6 +51,11 @@ func NewReadCountRepo(
 
 func (tl *ReadCountRepo) startFlush() error {
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("ReadCountRepo startFlush panic recovered err %#v", e)
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(tl.delay))
 		for {
 			select {

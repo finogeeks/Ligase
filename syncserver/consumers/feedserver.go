@@ -21,8 +21,9 @@ import (
 	"context"
 	jsonRaw "encoding/json"
 	"fmt"
-	"github.com/finogeeks/ligase/common/exporter"
 	"time"
+
+	"github.com/finogeeks/ligase/common/exporter"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -520,7 +521,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	defer func() {
 		if e := recover(); e != nil {
 			stack := common.PanicTrace(4)
-			log.Panicf("%v\n%s\n", e, stack)
+			log.Errorf("RoomEventFeedConsumer onNewRoomEvent panic recovered %v\n%s\n", e, stack)
 		}
 	}()
 	bs := time.Now().UnixNano() / 1000000

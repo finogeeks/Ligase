@@ -38,6 +38,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg             *config.Dendrite
 	syncServer      *consumers.SyncServer
@@ -89,40 +97,70 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) SyncLoad(ctx context.Context, req *pb.SyncProcessReq) (*pb.SyncProcessRsp, error) {
+func (s *Server) SyncLoad(ctx context.Context, req *pb.SyncProcessReq) (rsp *pb.SyncProcessRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SyncLoad panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	request := helper.ToSyncServerRequest(req)
 	result, err := s.syncServer.SyncLoad(request)
 	if err != nil {
 		return nil, err
 	}
-	rsp := &pb.SyncProcessRsp{
+	rsp = &pb.SyncProcessRsp{
 		Ready: result.Ready,
 	}
 	return rsp, nil
 }
 
-func (s *Server) SyncProcess(ctx context.Context, req *pb.SyncProcessReq) (*pb.SyncProcessRsp, error) {
+func (s *Server) SyncProcess(ctx context.Context, req *pb.SyncProcessReq) (rsp *pb.SyncProcessRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SyncProcess panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	request := helper.ToSyncServerRequest(req)
 	result, err := s.syncServer.SyncProcess(request)
 	if err != nil {
 		return nil, err
 	}
-	rsp := helper.ToSyncServerRsp(result)
+	rsp = helper.ToSyncServerRsp(result)
 
 	return rsp, nil
 }
 
-func (s *Server) GetPusherByDevice(ctx context.Context, req *pb.GetPusherByDeviceReq) (*pb.Pushers, error) {
+func (s *Server) GetPusherByDevice(ctx context.Context, req *pb.GetPusherByDeviceReq) (result *pb.Pushers, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetPusherByDevice panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	pusher := routing.GetPushersByName(req.UserID, s.pushRepo, false, nil)
 	return helper.ToPBPushers(&pusher), nil
 }
 
-func (s *Server) GetPushRuleByUser(ctx context.Context, req *pb.GetPusherRuleByUserReq) (*pb.Rules, error) {
+func (s *Server) GetPushRuleByUser(ctx context.Context, req *pb.GetPusherRuleByUserReq) (result *pb.Rules, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetPushRuleByUser panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	rules := routing.GetUserPushRules(req.UserID, s.pushRepo, true, nil)
 	return helper.ToPBRules(&rules), nil
 }
 
-func (s *Server) GetPushDataBatch(ctx context.Context, req *pb.GetPushDataBatchReq) (*pb.GetPushDataBatchRsp, error) {
+func (s *Server) GetPushDataBatch(ctx context.Context, req *pb.GetPushDataBatchReq) (result *pb.GetPushDataBatchRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetPushDataBatch panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	resp := pushapitypes.RespPushUsersData{
 		Data: make(map[string]pushapitypes.RespPushData),
 	}
@@ -136,7 +174,13 @@ func (s *Server) GetPushDataBatch(ctx context.Context, req *pb.GetPushDataBatchR
 	return helper.ToGetPushDataBatchRsp(&resp), nil
 }
 
-func (s *Server) GetPusherBatch(ctx context.Context, req *pb.GetPusherBatchReq) (*pb.GetPusherBatchRsp, error) {
+func (s *Server) GetPusherBatch(ctx context.Context, req *pb.GetPusherBatchReq) (result *pb.GetPusherBatchRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetPusherBatch panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	resp := pushapitypes.RespUsersPusher{
 		Data: make(map[string][]pushapitypes.Pusher),
 	}
@@ -149,7 +193,13 @@ func (s *Server) GetPusherBatch(ctx context.Context, req *pb.GetPusherBatchReq) 
 	return helper.ToGetPusherBatchRsp(&resp), nil
 }
 
-func (s *Server) OnReceipt(ctx context.Context, req *pb.OnReceiptReq) (*pb.Empty, error) {
+func (s *Server) OnReceipt(ctx context.Context, req *pb.OnReceiptReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer OnReceipt panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	s.receiptConsumer.OnReceipt(&types.ReceiptContent{
 		UserID:      req.DeviceID,
 		DeviceID:    req.DeviceID,
@@ -161,7 +211,13 @@ func (s *Server) OnReceipt(ctx context.Context, req *pb.OnReceiptReq) (*pb.Empty
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) OnTyping(ctx context.Context, req *pb.OnTypingReq) (*pb.Empty, error) {
+func (s *Server) OnTyping(ctx context.Context, req *pb.OnTypingReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer OnTyping panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	state := s.roomCurState.GetRoomState(req.RoomID)
 	if state != nil {
 		update := syncapitypes.TypingUpdate{
@@ -210,7 +266,13 @@ func (s *Server) OnTyping(ctx context.Context, req *pb.OnTypingReq) (*pb.Empty, 
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) OnUnread(ctx context.Context, req *pb.OnUnreadReq) (*pb.OnUnreadRsp, error) {
+func (s *Server) OnUnread(ctx context.Context, req *pb.OnUnreadReq) (result *pb.OnUnreadRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer OnUnread panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	count := int64(0)
 	for _, roomID := range req.JoinRooms {
 		unread, _ := s.readCountRepo.GetRoomReadCount(roomID, req.UserID)

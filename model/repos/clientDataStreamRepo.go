@@ -130,6 +130,11 @@ func (tl *ClientDataStreamRepo) CheckLoadReady(userID string, sync bool) bool {
 }
 
 func (tl *ClientDataStreamRepo) loadHistory(userID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("ClientDataStreamRepo loadHistory panic recovered err %#v", e)
+		}
+	}()
 	defer tl.loading.Delete(userID)
 	bs := time.Now().UnixNano() / 1000000
 	streams, offsets, err := tl.persist.GetHistoryClientDataStream(context.TODO(), userID, 100)

@@ -17,7 +17,6 @@ package consumers
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -25,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/finogeeks/ligase/common/localExporter"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -226,6 +227,11 @@ func (s *PushConsumer) PrintStaticData(static *push.StaticObj) {
 }
 
 func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset int64, static *push.StaticObj, result chan types.TimeLineItem) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("PushConsumer OnEvent panic recovered err %#v", e)
+		}
+	}()
 	static.ChanStart = time.Now().UnixNano() / 1000
 	static.ChanSpend = static.ChanStart - static.Start
 	defer func() {
@@ -308,6 +314,11 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 			static *push.StaticObj,
 			pushData map[string]push.RespPushData,
 		) {
+			defer func() {
+				if e := recover(); e != nil {
+					log.Errorf("PushConsumer OnEvent process panic recovered err %#v", e)
+				}
+			}()
 			s.preProcessPush(&member, helperEvent, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent, static, pushData)
 			wg.Done()
 		}(member, &helperEvent, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent, static, pushData)
@@ -349,6 +360,11 @@ func (s *PushConsumer) getUserPushData(sender string, members []string) map[stri
 		go s.rpcGetUserPushData(&wg, req, collectionResults)
 	}
 	go func(wg *sync.WaitGroup) {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("PushConsumer getUserPushData wait panic recovered err %#v", e)
+			}
+		}()
 		wg.Wait()
 		close(collectionResults)
 	}(&wg)
@@ -362,6 +378,11 @@ func (s *PushConsumer) getUserPushData(sender string, members []string) map[stri
 }
 
 func (s *PushConsumer) rpcGetUserPushData(wg *sync.WaitGroup, req *push.ReqPushUsers, result chan *push.RespPushUsersData) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("PushConsumer rpcGetUserPushData panic recovered err %#v", e)
+		}
+	}()
 	defer wg.Done()
 	if req.Slot == s.cfg.MultiInstance.Instance {
 		result <- s.getUserPushDataFromLocal(req)
@@ -552,6 +573,11 @@ func (s *PushConsumer) getCreateContent(roomID string) []byte {
 }
 
 func (s *PushConsumer) pubPushContents(pushContents *push.PushPubContents, eventJson *[]byte) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("PushConsumer pubPushContents panic recovered err %#v", e)
+		}
+	}()
 	senderDisplayName, _ := s.cache.GetDisplayNameByUser(pushContents.Input.Sender)
 	pushContents.SenderDisplayName = senderDisplayName
 	//临时处理，rcs去除邀请重试以后可以去掉

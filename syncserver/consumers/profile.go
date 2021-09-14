@@ -93,6 +93,11 @@ func (s *ProfileConsumer) OnMessage(ctx context.Context, topic string, partition
 }
 
 func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("ProfileConsumer onMessage panic recovered err %#v", e)
+		}
+	}()
 	log.Infow("sync profile stream consumer received data", log.KeysAndValues{"userID", output.UserID})
 
 	event := &gomatrixserverlib.ClientEvent{}

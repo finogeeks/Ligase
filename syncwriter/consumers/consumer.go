@@ -499,6 +499,11 @@ func (s *RoomEventConsumer) processReactionEv(ev *gomatrixserverlib.ClientEvent)
 func (s *RoomEventConsumer) onNewRoomEvent(
 	ctx context.Context, msg *roomserverapi.OutputNewRoomEvent,
 ) error {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("RoomEventConsumer onNewRoomEvent panic recovered err %#v", e)
+		}
+	}()
 	ev := msg.Event
 	domain, _ := common.DomainFromID(ev.Sender)
 	if ev.Type != "m.room.create" {
@@ -578,6 +583,11 @@ func (s *RoomEventConsumer) onNewRoomEvent(
 func (s *RoomEventConsumer) onBackFillEvent(
 	ctx context.Context, msg *roomserverapi.OutputNewRoomEvent,
 ) error {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("RoomEventConsumer onBackFillEvent panic recovered err %#v", e)
+		}
+	}()
 	ev := msg.Event
 	domain, _ := common.DomainFromID(ev.Sender)
 

@@ -102,15 +102,19 @@ func (ReqGetUserUnread) Process(consumer interface{}, msg core.Coder, device *au
 			syncReq *syncapitypes.SyncUnreadRequest,
 			countMap *sync.Map,
 		) {
+			defer wg.Done()
+			defer func() {
+				if e := recover(); e != nil {
+					log.Errorf("api ReqGetUserUnread OnUnRead panic recovered err %#v", e)
+				}
+			}()
 			syncReq.SyncInstance = instance
 			result, err := c.RpcClient.OnUnRead(context.Background(), syncReq)
 			if err != nil {
 				log.Errorf("call rpc for syncServer unread user %s error %v", syncReq.UserID, err)
-				wg.Done()
 				return
 			}
 			countMap.Store(syncReq.SyncInstance, result.Count)
-			wg.Done()
 		}(instance, syncReq, countMap)
 	}
 	wg.Wait()

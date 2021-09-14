@@ -152,6 +152,11 @@ func (tl *KeyChangeStreamRepo) LoadHistory(userID string, sync bool) {
 }
 
 func (tl *KeyChangeStreamRepo) loadHistory(userID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("KeyChangeStreamRepo loadHistory panic recovered err %#v", e)
+		}
+	}()
 	defer tl.loading.Delete(userID)
 	userMap := tl.userTimeLine.GetFriendShip(userID, true)
 	if userMap != nil {

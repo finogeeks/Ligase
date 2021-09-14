@@ -16,9 +16,10 @@ package repos
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/common/localExporter"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/model/feedstypes"
@@ -34,15 +35,15 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 //存储state timeline, 没有房间timeline 负责加载数据
 type RoomStateTimeLineRepo struct {
-	repo          *TimeLineRepo
-	streamRepo    *TimeLineRepo
-	rsRepo        *RoomCurStateRepo
-	persist       model.SyncAPIDatabase
-	stateLoading  sync.Map
-	stateReady    sync.Map
-	streamLoading sync.Map
-	streamReady   sync.Map
-	srv string
+	repo            *TimeLineRepo
+	streamRepo      *TimeLineRepo
+	rsRepo          *RoomCurStateRepo
+	persist         model.SyncAPIDatabase
+	stateLoading    sync.Map
+	stateReady      sync.Map
+	streamLoading   sync.Map
+	streamReady     sync.Map
+	srv             string
 	QueryHitCounter mon.LabeledCounter
 }
 
@@ -178,6 +179,11 @@ func (tl *RoomStateTimeLineRepo) AddBackfillEv(ev *gomatrixserverlib.ClientEvent
 }
 
 func (tl *RoomStateTimeLineRepo) loadStates(roomID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("RoomStateTimeLineRepo loadStates panic recovered err %#v", e)
+		}
+	}()
 	defer tl.stateLoading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000
@@ -202,6 +208,11 @@ func (tl *RoomStateTimeLineRepo) loadStates(roomID string) {
 }
 
 func (tl *RoomStateTimeLineRepo) loadStateStreams(roomID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("RoomStateTimeLineRepo loadStateStreams panic recovered err %#v", e)
+		}
+	}()
 	defer tl.streamLoading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000

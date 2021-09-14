@@ -18,11 +18,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/finogeeks/ligase/common/localExporter"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/finogeeks/ligase/common/localExporter"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -53,6 +55,14 @@ func newCallLog(name string, req interface{}) *CallLog {
 func (c *CallLog) end(result interface{}) {
 	// data, _ := json.Marshal(result)
 	// log.Infof("--------- end call rpc %s %s", c.name, string(data))
+}
+
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
 }
 
 type IConnGetter interface {
@@ -109,7 +119,13 @@ func (r *Client) getAddrByInstance(addrs []string, instance uint32) string {
 	return addrs[instance]
 }
 
-func (r *Client) SyncLoad(ctx context.Context, req *syncapitypes.SyncServerRequest) (*syncapitypes.SyncServerResponse, error) {
+func (r *Client) SyncLoad(ctx context.Context, req *syncapitypes.SyncServerRequest) (result *syncapitypes.SyncServerResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SyncLoad panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	//cl := newCallLog("SyncLoad", req)
 
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, req.SyncInstance)
@@ -119,18 +135,24 @@ func (r *Client) SyncLoad(ctx context.Context, req *syncapitypes.SyncServerReque
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.SyncLoad(ctx, helper.ToSyncProcessReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "SyncLoad", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "SyncLoad", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToSyncServerResponse(rsp)
+	result = helper.ToSyncServerResponse(rsp)
 	//cl.end(result)
 	return result, nil
 }
 
-func (r *Client) SyncProcess(ctx context.Context, req *syncapitypes.SyncServerRequest) (*syncapitypes.SyncServerResponse, error) {
+func (r *Client) SyncProcess(ctx context.Context, req *syncapitypes.SyncServerRequest) (result *syncapitypes.SyncServerResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SyncProcess panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	//cl := newCallLog("SyncProcess", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, req.SyncInstance)
 	if err != nil {
@@ -139,18 +161,24 @@ func (r *Client) SyncProcess(ctx context.Context, req *syncapitypes.SyncServerRe
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.SyncProcess(ctx, helper.ToSyncProcessReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "SyncProcess", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "SyncProcess", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToSyncServerResponse(rsp)
+	result = helper.ToSyncServerResponse(rsp)
 	//cl.end(result)
 	return result, nil
 }
 
-func (r *Client) GetPusherByDevice(ctx context.Context, req *pushapitypes.ReqPushUser) (*pushapitypes.Pushers, error) {
+func (r *Client) GetPusherByDevice(ctx context.Context, req *pushapitypes.ReqPushUser) (result *pushapitypes.Pushers, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetPusherByDevice panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetPusherByDevice", req)
 	instance := common.CalcStringHashCode(req.UserID) % r.cfg.MultiInstance.SyncServerTotal
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, instance)
@@ -160,18 +188,24 @@ func (r *Client) GetPusherByDevice(ctx context.Context, req *pushapitypes.ReqPus
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPusherByDevice(ctx, helper.ToGetPusherByDeviceReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "GetPusherByDevice", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "GetPusherByDevice", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToPushers(rsp)
+	result = helper.ToPushers(rsp)
 	cl.end(result)
 	return result, nil
 }
 
-func (r *Client) GetPushRuleByUser(ctx context.Context, req *pushapitypes.ReqPushUser) (*pushapitypes.Rules, error) {
+func (r *Client) GetPushRuleByUser(ctx context.Context, req *pushapitypes.ReqPushUser) (result *pushapitypes.Rules, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetPushRuleByUser panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetPushRuleByUser", req)
 	instance := common.CalcStringHashCode(req.UserID) % r.cfg.MultiInstance.SyncServerTotal
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, instance)
@@ -181,18 +215,24 @@ func (r *Client) GetPushRuleByUser(ctx context.Context, req *pushapitypes.ReqPus
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPushRuleByUser(ctx, helper.ToGetPushRuleByUser(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "GetPushRuleByUser", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "GetPushRuleByUser", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToRules(rsp)
+	result = helper.ToRules(rsp)
 	cl.end(result)
 	return result, nil
 }
 
-func (r *Client) GetPushDataBatch(ctx context.Context, req *pushapitypes.ReqPushUsers) (*pushapitypes.RespPushUsersData, error) {
+func (r *Client) GetPushDataBatch(ctx context.Context, req *pushapitypes.ReqPushUsers) (result *pushapitypes.RespPushUsersData, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetPushDataBatch panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetPushDataBatch", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, req.Slot)
 	if err != nil {
@@ -201,18 +241,24 @@ func (r *Client) GetPushDataBatch(ctx context.Context, req *pushapitypes.ReqPush
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPushDataBatch(ctx, helper.ToGetPushDataBatch(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_SERVER, localExporter.CHAT_SYNC_SERVER, "GetPushDataBatch", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_SERVER, localExporter.CHAT_SYNC_SERVER, "GetPushDataBatch", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToRespPushUsersData(rsp)
+	result = helper.ToRespPushUsersData(rsp)
 	cl.end(result)
 	return result, nil
 }
 
-func (r *Client) GetPusherBatch(ctx context.Context, req *pushapitypes.ReqPushUsers) (*pushapitypes.RespUsersPusher, error) {
+func (r *Client) GetPusherBatch(ctx context.Context, req *pushapitypes.ReqPushUsers) (result *pushapitypes.RespUsersPusher, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetPusherBatch panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetPusherBatch", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, req.Slot)
 	if err != nil {
@@ -221,18 +267,24 @@ func (r *Client) GetPusherBatch(ctx context.Context, req *pushapitypes.ReqPushUs
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.GetPusherBatch(ctx, helper.ToGetPusherBatchReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_SERVER, localExporter.CHAT_SYNC_SERVER, "GetPusherBatch", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_SERVER, localExporter.CHAT_SYNC_SERVER, "GetPusherBatch", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToRespUsersPusher(rsp)
+	result = helper.ToRespUsersPusher(rsp)
 	cl.end(result)
 	return result, nil
 }
 
-func (r *Client) OnReceipt(ctx context.Context, req *types.ReceiptContent) error {
+func (r *Client) OnReceipt(ctx context.Context, req *types.ReceiptContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client OnReceipt panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("OnReceipt", req)
 	instance := common.CalcStringHashCode(req.RoomID) % r.cfg.MultiInstance.SyncServerTotal
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, instance)
@@ -241,6 +293,11 @@ func (r *Client) OnReceipt(ctx context.Context, req *types.ReceiptContent) error
 	}
 	c := pb.NewSyncServerClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client OnReceipt panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.OnReceipt(ctx, helper.ToOnReceiptReq(req))
 		if err != nil {
 			log.Error("OnReceipt err %s", err)
@@ -251,7 +308,13 @@ func (r *Client) OnReceipt(ctx context.Context, req *types.ReceiptContent) error
 	return nil
 }
 
-func (r *Client) OnTyping(ctx context.Context, req *types.TypingContent) error {
+func (r *Client) OnTyping(ctx context.Context, req *types.TypingContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client OnTyping panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("OnTyping", req)
 	instance := common.CalcStringHashCode(req.RoomID) % r.cfg.MultiInstance.SyncServerTotal
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, instance)
@@ -260,6 +323,11 @@ func (r *Client) OnTyping(ctx context.Context, req *types.TypingContent) error {
 	}
 	c := pb.NewSyncServerClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client OnTyping panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.OnTyping(ctx, helper.ToOnTypingReq(req))
 		if err != nil {
 			log.Error("OnReceipt err %s", err)
@@ -270,7 +338,13 @@ func (r *Client) OnTyping(ctx context.Context, req *types.TypingContent) error {
 	return nil
 }
 
-func (r *Client) OnUnRead(ctx context.Context, req *syncapitypes.SyncUnreadRequest) (*syncapitypes.SyncUnreadResponse, error) {
+func (r *Client) OnUnRead(ctx context.Context, req *syncapitypes.SyncUnreadRequest) (result *syncapitypes.SyncUnreadResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client OnUnRead panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("OnUnRead", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncServer, req.SyncInstance)
 	if err != nil {
@@ -279,18 +353,24 @@ func (r *Client) OnUnRead(ctx context.Context, req *syncapitypes.SyncUnreadReque
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncServerClient(conn)
 	rsp, err := c.OnUnread(ctx, helper.ToOnUnreadReq(req))
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "OnUnRead", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_SYNC_AGG, localExporter.CHAT_SYNC_SERVER, "OnUnRead", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToSyncUnreadResponse(rsp)
+	result = helper.ToSyncUnreadResponse(rsp)
 	cl.end(result)
 	return result, nil
 }
 
-func (r *Client) UpdateOneTimeKey(ctx context.Context, req *types.KeyUpdateContent) error {
+func (r *Client) UpdateOneTimeKey(ctx context.Context, req *types.KeyUpdateContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client UpdateOneTimeKey panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("UpdateOneTimeKey", req)
 	instance := common.CalcStringHashCode(req.OneTimeKeyChangeUserId) % r.cfg.MultiInstance.Total
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncAggregate, instance)
@@ -299,6 +379,11 @@ func (r *Client) UpdateOneTimeKey(ctx context.Context, req *types.KeyUpdateConte
 	}
 	c := pb.NewSyncAggregateClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client UpdateOneTimeKey panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.UpdateOneTimeKey(ctx, helper.ToUpdateOneTimeKeyReq(req))
 		if err != nil {
 			log.Error("UpdateOneTimeKey err %s", err)
@@ -309,7 +394,13 @@ func (r *Client) UpdateOneTimeKey(ctx context.Context, req *types.KeyUpdateConte
 	return nil
 }
 
-func (r *Client) UpdateDeviceKey(ctx context.Context, req *types.KeyUpdateContent) error {
+func (r *Client) UpdateDeviceKey(ctx context.Context, req *types.KeyUpdateContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client UpdateDeviceKey panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("UpdateDeviceKey", req)
 	var errs []error
 	for i := uint32(0); i < r.cfg.MultiInstance.Total; i++ {
@@ -321,6 +412,11 @@ func (r *Client) UpdateDeviceKey(ctx context.Context, req *types.KeyUpdateConten
 
 		c := pb.NewSyncAggregateClient(conn)
 		go func(c pb.SyncAggregateClient, req *types.KeyUpdateContent) {
+			defer func() {
+				if e := recover(); e != nil {
+					log.Errorf("grpc client UpdateDeviceKey panic recovered err %#v", e)
+				}
+			}()
 			_, err = c.UpdateDeviceKey(ctx, helper.ToUpdateDeviceKeyReq(req))
 			if err != nil {
 				log.Error("UpdateDeviceKey err %s", err)
@@ -336,7 +432,13 @@ func (r *Client) UpdateDeviceKey(ctx context.Context, req *types.KeyUpdateConten
 	return nil
 }
 
-func (r *Client) GetOnlinePresence(ctx context.Context, userID string) (*types.OnlinePresence, error) {
+func (r *Client) GetOnlinePresence(ctx context.Context, userID string) (result *types.OnlinePresence, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetOnlinePresence panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetOnlinePresence", userID)
 	instance := common.CalcStringHashCode(userID) % r.cfg.MultiInstance.Total
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.SyncAggregate, instance)
@@ -346,18 +448,24 @@ func (r *Client) GetOnlinePresence(ctx context.Context, userID string) (*types.O
 	start := time.Now().UnixNano() / 1e6
 	c := pb.NewSyncAggregateClient(conn)
 	rsp, err := c.GetOnlinePresence(ctx, &pb.GetOnlinePresenceReq{UserID: userID})
-	spend := time.Now().UnixNano() / 1e6 - start
+	spend := time.Now().UnixNano()/1e6 - start
 	if err != nil {
 		localExporter.ExportGrpcRequestDuration(localExporter.CHAT_FRONT, localExporter.CHAT_SYNC_AGG, "GetOnlinePresence", strconv.Itoa(http.StatusInternalServerError), float64(spend))
 		return nil, err
 	}
 	localExporter.ExportGrpcRequestDuration(localExporter.CHAT_FRONT, localExporter.CHAT_SYNC_AGG, "GetOnlinePresence", strconv.Itoa(http.StatusOK), float64(spend))
-	result := helper.ToOnlinePresence(rsp)
+	result = helper.ToOnlinePresence(rsp)
 	cl.end(result)
 	return result, nil
 }
 
-func (r *Client) SetReceiptLatest(ctx context.Context, req *syncapitypes.ReceiptUpdate) error {
+func (r *Client) SetReceiptLatest(ctx context.Context, req *syncapitypes.ReceiptUpdate) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SetReceiptLatest panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("SetReceiptLatest", req)
 	var errs []error
 	for i := uint32(0); i < r.cfg.MultiInstance.Total; i++ {
@@ -379,6 +487,11 @@ func (r *Client) SetReceiptLatest(ctx context.Context, req *syncapitypes.Receipt
 			}
 			c := pb.NewSyncAggregateClient(conn)
 			go func(c pb.SyncAggregateClient, req *syncapitypes.ReceiptUpdate) {
+				defer func() {
+					if e := recover(); e != nil {
+						log.Errorf("grpc client SetReceiptLatest panic recovered err %#v", e)
+					}
+				}()
 				_, err = c.SetReceiptLatest(ctx, helper.ToSetReceiptLatestReq(req))
 				if err != nil {
 					log.Errorf("SetReceiptLatest err %s", err)
@@ -393,7 +506,13 @@ func (r *Client) SetReceiptLatest(ctx context.Context, req *syncapitypes.Receipt
 	return nil
 }
 
-func (r *Client) AddTyping(ctx context.Context, req *syncapitypes.TypingUpdate) error {
+func (r *Client) AddTyping(ctx context.Context, req *syncapitypes.TypingUpdate) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client AddTyping panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("AddTyping", req)
 	var errs []error
 	for i := uint32(0); i < r.cfg.MultiInstance.Total; i++ {
@@ -417,6 +536,11 @@ func (r *Client) AddTyping(ctx context.Context, req *syncapitypes.TypingUpdate) 
 			}
 			c := pb.NewSyncAggregateClient(conn)
 			go func(c pb.SyncAggregateClient, updateTyping *syncapitypes.TypingUpdate) {
+				defer func() {
+					if e := recover(); e != nil {
+						log.Errorf("grpc client AddTyping panic recovered err %#v", e)
+					}
+				}()
 				_, err = c.AddTyping(ctx, helper.ToUpdateTypingReq(updateTyping))
 				if err != nil {
 					log.Errorf("AddTyping err %s", err)
@@ -431,7 +555,13 @@ func (r *Client) AddTyping(ctx context.Context, req *syncapitypes.TypingUpdate) 
 	return nil
 }
 
-func (r *Client) RemoveTyping(ctx context.Context, req *syncapitypes.TypingUpdate) error {
+func (r *Client) RemoveTyping(ctx context.Context, req *syncapitypes.TypingUpdate) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client RemoveTyping panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("RemoveTyping", req)
 	var errs []error
 	for i := uint32(0); i < r.cfg.MultiInstance.Total; i++ {
@@ -455,6 +585,11 @@ func (r *Client) RemoveTyping(ctx context.Context, req *syncapitypes.TypingUpdat
 			}
 			c := pb.NewSyncAggregateClient(conn)
 			go func(c pb.SyncAggregateClient, req *syncapitypes.TypingUpdate) {
+				defer func() {
+					if e := recover(); e != nil {
+						log.Errorf("grpc client RemoveTyping panic recovered err %#v", e)
+					}
+				}()
 				_, err = c.RemoveTyping(ctx, helper.ToUpdateTypingReq(req))
 				if err != nil {
 					log.Errorf("RemoveTyping err %s", err)
@@ -469,7 +604,13 @@ func (r *Client) RemoveTyping(ctx context.Context, req *syncapitypes.TypingUpdat
 	return nil
 }
 
-func (r *Client) UpdateProfile(ctx context.Context, req *types.ProfileContent) error {
+func (r *Client) UpdateProfile(ctx context.Context, req *types.ProfileContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client UpdateProfile panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("UpdateProfile", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Front, 0)
 	if err != nil {
@@ -477,6 +618,11 @@ func (r *Client) UpdateProfile(ctx context.Context, req *types.ProfileContent) e
 	}
 	c := pb.NewClientapiClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client UpdateProfile panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.UpdateProfile(ctx, &pb.UpdateProfileReq{
 			UserID:       req.UserID,
 			DisplayName:  req.DisplayName,
@@ -499,7 +645,13 @@ func (r *Client) UpdateProfile(ctx context.Context, req *types.ProfileContent) e
 	return nil
 }
 
-func (r *Client) AddFilterToken(ctx context.Context, req *types.FilterTokenContent) error {
+func (r *Client) AddFilterToken(ctx context.Context, req *types.FilterTokenContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client AddFilterToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("AddFilterToken", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Proxy, 0)
 	if err != nil {
@@ -507,6 +659,11 @@ func (r *Client) AddFilterToken(ctx context.Context, req *types.FilterTokenConte
 	}
 	c := pb.NewProxyClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client AddFilterToken panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.AddFilterToken(ctx, &pb.AddFilterTokenReq{
 			UserID:   req.UserID,
 			DeviceID: req.DeviceID,
@@ -519,7 +676,13 @@ func (r *Client) AddFilterToken(ctx context.Context, req *types.FilterTokenConte
 	return nil
 }
 
-func (r *Client) DelFilterToken(ctx context.Context, req *types.FilterTokenContent) error {
+func (r *Client) DelFilterToken(ctx context.Context, req *types.FilterTokenContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client DelFilterToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("DelFilterToken", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Proxy, 0)
 	if err != nil {
@@ -527,6 +690,11 @@ func (r *Client) DelFilterToken(ctx context.Context, req *types.FilterTokenConte
 	}
 	c := pb.NewProxyClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client DelFilterToken panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.DelFilterToken(ctx, &pb.DelFilterTokenReq{
 			UserID:   req.UserID,
 			DeviceID: req.DeviceID,
@@ -539,7 +707,13 @@ func (r *Client) DelFilterToken(ctx context.Context, req *types.FilterTokenConte
 	return nil
 }
 
-func (r *Client) VerifyToken(ctx context.Context, req *types.VerifyTokenRequest) (*types.VerifyTokenResponse, error) {
+func (r *Client) VerifyToken(ctx context.Context, req *types.VerifyTokenRequest) (result *types.VerifyTokenResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client VerifyToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("VerifyToken", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Proxy, 0)
 	if err != nil {
@@ -553,7 +727,7 @@ func (r *Client) VerifyToken(ctx context.Context, req *types.VerifyTokenRequest)
 	if err != nil {
 		return nil, err
 	}
-	result := &types.VerifyTokenResponse{
+	result = &types.VerifyTokenResponse{
 		Error: rsp.Error,
 	}
 	if rsp.Device != nil {
@@ -563,7 +737,13 @@ func (r *Client) VerifyToken(ctx context.Context, req *types.VerifyTokenRequest)
 	return result, nil
 }
 
-func (r *Client) HandleEventByRcs(ctx context.Context, req *gomatrixserverlib.Event) (*types.RCSOutputEventContent, error) {
+func (r *Client) HandleEventByRcs(ctx context.Context, req *gomatrixserverlib.Event) (result *types.RCSOutputEventContent, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client HandleEventByRcs panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("HandleEventByRcs", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Rcs, 0)
 	if err != nil {
@@ -582,7 +762,13 @@ func (r *Client) HandleEventByRcs(ctx context.Context, req *gomatrixserverlib.Ev
 	return ret, nil
 }
 
-func (r *Client) UpdateToken(ctx context.Context, req *types.LoginInfoContent) error {
+func (r *Client) UpdateToken(ctx context.Context, req *types.LoginInfoContent) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client UpdateToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("UpdateToken", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.TokenWriter, 0)
 	if err != nil {
@@ -590,6 +776,11 @@ func (r *Client) UpdateToken(ctx context.Context, req *types.LoginInfoContent) e
 	}
 	c := pb.NewTokenWriterClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client UpdateToken panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.UpdateToken(ctx, &pb.UpdateTokenReq{
 			UserID:      req.UserID,
 			DeviceID:    req.DeviceID,
@@ -605,7 +796,13 @@ func (r *Client) UpdateToken(ctx context.Context, req *types.LoginInfoContent) e
 	return nil
 }
 
-func (r *Client) QueryPublicRoomState(ctx context.Context, req *publicroomsapi.QueryPublicRoomsRequest) (*publicroomsapi.QueryPublicRoomsResponse, error) {
+func (r *Client) QueryPublicRoomState(ctx context.Context, req *publicroomsapi.QueryPublicRoomsRequest) (result *publicroomsapi.QueryPublicRoomsResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client QueryPublicRoomState panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("QueryPublicRoomState", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.PublicRoom, 0)
 	if err != nil {
@@ -621,7 +818,7 @@ func (r *Client) QueryPublicRoomState(ctx context.Context, req *publicroomsapi.Q
 		return nil, err
 	}
 	cl.end(resp)
-	result := &publicroomsapi.QueryPublicRoomsResponse{
+	result = &publicroomsapi.QueryPublicRoomsResponse{
 		NextBatch: resp.NextBatch,
 		PrevBatch: resp.PrevBatch,
 		Estimate:  resp.Estimate,
@@ -632,7 +829,13 @@ func (r *Client) QueryPublicRoomState(ctx context.Context, req *publicroomsapi.Q
 	return result, nil
 }
 
-func (r *Client) QueryEventsByID(ctx context.Context, req *roomserverapi.QueryEventsByIDRequest) (*roomserverapi.QueryEventsByIDResponse, error) {
+func (r *Client) QueryEventsByID(ctx context.Context, req *roomserverapi.QueryEventsByIDRequest) (result *roomserverapi.QueryEventsByIDResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client QueryEventsByID panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("QueryEventsByID", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -644,7 +847,7 @@ func (r *Client) QueryEventsByID(ctx context.Context, req *roomserverapi.QueryEv
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.QueryEventsByIDResponse{
+	result = &roomserverapi.QueryEventsByIDResponse{
 		EventIDs: resp.EventIDs,
 	}
 	for _, v := range resp.Events {
@@ -653,7 +856,13 @@ func (r *Client) QueryEventsByID(ctx context.Context, req *roomserverapi.QueryEv
 	return result, nil
 }
 
-func (r *Client) QueryRoomEventByID(ctx context.Context, req *roomserverapi.QueryRoomEventByIDRequest) (*roomserverapi.QueryRoomEventByIDResponse, error) {
+func (r *Client) QueryRoomEventByID(ctx context.Context, req *roomserverapi.QueryRoomEventByIDRequest) (result *roomserverapi.QueryRoomEventByIDResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client QueryRoomEventByID panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("QueryRoomEventByID", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -665,7 +874,7 @@ func (r *Client) QueryRoomEventByID(ctx context.Context, req *roomserverapi.Quer
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.QueryRoomEventByIDResponse{
+	result = &roomserverapi.QueryRoomEventByIDResponse{
 		EventID: resp.EventID,
 		RoomID:  resp.RoomID,
 		Event:   helper.ToEvent(resp.Event),
@@ -673,7 +882,13 @@ func (r *Client) QueryRoomEventByID(ctx context.Context, req *roomserverapi.Quer
 	return result, nil
 }
 
-func (r *Client) QueryJoinRooms(ctx context.Context, req *roomserverapi.QueryJoinRoomsRequest) (*roomserverapi.QueryJoinRoomsResponse, error) {
+func (r *Client) QueryJoinRooms(ctx context.Context, req *roomserverapi.QueryJoinRoomsRequest) (result *roomserverapi.QueryJoinRoomsResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client QueryJoinRooms panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("QueryJoinRooms", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -685,14 +900,20 @@ func (r *Client) QueryJoinRooms(ctx context.Context, req *roomserverapi.QueryJoi
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.QueryJoinRoomsResponse{
+	result = &roomserverapi.QueryJoinRoomsResponse{
 		UserID: resp.UserID,
 		Rooms:  resp.Rooms,
 	}
 	return result, nil
 }
 
-func (r *Client) QueryRoomState(ctx context.Context, req *roomserverapi.QueryRoomStateRequest) (*roomserverapi.QueryRoomStateResponse, error) {
+func (r *Client) QueryRoomState(ctx context.Context, req *roomserverapi.QueryRoomStateRequest) (result *roomserverapi.QueryRoomStateResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client QueryRoomState panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("QueryRoomState", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -704,7 +925,7 @@ func (r *Client) QueryRoomState(ctx context.Context, req *roomserverapi.QueryRoo
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.QueryRoomStateResponse{
+	result = &roomserverapi.QueryRoomStateResponse{
 		RoomID:            resp.RoomID,
 		RoomExists:        resp.RoomExists,
 		Creator:           helper.ToEvent(resp.Creator),
@@ -739,7 +960,13 @@ func (r *Client) QueryRoomState(ctx context.Context, req *roomserverapi.QueryRoo
 	return result, nil
 }
 
-func (r *Client) QueryBackFillEvents(ctx context.Context, req *roomserverapi.QueryBackFillEventsRequest) (*roomserverapi.QueryBackFillEventsResponse, error) {
+func (r *Client) QueryBackFillEvents(ctx context.Context, req *roomserverapi.QueryBackFillEventsRequest) (result *roomserverapi.QueryBackFillEventsResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client QueryBackFillEvents panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("QueryBackFillEvents", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -758,7 +985,7 @@ func (r *Client) QueryBackFillEvents(ctx context.Context, req *roomserverapi.Que
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.QueryBackFillEventsResponse{
+	result = &roomserverapi.QueryBackFillEventsResponse{
 		Error:          resp.Error,
 		Origin:         resp.Origin,
 		OriginServerTs: gomatrixserverlib.Timestamp(resp.OriginServerTs),
@@ -769,7 +996,13 @@ func (r *Client) QueryBackFillEvents(ctx context.Context, req *roomserverapi.Que
 	return result, nil
 }
 
-func (r *Client) QueryEventAuth(ctx context.Context, req *roomserverapi.QueryEventAuthRequest) (*roomserverapi.QueryEventAuthResponse, error) {
+func (r *Client) QueryEventAuth(ctx context.Context, req *roomserverapi.QueryEventAuthRequest) (result *roomserverapi.QueryEventAuthResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client QueryEventAuth panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("QueryEventAuth", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -781,14 +1014,20 @@ func (r *Client) QueryEventAuth(ctx context.Context, req *roomserverapi.QueryEve
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.QueryEventAuthResponse{}
+	result = &roomserverapi.QueryEventAuthResponse{}
 	for _, v := range resp.AuthEvents {
 		result.AuthEvents = append(result.AuthEvents, helper.ToEvent(v))
 	}
 	return result, nil
 }
 
-func (r *Client) SetRoomAlias(ctx context.Context, req *roomserverapi.SetRoomAliasRequest) (*roomserverapi.SetRoomAliasResponse, error) {
+func (r *Client) SetRoomAlias(ctx context.Context, req *roomserverapi.SetRoomAliasRequest) (result *roomserverapi.SetRoomAliasResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SetRoomAlias panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("SetRoomAlias", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -804,11 +1043,17 @@ func (r *Client) SetRoomAlias(ctx context.Context, req *roomserverapi.SetRoomAli
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.SetRoomAliasResponse{AliasExists: resp.AliasExists}
+	result = &roomserverapi.SetRoomAliasResponse{AliasExists: resp.AliasExists}
 	return result, nil
 }
 
-func (r *Client) GetAliasRoomID(ctx context.Context, req *roomserverapi.GetAliasRoomIDRequest) (*roomserverapi.GetAliasRoomIDResponse, error) {
+func (r *Client) GetAliasRoomID(ctx context.Context, req *roomserverapi.GetAliasRoomIDRequest) (result *roomserverapi.GetAliasRoomIDResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetAliasRoomID panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetAliasRoomID", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -822,11 +1067,17 @@ func (r *Client) GetAliasRoomID(ctx context.Context, req *roomserverapi.GetAlias
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.GetAliasRoomIDResponse{RoomID: resp.RoomID}
+	result = &roomserverapi.GetAliasRoomIDResponse{RoomID: resp.RoomID}
 	return result, nil
 }
 
-func (r *Client) RemoveRoomAlias(ctx context.Context, req *roomserverapi.RemoveRoomAliasRequest) (*roomserverapi.RemoveRoomAliasResponse, error) {
+func (r *Client) RemoveRoomAlias(ctx context.Context, req *roomserverapi.RemoveRoomAliasRequest) (result *roomserverapi.RemoveRoomAliasResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client RemoveRoomAlias panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	newCallLog("RemoveRoomAlias", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -840,11 +1091,17 @@ func (r *Client) RemoveRoomAlias(ctx context.Context, req *roomserverapi.RemoveR
 	if err != nil {
 		return nil, err
 	}
-	result := &roomserverapi.RemoveRoomAliasResponse{}
+	result = &roomserverapi.RemoveRoomAliasResponse{}
 	return result, nil
 }
 
-func (r *Client) AllocRoomAlias(ctx context.Context, req *roomserverapi.SetRoomAliasRequest) (*roomserverapi.SetRoomAliasResponse, error) {
+func (r *Client) AllocRoomAlias(ctx context.Context, req *roomserverapi.SetRoomAliasRequest) (result *roomserverapi.SetRoomAliasResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client AllocRoomAlias panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("AllocRoomAlias", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -860,11 +1117,17 @@ func (r *Client) AllocRoomAlias(ctx context.Context, req *roomserverapi.SetRoomA
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.SetRoomAliasResponse{AliasExists: resp.AliasExists}
+	result = &roomserverapi.SetRoomAliasResponse{AliasExists: resp.AliasExists}
 	return result, nil
 }
 
-func (r *Client) InputRoomEvents(ctx context.Context, req *roomserverapi.RawEvent) (*roomserverapi.InputRoomEventsResponse, error) {
+func (r *Client) InputRoomEvents(ctx context.Context, req *roomserverapi.RawEvent) (result *roomserverapi.InputRoomEventsResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client InputRoomEvents panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("InputRoomEvents", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
@@ -893,11 +1156,17 @@ func (r *Client) InputRoomEvents(ctx context.Context, req *roomserverapi.RawEven
 		return nil, err
 	}
 	cl.end(resp)
-	result := &roomserverapi.InputRoomEventsResponse{ErrCode: int(resp.ErrCode), ErrMsg: resp.ErrMsg, N: int(resp.N)}
+	result = &roomserverapi.InputRoomEventsResponse{ErrCode: int(resp.ErrCode), ErrMsg: resp.ErrMsg, N: int(resp.N)}
 	return result, nil
 }
 
-func (r *Client) SendEduToRemote(ctx context.Context, req *gomatrixserverlib.EDU) error {
+func (r *Client) SendEduToRemote(ctx context.Context, req *gomatrixserverlib.EDU) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SendEduToRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("SendEduToRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -905,6 +1174,11 @@ func (r *Client) SendEduToRemote(ctx context.Context, req *gomatrixserverlib.EDU
 	}
 	c := pb.NewFederationClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client SendEduToRemote panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.SendEDU(ctx, &pb.SendEDUReq{
 			Type:        req.Type,
 			Origin:      req.Origin,
@@ -919,7 +1193,13 @@ func (r *Client) SendEduToRemote(ctx context.Context, req *gomatrixserverlib.EDU
 	return nil
 }
 
-func (r *Client) GetAliasRoomIDFromRemote(ctx context.Context, req *external.GetDirectoryRoomAliasRequest, targetDomain string) (*external.GetDirectoryRoomAliasResponse, error) {
+func (r *Client) GetAliasRoomIDFromRemote(ctx context.Context, req *external.GetDirectoryRoomAliasRequest, targetDomain string) (result *external.GetDirectoryRoomAliasResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetAliasRoomIDFromRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetAliasRoomIDFromRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -940,7 +1220,13 @@ func (r *Client) GetAliasRoomIDFromRemote(ctx context.Context, req *external.Get
 	}, nil
 }
 
-func (r *Client) GetProfileFromRemote(ctx context.Context, req *external.GetProfileRequest, targetDomain string) (*external.GetProfileResponse, error) {
+func (r *Client) GetProfileFromRemote(ctx context.Context, req *external.GetProfileRequest, targetDomain string) (result *external.GetProfileResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetProfileFromRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetProfileFromRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -964,7 +1250,13 @@ func (r *Client) GetProfileFromRemote(ctx context.Context, req *external.GetProf
 	}, nil
 }
 
-func (r *Client) GetAvatarFromRemote(ctx context.Context, req *external.GetProfileRequest, targetDomain string) (*external.GetAvatarURLResponse, error) {
+func (r *Client) GetAvatarFromRemote(ctx context.Context, req *external.GetProfileRequest, targetDomain string) (result *external.GetAvatarURLResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetAvatarFromRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetAvatarFromRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -984,7 +1276,13 @@ func (r *Client) GetAvatarFromRemote(ctx context.Context, req *external.GetProfi
 	}, nil
 }
 
-func (r *Client) GetDisplayNameFromRemote(ctx context.Context, req *external.GetProfileRequest, targetDomain string) (*external.GetDisplayNameResponse, error) {
+func (r *Client) GetDisplayNameFromRemote(ctx context.Context, req *external.GetProfileRequest, targetDomain string) (result *external.GetDisplayNameResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetDisplayNameFromRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetDisplayNameFromRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1004,7 +1302,13 @@ func (r *Client) GetDisplayNameFromRemote(ctx context.Context, req *external.Get
 	}, nil
 }
 
-func (r *Client) GetRoomStateFromRemote(ctx context.Context, req *external.GetFedRoomStateRequest, targetDomain string) (*gomatrixserverlib.RespState, error) {
+func (r *Client) GetRoomStateFromRemote(ctx context.Context, req *external.GetFedRoomStateRequest, targetDomain string) (result *gomatrixserverlib.RespState, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetRoomStateFromRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetDisplayNameFromRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1061,7 +1365,13 @@ func (r *DownloadReader) Read(p []byte) (n int, err error) {
 	return idx, nil
 }
 
-func (r *Client) DownloadFromRemote(ctx context.Context, req *external.GetFedDownloadRequest, targetDomain string) (io.Reader, int, http.Header, error) {
+func (r *Client) DownloadFromRemote(ctx context.Context, req *external.GetFedDownloadRequest, targetDomain string) (reader io.Reader, code int, header http.Header, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client DownloadFromRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetDisplayNameFromRemote", req)
 	ch := make(chan []byte, 64)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
@@ -1080,9 +1390,14 @@ func (r *Client) DownloadFromRemote(ctx context.Context, req *external.GetFedDow
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	reader := &DownloadReader{ch: ch}
+	reader = &DownloadReader{ch: ch}
 	recvCh := make(chan *pb.DownloadRsp, 1)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client DownloadFromRemote panic recovered err %#v", e)
+			}
+		}()
 		// seq := int64(0)
 		// windows := []*pb.DownloadRsp{}
 		for {
@@ -1112,7 +1427,13 @@ func (r *Client) DownloadFromRemote(ctx context.Context, req *external.GetFedDow
 	return reader, response.StatusCode, response.Header, nil
 }
 
-func (r *Client) GetUserInfoFromRemote(ctx context.Context, req *external.GetUserInfoRequest, targetDomain string) (*external.GetUserInfoResponse, error) {
+func (r *Client) GetUserInfoFromRemote(ctx context.Context, req *external.GetUserInfoRequest, targetDomain string) (result *external.GetUserInfoResponse, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client GetUserInfoFromRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("GetUserInfoFromRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1137,7 +1458,13 @@ func (r *Client) GetUserInfoFromRemote(ctx context.Context, req *external.GetUse
 	}, nil
 }
 
-func (r *Client) MakeJoinToRemote(ctx context.Context, req *external.GetMakeJoinRequest, targetDomain string) (*gomatrixserverlib.RespMakeJoin, error) {
+func (r *Client) MakeJoinToRemote(ctx context.Context, req *external.GetMakeJoinRequest, targetDomain string) (result *gomatrixserverlib.RespMakeJoin, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client MakeJoinToRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("MakeJoinToRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1159,7 +1486,13 @@ func (r *Client) MakeJoinToRemote(ctx context.Context, req *external.GetMakeJoin
 	}, nil
 }
 
-func (r *Client) SendJoinToRemote(ctx context.Context, req *external.PutSendJoinRequest, targetDomain string) (*gomatrixserverlib.RespSendJoin, error) {
+func (r *Client) SendJoinToRemote(ctx context.Context, req *external.PutSendJoinRequest, targetDomain string) (result *gomatrixserverlib.RespSendJoin, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SendJoinToRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("SendJoinToRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1186,7 +1519,13 @@ func (r *Client) SendJoinToRemote(ctx context.Context, req *external.PutSendJoin
 	return states, nil
 }
 
-func (r *Client) MakeLeaveToRemote(ctx context.Context, req *external.GetMakeLeaveRequest, targetDomain string) (*gomatrixserverlib.RespMakeLeave, error) {
+func (r *Client) MakeLeaveToRemote(ctx context.Context, req *external.GetMakeLeaveRequest, targetDomain string) (result *gomatrixserverlib.RespMakeLeave, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client MakeLeaveToRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("MakeLeaveToRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1207,7 +1546,13 @@ func (r *Client) MakeLeaveToRemote(ctx context.Context, req *external.GetMakeLea
 	}, nil
 }
 
-func (r *Client) SendLeaveToRemote(ctx context.Context, req *external.PutSendLeaveRequest, targetDomain string) (*gomatrixserverlib.RespSendLeave, error) {
+func (r *Client) SendLeaveToRemote(ctx context.Context, req *external.PutSendLeaveRequest, targetDomain string) (result *gomatrixserverlib.RespSendLeave, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SendLeaveToRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("SendLeaveToRemote", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1229,7 +1574,13 @@ func (r *Client) SendLeaveToRemote(ctx context.Context, req *external.PutSendLea
 	}, nil
 }
 
-func (r *Client) SendInviteToRemote(ctx context.Context, event *gomatrixserverlib.Event, targetDomain string) (*gomatrixserverlib.RespInvite, error) {
+func (r *Client) SendInviteToRemote(ctx context.Context, event *gomatrixserverlib.Event, targetDomain string) (result *gomatrixserverlib.RespInvite, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client SendInviteToRemote panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("SendInviteToRemote", event)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Fed, 0)
 	if err != nil {
@@ -1250,7 +1601,13 @@ func (r *Client) SendInviteToRemote(ctx context.Context, event *gomatrixserverli
 	}, nil
 }
 
-func (r *Client) PushData(ctx context.Context, req *pushapitypes.PushPubContents) error {
+func (r *Client) PushData(ctx context.Context, req *pushapitypes.PushPubContents) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpc client PushData panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	cl := newCallLog("PushData", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.Push, 0)
 	if err != nil {
@@ -1259,6 +1616,11 @@ func (r *Client) PushData(ctx context.Context, req *pushapitypes.PushPubContents
 	contents, _ := json.Marshal(req.Contents)
 	c := pb.NewPushClient(conn)
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("grpc client PushData panic recovered err %#v", e)
+			}
+		}()
 		_, err = c.PushData(ctx, &pb.PushDataReq{
 			Input:             helper.ToClientEvent(req.Input),
 			SenderDisplayName: req.SenderDisplayName,

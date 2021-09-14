@@ -32,6 +32,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg        *config.Dendrite
 	Proc       roomserverapi.RoomserverQueryAPI
@@ -79,6 +87,11 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) QueryEventsByID(ctx context.Context, req *pb.QueryEventsByIDReq) (*pb.QueryEventsByIDRsp, error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer QueryEventsByID panic recovered err %#v", e)
+		}
+	}()
 	var response roomserverapi.QueryEventsByIDResponse
 	err := s.Proc.QueryEventsByID(context.Background(), &roomserverapi.QueryEventsByIDRequest{EventIDs: req.EventIDs}, &response)
 	if err != nil {
@@ -91,35 +104,53 @@ func (s *Server) QueryEventsByID(ctx context.Context, req *pb.QueryEventsByIDReq
 	return result, nil
 }
 
-func (s *Server) QueryRoomEventByID(ctx context.Context, req *pb.QueryRoomEventByIDReq) (*pb.QueryRoomEventByIDRsp, error) {
+func (s *Server) QueryRoomEventByID(ctx context.Context, req *pb.QueryRoomEventByIDReq) (result *pb.QueryRoomEventByIDRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer QueryRoomEventByID panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var response roomserverapi.QueryRoomEventByIDResponse
-	err := s.Proc.QueryRoomEventByID(context.Background(), &roomserverapi.QueryRoomEventByIDRequest{EventID: req.EventID, RoomID: req.RoomID}, &response)
+	err = s.Proc.QueryRoomEventByID(context.Background(), &roomserverapi.QueryRoomEventByIDRequest{EventID: req.EventID, RoomID: req.RoomID}, &response)
 	if err != nil {
 		return nil, err
 	}
 	return &pb.QueryRoomEventByIDRsp{EventID: response.EventID, RoomID: response.RoomID, Event: helper.ToPBEvent(response.Event)}, nil
 }
 
-func (s *Server) QueryJoinRooms(ctx context.Context, req *pb.QueryJoinRoomsReq) (*pb.QueryJoinRoomsRsp, error) {
+func (s *Server) QueryJoinRooms(ctx context.Context, req *pb.QueryJoinRoomsReq) (result *pb.QueryJoinRoomsRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer QueryJoinRooms panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var response roomserverapi.QueryJoinRoomsResponse
-	err := s.Proc.QueryJoinRooms(context.Background(), &roomserverapi.QueryJoinRoomsRequest{UserID: req.UserID}, &response)
+	err = s.Proc.QueryJoinRooms(context.Background(), &roomserverapi.QueryJoinRoomsRequest{UserID: req.UserID}, &response)
 	if err != nil {
 		return nil, err
 	}
 	return &pb.QueryJoinRoomsRsp{UserID: response.UserID, Rooms: response.Rooms}, nil
 }
 
-func (s *Server) QueryRoomState(ctx context.Context, req *pb.QueryRoomStateReq) (*pb.QueryRoomStateRsp, error) {
+func (s *Server) QueryRoomState(ctx context.Context, req *pb.QueryRoomStateReq) (result *pb.QueryRoomStateRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer QueryRoomState panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var response roomserverapi.QueryRoomStateResponse
 	log.Infof("processQueryRoomState recv request recv data:%s", req.RoomID)
-	err := s.Proc.QueryRoomState(context.Background(), &roomserverapi.QueryRoomStateRequest{RoomID: req.RoomID}, &response)
+	err = s.Proc.QueryRoomState(context.Background(), &roomserverapi.QueryRoomStateRequest{RoomID: req.RoomID}, &response)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Infof("processQueryRoomState recv process room:%s, data:%v", req.RoomID, response)
 
-	result := &pb.QueryRoomStateRsp{
+	result = &pb.QueryRoomStateRsp{
 		RoomID:            response.RoomID,
 		RoomExists:        response.RoomExists,
 		Creator:           helper.ToPBEvent(response.Creator),
@@ -150,9 +181,15 @@ func (s *Server) QueryRoomState(ctx context.Context, req *pb.QueryRoomStateReq) 
 	return result, nil
 }
 
-func (s *Server) QueryBackFillEvents(ctx context.Context, req *pb.QueryBackFillEventsReq) (*pb.QueryBackFillEventsRsp, error) {
+func (s *Server) QueryBackFillEvents(ctx context.Context, req *pb.QueryBackFillEventsReq) (result *pb.QueryBackFillEventsRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer QueryBackFillEvents panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var response roomserverapi.QueryBackFillEventsResponse
-	err := s.Proc.QueryBackFillEvents(context.Background(), &roomserverapi.QueryBackFillEventsRequest{
+	err = s.Proc.QueryBackFillEvents(context.Background(), &roomserverapi.QueryBackFillEventsRequest{
 		EventID: req.EventID,
 		Limit:   int(req.Limit),
 		RoomID:  req.RoomID,
@@ -164,7 +201,7 @@ func (s *Server) QueryBackFillEvents(ctx context.Context, req *pb.QueryBackFillE
 		return nil, err
 	}
 
-	result := &pb.QueryBackFillEventsRsp{
+	result = &pb.QueryBackFillEventsRsp{
 		Error:          response.Error,
 		Origin:         response.Origin,
 		OriginServerTs: int64(response.OriginServerTs),
@@ -175,18 +212,30 @@ func (s *Server) QueryBackFillEvents(ctx context.Context, req *pb.QueryBackFillE
 	return result, nil
 }
 
-func (s *Server) QueryEventAuth(ctx context.Context, req *pb.QueryEventAuthReq) (*pb.QueryEventAuthRsp, error) {
+func (s *Server) QueryEventAuth(ctx context.Context, req *pb.QueryEventAuthReq) (result *pb.QueryEventAuthRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer QueryEventAuth panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var response roomserverapi.QueryEventAuthResponse
 	s.Proc.QueryEventAuth(context.Background(), &roomserverapi.QueryEventAuthRequest{EventID: req.EventID}, &response)
 
-	result := &pb.QueryEventAuthRsp{}
+	result = &pb.QueryEventAuthRsp{}
 	for _, v := range response.AuthEvents {
 		result.AuthEvents = append(result.AuthEvents, helper.ToPBEvent(v))
 	}
 	return result, nil
 }
 
-func (s *Server) SetRoomAlias(ctx context.Context, req *pb.SetRoomAliasReq) (*pb.SetRoomAliasRsp, error) {
+func (s *Server) SetRoomAlias(ctx context.Context, req *pb.SetRoomAliasReq) (result *pb.SetRoomAliasRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SetRoomAlias panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var resp roomserverapi.SetRoomAliasResponse
 	s.aliasProc.SetRoomAlias(ctx, &roomserverapi.SetRoomAliasRequest{
 		UserID: req.UserID,
@@ -196,7 +245,13 @@ func (s *Server) SetRoomAlias(ctx context.Context, req *pb.SetRoomAliasReq) (*pb
 	return &pb.SetRoomAliasRsp{AliasExists: resp.AliasExists}, nil
 }
 
-func (s *Server) GetAliasRoomID(ctx context.Context, req *pb.GetAliasRoomIDReq) (*pb.GetAliasRoomIDRsp, error) {
+func (s *Server) GetAliasRoomID(ctx context.Context, req *pb.GetAliasRoomIDReq) (result *pb.GetAliasRoomIDRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetAliasRoomID panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var resp roomserverapi.GetAliasRoomIDResponse
 	s.aliasProc.GetAliasRoomID(ctx, &roomserverapi.GetAliasRoomIDRequest{
 		Alias: req.Alias,
@@ -204,7 +259,13 @@ func (s *Server) GetAliasRoomID(ctx context.Context, req *pb.GetAliasRoomIDReq) 
 	return &pb.GetAliasRoomIDRsp{RoomID: resp.RoomID}, nil
 }
 
-func (s *Server) RemoveRoomAlias(ctx context.Context, req *pb.RemoveRoomAliasReq) (*pb.RemoveRoomAliasRsp, error) {
+func (s *Server) RemoveRoomAlias(ctx context.Context, req *pb.RemoveRoomAliasReq) (result *pb.RemoveRoomAliasRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer RemoveRoomAlias panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var resp roomserverapi.RemoveRoomAliasResponse
 	s.aliasProc.RemoveRoomAlias(ctx, &roomserverapi.RemoveRoomAliasRequest{
 		UserID: req.Alias,
@@ -213,7 +274,13 @@ func (s *Server) RemoveRoomAlias(ctx context.Context, req *pb.RemoveRoomAliasReq
 	return &pb.RemoveRoomAliasRsp{}, nil
 }
 
-func (s *Server) AllocRoomAlias(ctx context.Context, req *pb.AllocRoomAliasReq) (*pb.AllocRoomAliasRsp, error) {
+func (s *Server) AllocRoomAlias(ctx context.Context, req *pb.AllocRoomAliasReq) (result *pb.AllocRoomAliasRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer AllocRoomAlias panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	var resp roomserverapi.SetRoomAliasResponse
 	s.aliasProc.AllocRoomAlias(ctx, &roomserverapi.SetRoomAliasRequest{
 		UserID: req.Alias,
@@ -233,7 +300,13 @@ type Payload struct {
 	resp chan Result
 }
 
-func (s *Server) InputRoomEvents(ctx context.Context, req *pb.InputRoomEventsReq) (*pb.InputRoomEventsRsp, error) {
+func (s *Server) InputRoomEvents(ctx context.Context, req *pb.InputRoomEventsReq) (resp *pb.InputRoomEventsRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer InputRoomEvents panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	ch := make(chan Result)
 	payload := Payload{ctx, req, ch}
 
@@ -264,7 +337,7 @@ func (r *Server) startWorker(msgChan chan Payload) {
 func (r *Server) process(ctx context.Context, req *pb.InputRoomEventsReq) (resp *pb.InputRoomEventsRsp, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("rcsserver handleEvent panic %v", e)
+			err = fmt.Errorf("rcsserver handleEvent panic recovered %v", e)
 		}
 	}()
 	log.Infof("------------------------client-api processEvent start roomId:%s len:%d", req.RoomID, len(req.BulkEvents.Events))

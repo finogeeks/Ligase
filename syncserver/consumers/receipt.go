@@ -221,6 +221,12 @@ func (s *ReceiptConsumer) OnReceipt(req *types.ReceiptContent) {
 // Start consuming from room servers
 func (s *ReceiptConsumer) Start() error {
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("ReceiptConsumer Start panic recovered err %#v", e)
+				go s.Start()
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(s.delay))
 		for {
 			select {

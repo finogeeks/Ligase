@@ -16,10 +16,11 @@ package repos
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/skunkworks/log"
-	"github.com/finogeeks/ligase/storage/model"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/skunkworks/log"
+	"github.com/finogeeks/ligase/storage/model"
 )
 
 type DeviceInfo struct {
@@ -59,6 +60,11 @@ func (uda *UserDeviceActiveRepo) SetPersist(db model.DeviceDatabase) {
 
 func (uda *UserDeviceActiveRepo) startFlush() error {
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("UserDeviceActiveRepo startFlush panic recovered err %#v", e)
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(uda.delay))
 		for {
 			select {

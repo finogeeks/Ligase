@@ -103,6 +103,11 @@ func (s *ActDataConsumer) OnMessage(ctx context.Context, topic string, partition
 }
 
 func (s *ActDataConsumer) onMessage(output *types.ActDataStreamUpdate) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("ActDataConsumer onMessage panic recovered err %#v", e)
+		}
+	}()
 	if output.StreamType != "" {
 		log.Infow("sync client data stream consumer received data", log.KeysAndValues{
 			"userID", output.UserID, "roomID", output.RoomID, "dataType", output.DataType, "streamType", output.StreamType,
