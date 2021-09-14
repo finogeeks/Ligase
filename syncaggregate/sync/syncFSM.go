@@ -242,6 +242,11 @@ func (fsm *SyncFSM) waitEvent() {
 	fsm.registerDataChan(token)
 
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("SyncFSM waitEvent panic recovered err %#v", e)
+			}
+		}()
 		if fsm.sm.CheckNewEvent(fsm.request, token, curUtl, fsm.request.start, 0) {
 			fsm.unregisterDataChan()
 			fsm.OnSyncDataEvent(SyncDataUnknown, nil)

@@ -38,6 +38,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg          *config.Dendrite
 	idg          *uid.UidGenerator
@@ -90,7 +98,13 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) UpdateProfile(ctx context.Context, req *pb.UpdateProfileReq) (*pb.Empty, error) {
+func (s *Server) UpdateProfile(ctx context.Context, req *pb.UpdateProfileReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer UpdateProfile panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	upDisplayName := true
 	upAvatarUrl := true
 	upPresence := true

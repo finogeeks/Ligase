@@ -317,7 +317,7 @@ func (c *KafkaChannel) Commit(rawMsgs []interface{}) error {
 func (c *KafkaChannel) processAsyncReport() {
 	defer func() {
 		if e := recover(); e != nil {
-			log.Errorf("producer panic: %#v", e)
+			log.Errorf("producer panic recovered : %#v", e)
 			go c.processAsyncReport()
 		}
 	}()
@@ -379,7 +379,7 @@ func (c *KafkaChannel) startConsumer() error {
 	onMessage := func(consumer core.IChannelConsumer, msg *kafka.Message) {
 		defer func() {
 			if e := recover(); e != nil {
-				log.Errorf("channel consumer panic: %#v", e)
+				log.Errorf("channel consumer panic recovered : %#v", e)
 			}
 		}()
 		if msg.TopicPartition.Error != nil {
@@ -391,7 +391,7 @@ func (c *KafkaChannel) startConsumer() error {
 	evHandler = func() {
 		defer func() {
 			if e := recover(); e != nil {
-				log.Errorf("consumer panic: %#v", e)
+				log.Errorf("consumer panic recovered : %#v", e)
 				go evHandler()
 			}
 		}()
@@ -694,6 +694,11 @@ func (c *KafkaChannel) pubWithKey(topic string, keys, bytes []byte, sync bool, r
 }
 
 func (c *KafkaChannel) pubSync(msg kafka.Message, deliveryChan chan kafka.Event, result chan error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("KafkaChannel pubSync panic recovered err %#v", e)
+		}
+	}()
 	bs := time.Now().UnixNano() / 1000000
 	err := c.producer.Produce(&msg, deliveryChan)
 	if err != nil {

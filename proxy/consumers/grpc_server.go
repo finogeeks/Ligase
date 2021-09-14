@@ -31,6 +31,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg         *config.Dendrite
 	tokenFilter *filter.SimpleFilter
@@ -72,17 +80,35 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) AddFilterToken(ctx context.Context, req *pb.AddFilterTokenReq) (*pb.Empty, error) {
+func (s *Server) AddFilterToken(ctx context.Context, req *pb.AddFilterTokenReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer AddFilterToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	s.tokenFilter.Insert(req.UserID, req.DeviceID)
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) DelFilterToken(ctx context.Context, req *pb.DelFilterTokenReq) (*pb.Empty, error) {
+func (s *Server) DelFilterToken(ctx context.Context, req *pb.DelFilterTokenReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer DelFilterToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	s.tokenFilter.Delete(req.UserID, req.DeviceID)
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) VerifyToken(ctx context.Context, req *pb.VerifyTokenReq) (*pb.VerifyTokenRsp, error) {
+func (s *Server) VerifyToken(ctx context.Context, req *pb.VerifyTokenReq) (result *pb.VerifyTokenRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer VerifyToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	device, resErr := common.VerifyToken(req.Token, req.RequestURI, s.cache, *s.cfg, s.tokenFilter)
 	if resErr != nil {
 		data, _ := json.Marshal(resErr.JSON)

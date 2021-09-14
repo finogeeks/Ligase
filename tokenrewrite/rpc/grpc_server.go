@@ -30,6 +30,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg           *config.Dendrite
 	idg           *uid.UidGenerator
@@ -82,7 +90,13 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) UpdateToken(ctx context.Context, req *pb.UpdateTokenReq) (*pb.Empty, error) {
+func (s *Server) UpdateToken(ctx context.Context, req *pb.UpdateTokenReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer UpdateToken panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	log.Infof("start process for %s %s %s", req.UserID, req.DeviceID, req.Token)
 	domain, _ := common.DomainFromID(req.UserID)
 	id, _ := s.idg.Next()

@@ -36,6 +36,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg        *config.Dendrite
 	sender     *fedsender.FederationSender
@@ -81,7 +89,13 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) SendEDU(ctx context.Context, req *pb.SendEDUReq) (*pb.Empty, error) {
+func (s *Server) SendEDU(ctx context.Context, req *pb.SendEDUReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SendEDU err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	log.Infof("fed-edu-sender received data data:%+v", req)
 	s.sender.SendEDU(&gomatrixserverlib.EDU{
 		Type:        req.Type,
@@ -92,7 +106,13 @@ func (s *Server) SendEDU(ctx context.Context, req *pb.SendEDUReq) (*pb.Empty, er
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) GetAliasRoomID(ctx context.Context, req *pb.GetFedAliasRoomIDReq) (*pb.GetFddAliasRoomIDRsp, error) {
+func (s *Server) GetAliasRoomID(ctx context.Context, req *pb.GetFedAliasRoomIDReq) (result *pb.GetFddAliasRoomIDRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetAliasRoomID err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -108,7 +128,13 @@ func (s *Server) GetAliasRoomID(ctx context.Context, req *pb.GetFedAliasRoomIDRe
 	}, nil
 }
 
-func (s *Server) GetProfile(ctx context.Context, req *pb.GetProfileReq) (*pb.GetProfileRsp, error) {
+func (s *Server) GetProfile(ctx context.Context, req *pb.GetProfileReq) (result *pb.GetProfileRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetProfile err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -127,7 +153,13 @@ func (s *Server) GetProfile(ctx context.Context, req *pb.GetProfileReq) (*pb.Get
 	}, nil
 }
 
-func (s *Server) GetAvatar(ctx context.Context, req *pb.GetAvatarReq) (*pb.GetAvatarRsp, error) {
+func (s *Server) GetAvatar(ctx context.Context, req *pb.GetAvatarReq) (result *pb.GetAvatarRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetAvatar err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -142,7 +174,13 @@ func (s *Server) GetAvatar(ctx context.Context, req *pb.GetAvatarReq) (*pb.GetAv
 	}, nil
 }
 
-func (s *Server) GetDisplayName(ctx context.Context, req *pb.GetDisplayNameReq) (*pb.GetDisplayNameRsp, error) {
+func (s *Server) GetDisplayName(ctx context.Context, req *pb.GetDisplayNameReq) (result *pb.GetDisplayNameRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetDisplayName err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -157,7 +195,13 @@ func (s *Server) GetDisplayName(ctx context.Context, req *pb.GetDisplayNameReq) 
 	}, nil
 }
 
-func (s *Server) GetRoomState(ctx context.Context, req *pb.GetRoomStateReq) (*pb.GetRoomStateRsp, error) {
+func (s *Server) GetRoomState(ctx context.Context, req *pb.GetRoomStateReq) (result *pb.GetRoomStateRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetRoomState err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -177,7 +221,13 @@ func (s *Server) GetRoomState(ctx context.Context, req *pb.GetRoomStateReq) (*pb
 	return &stateResp, nil
 }
 
-func (s *Server) Download(req *pb.DownloadReq, stream pb.Federation_DownloadServer) error {
+func (s *Server) Download(req *pb.DownloadReq, stream pb.Federation_DownloadServer) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer Download err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -206,7 +256,13 @@ func (s *Server) Download(req *pb.DownloadReq, stream pb.Federation_DownloadServ
 	return nil
 }
 
-func (s *Server) GetUserInfo(ctx context.Context, req *pb.GetUserInfoReq) (*pb.GetUserInfoRsp, error) {
+func (s *Server) GetUserInfo(ctx context.Context, req *pb.GetUserInfoReq) (result *pb.GetUserInfoRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetUserInfo err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -226,7 +282,13 @@ func (s *Server) GetUserInfo(ctx context.Context, req *pb.GetUserInfoReq) (*pb.G
 	}, nil
 }
 
-func (s *Server) MakeJoin(ctx context.Context, req *pb.MakeJoinReq) (*pb.MakeJoinRsp, error) {
+func (s *Server) MakeJoin(ctx context.Context, req *pb.MakeJoinReq) (result *pb.MakeJoinRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer MakeJoin err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -246,7 +308,13 @@ func (s *Server) MakeJoin(ctx context.Context, req *pb.MakeJoinReq) (*pb.MakeJoi
 	}, nil
 }
 
-func (s *Server) SendJoin(ctx context.Context, req *pb.SendJoinReq) (*pb.SendJoinRsp, error) {
+func (s *Server) SendJoin(ctx context.Context, req *pb.SendJoinReq) (result *pb.SendJoinRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SendJoin err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -270,7 +338,13 @@ func (s *Server) SendJoin(ctx context.Context, req *pb.SendJoinReq) (*pb.SendJoi
 	return &joinResp, nil
 }
 
-func (s *Server) MakeLeave(ctx context.Context, req *pb.MakeLeaveReq) (*pb.MakeLeaveRsp, error) {
+func (s *Server) MakeLeave(ctx context.Context, req *pb.MakeLeaveReq) (result *pb.MakeLeaveRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer MakeLeave err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -288,7 +362,13 @@ func (s *Server) MakeLeave(ctx context.Context, req *pb.MakeLeaveReq) (*pb.MakeL
 	}, nil
 }
 
-func (s *Server) SendLeave(ctx context.Context, req *pb.SendLeaveReq) (*pb.SendLeaveRsp, error) {
+func (s *Server) SendLeave(ctx context.Context, req *pb.SendLeaveReq) (result *pb.SendLeaveRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SendLeave err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)
@@ -305,7 +385,13 @@ func (s *Server) SendLeave(ctx context.Context, req *pb.SendLeaveReq) (*pb.SendL
 	return &pb.SendLeaveRsp{Code: int32(resp.Code)}, nil
 }
 
-func (s *Server) SendInvite(ctx context.Context, req *pb.SendInviteReq) (*pb.SendInviteRsp, error) {
+func (s *Server) SendInvite(ctx context.Context, req *pb.SendInviteReq) (result *pb.SendInviteRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SendInvite err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	destination, ok := s.feddomains.GetDomainHost(req.TargetDomain)
 	if !ok {
 		log.Errorf("FedSync processRequest invalid destination %s", req.TargetDomain)

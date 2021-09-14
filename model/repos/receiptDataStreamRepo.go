@@ -16,10 +16,11 @@ package repos
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/finogeeks/ligase/common/localExporter"
 
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/types"
@@ -77,6 +78,11 @@ func NewReceiptDataStreamRepo(
 
 func (tl *ReceiptDataStreamRepo) startFlush() error {
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("ReceiptDataStreamRepo startFlush panic recovered err %#v", e)
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(tl.delay))
 		for {
 			select {
@@ -272,6 +278,11 @@ func (tl *ReceiptDataStreamRepo) CheckLoadReady(roomID string, sync bool) bool {
 }
 
 func (tl *ReceiptDataStreamRepo) loadHistory(roomID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("ReceiptDataStreamRepo loadHistory panic recovered err %#v", e)
+		}
+	}()
 	defer tl.loading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000

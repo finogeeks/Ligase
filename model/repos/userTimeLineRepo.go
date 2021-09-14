@@ -871,6 +871,11 @@ func (tl *UserTimeLineRepo) broadcastReceiptUpdate(userID string, offset int64) 
 }
 
 func (tl *UserTimeLineRepo) clean() {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("UserTimeLineRepo clean panic recovered err %#v", e)
+		}
+	}()
 	t := time.NewTimer(time.Second * 60) //60s timer
 	for {
 		select {

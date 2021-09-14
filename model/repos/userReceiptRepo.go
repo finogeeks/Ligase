@@ -17,10 +17,10 @@ package repos
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"sync"
 	"time"
 
+	"github.com/finogeeks/ligase/common/localExporter"
 	"github.com/finogeeks/ligase/model/types"
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -53,6 +53,11 @@ func NewUserReceiptRepo(
 
 func (tl *UserReceiptRepo) startFlush() error {
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("UserReceiptRepo startFlush panic recovered err %#v", e)
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(tl.delay))
 		for {
 			select {
@@ -136,6 +141,11 @@ func (tl *UserReceiptRepo) CheckLoadReady(userID, roomID string, sync bool) bool
 }
 
 func (tl *UserReceiptRepo) loadHistory(userID, roomID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("UserReceiptRepo loadHistory panic recovered err %#v", e)
+		}
+	}()
 	key := fmt.Sprintf("%s:%s", roomID, userID)
 	defer tl.loading.Delete(key)
 

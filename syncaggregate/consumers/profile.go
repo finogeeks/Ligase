@@ -148,6 +148,11 @@ func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
 }
 
 func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("ProfileConsumer onMessage panic recovered err %#v", e)
+		}
+	}()
 	log.Debugf("recv Profile update, user:%s presence:%v", output.UserID, output.Presence.Presence)
 
 	if !s.checkUpdate(output) {

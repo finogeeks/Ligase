@@ -127,6 +127,11 @@ func (s *EventFeedConsumer) dispthInsertUserTimeLine(ev *gomatrixserverlib.Clien
 }
 
 func (s *EventFeedConsumer) onInsertUserTimeLine(data *UtlContent) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("EventFeedConsumer onInsertUserTimeLine panic recovered err %#v", e)
+		}
+	}()
 	if adapter.GetDebugLevel() == adapter.DEBUG_LEVEL_DEBUG {
 		delay := utils.GetRandomSleepSecondsForDebug()
 		log.Debugf("roomId:%s event_id:%s user:%s sleep %fs", data.ev.RoomID, data.ev.EventID, data.user, delay)
@@ -195,7 +200,7 @@ func (s *EventFeedConsumer) onNewRoomEvent(
 	defer func() {
 		if e := recover(); e != nil {
 			stack := common.PanicTrace(4)
-			log.Panicf("%v\n%s\n", e, stack)
+			log.Errorf("EventFeedConsumer onNewRoomEvent panic recovered %v\n%s\n", e, stack)
 		}
 	}()
 	bs := time.Now().UnixNano() / 1000000

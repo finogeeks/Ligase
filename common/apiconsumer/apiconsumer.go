@@ -293,6 +293,11 @@ func (c *APIConsumer) startWorkder(msgChan chan APIEvent) {
 	go func() {
 		for ev := range msgChan {
 			go func(ev APIEvent) {
+				defer func() {
+					if e := recover(); e != nil {
+						log.Errorf("api consumer panic recovered err %#v", e)
+					}
+				}()
 				data := c.OnMessage(ev.topic, ev.partition, ev.data)
 				output := &internals.OutputMsg{}
 				err := output.Decode(data)

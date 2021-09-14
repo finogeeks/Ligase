@@ -16,20 +16,19 @@ package repos
 
 import (
 	"context"
-	"github.com/finogeeks/ligase/common"
-	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"sync"
 	"time"
 
-	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
-
+	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/config"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/skunkworks/log"
+	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
 	"github.com/finogeeks/ligase/storage/model"
 )
 
@@ -47,9 +46,9 @@ type RoomHistoryTimeLineRepo struct {
 	srv                    string
 	isLoadingMaxStream     bool
 	hasloadMaxStream       bool
-	queryHitCounter mon.LabeledCounter
+	queryHitCounter        mon.LabeledCounter
 	roomPersist            model.RoomServerDatabase
-	cfg              	   *config.Dendrite
+	cfg                    *config.Dendrite
 }
 
 type RoomHistoryLoadedData struct {
@@ -73,7 +72,7 @@ func NewRoomHistoryTimeLineRepo(
 	return tls
 }
 
-func (tl *RoomHistoryTimeLineRepo) SetCfg(cfg *config.Dendrite){
+func (tl *RoomHistoryTimeLineRepo) SetCfg(cfg *config.Dendrite) {
 	tl.cfg = cfg
 }
 
@@ -119,6 +118,11 @@ func (tl *RoomHistoryTimeLineRepo) SetMonitor(queryHitCounter mon.LabeledCounter
 }
 
 func (tl *RoomHistoryTimeLineRepo) AddEv(ev *gomatrixserverlib.ClientEvent, offset int64, load bool) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("RoomHistoryTimeLineRepo AddEv panic recovered err %#v", e)
+		}
+	}()
 	if load == true && ev.Type != "m.room.create" {
 		tl.LoadHistory(ev.RoomID, true)
 	}
@@ -136,6 +140,11 @@ func (tl *RoomHistoryTimeLineRepo) AddEv(ev *gomatrixserverlib.ClientEvent, offs
 }
 
 func (tl *RoomHistoryTimeLineRepo) loadHistory(roomID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("ReceiptDataStreamRepo loadHistory panic recovered err %#v", e)
+		}
+	}()
 	defer tl.loading.Delete(roomID)
 
 	bs := time.Now().UnixNano() / 1000000
@@ -463,7 +472,7 @@ func (tl *RoomHistoryTimeLineRepo) LoadAllDomainMaxStream(ctx context.Context) {
 		return
 	}
 	for _, item := range roomsDomainOffset {
-		if !tl.isRelated(item.RoomID){
+		if !tl.isRelated(item.RoomID) {
 			continue
 		}
 		if val, ok := tl.domainMaxOffset.Load(item.RoomID); ok {

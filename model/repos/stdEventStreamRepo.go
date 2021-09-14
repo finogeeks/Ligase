@@ -77,6 +77,11 @@ func (tl *STDEventStreamRepo) GetLoadedNumber() (int, int) {
 
 func (tl *STDEventStreamRepo) startFlush() error {
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				log.Errorf("STDEventStreamRepo startFlush panic recovered err %#v", e)
+			}
+		}()
 		t := time.NewTimer(time.Millisecond * time.Duration(tl.delay))
 		for {
 			select {
@@ -144,6 +149,11 @@ func (tl *STDEventStreamRepo) addSTDEventStream(dataStream *types.StdEvent, offs
 }
 
 func (tl *STDEventStreamRepo) loadHistory(targetUserID, targetDeviceID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("STDEventStreamRepo loadHistory panic recovered err %#v", e)
+		}
+	}()
 	key := fmt.Sprintf("%s:%s", targetUserID, targetDeviceID)
 	defer tl.loading.Delete(key)
 	bs := time.Now().UnixNano() / 1000000

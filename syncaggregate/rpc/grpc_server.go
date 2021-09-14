@@ -35,6 +35,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg            *config.Dendrite
 	keyChangeRepo  *repos.KeyChangeStreamRepo
@@ -84,15 +92,27 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) UpdateOneTimeKey(ctx context.Context, req *pb.UpdateOneTimeKeyReq) (*pb.Empty, error) {
-	err := s.keyChangeRepo.UpdateOneTimeKeyCount(req.UserID, req.DeviceID)
+func (s *Server) UpdateOneTimeKey(ctx context.Context, req *pb.UpdateOneTimeKeyReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer UpdateOneTimeKey panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
+	err = s.keyChangeRepo.UpdateOneTimeKeyCount(req.UserID, req.DeviceID)
 	if err != nil {
 		log.Errorf("update onetimekey err: %s", err)
 	}
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) UpdateDeviceKey(ctx context.Context, req *pb.UpdateDeviceKeyReq) (*pb.Empty, error) {
+func (s *Server) UpdateDeviceKey(ctx context.Context, req *pb.UpdateDeviceKeyReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer UpdateDeviceKey panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	log.Infof("============ UpdateDeviceKey %s", req.String())
 	if req.EventNID > 0 {
 		if s.keyFilter.Lookup([]byte(strconv.FormatInt(req.EventNID, 10))) {
@@ -109,7 +129,13 @@ func (s *Server) UpdateDeviceKey(ctx context.Context, req *pb.UpdateDeviceKeyReq
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) GetOnlinePresence(ctx context.Context, req *pb.GetOnlinePresenceReq) (*pb.GetOnlinePresenceRsp, error) {
+func (s *Server) GetOnlinePresence(ctx context.Context, req *pb.GetOnlinePresenceReq) (result *pb.GetOnlinePresenceRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer GetOnlinePresence panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	rsp := &pb.GetOnlinePresenceRsp{}
 	feed := s.presenceRepo.GetHistoryByUserID(req.UserID)
 	if feed == nil {
@@ -128,7 +154,13 @@ func (s *Server) GetOnlinePresence(ctx context.Context, req *pb.GetOnlinePresenc
 	return rsp, nil
 }
 
-func (s *Server) SetReceiptLatest(ctx context.Context, req *pb.SetReceiptLatestReq) (*pb.Empty, error) {
+func (s *Server) SetReceiptLatest(ctx context.Context, req *pb.SetReceiptLatestReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer SetReceiptLatest panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	for _, userID := range req.Users {
 		if !common.IsRelatedRequest(userID, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, false) {
 			continue
@@ -139,7 +171,13 @@ func (s *Server) SetReceiptLatest(ctx context.Context, req *pb.SetReceiptLatestR
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) AddTyping(ctx context.Context, req *pb.UpdateTypingReq) (*pb.Empty, error) {
+func (s *Server) AddTyping(ctx context.Context, req *pb.UpdateTypingReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer AddTyping panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	s.typingConsumer.AddRoomJoined(req.RoomID, req.RoomUsers)
 	for _, user := range req.RoomUsers {
 		if !common.IsRelatedRequest(user, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, false) {
@@ -150,7 +188,13 @@ func (s *Server) AddTyping(ctx context.Context, req *pb.UpdateTypingReq) (*pb.Em
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) RemoveTyping(ctx context.Context, req *pb.UpdateTypingReq) (*pb.Empty, error) {
+func (s *Server) RemoveTyping(ctx context.Context, req *pb.UpdateTypingReq) (result *pb.Empty, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer RemoveTyping panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	s.typingConsumer.AddRoomJoined(req.RoomID, req.RoomUsers)
 	for _, user := range req.RoomUsers {
 		if !common.IsRelatedRequest(user, s.cfg.MultiInstance.Instance, s.cfg.MultiInstance.Total, false) {

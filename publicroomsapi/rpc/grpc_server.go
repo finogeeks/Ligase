@@ -30,6 +30,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+func toErr(e interface{}) error {
+	if v, ok := e.(error); ok {
+		return v
+	} else {
+		return fmt.Errorf("%#v", e)
+	}
+}
+
 type Server struct {
 	cfg        *config.Dendrite
 	DB         model.PublicRoomAPIDatabase
@@ -67,7 +75,13 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) QueryPublicRoomState(ctx context.Context, req *pb.QueryPublicRoomStateReq) (*pb.QueryPublicRoomStateRsp, error) {
+func (s *Server) QueryPublicRoomState(ctx context.Context, req *pb.QueryPublicRoomStateReq) (result *pb.QueryPublicRoomStateRsp, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("grpcServer QueryPublicRoomState panic recovered err %#v", e)
+			err = toErr(e)
+		}
+	}()
 	limit := req.Limit
 	since := req.Since
 	filter := req.Filter
@@ -105,6 +119,6 @@ func (s *Server) QueryPublicRoomState(ctx context.Context, req *pb.QueryPublicRo
 	response.NextBatch = strconv.FormatInt(offset+limit, 10)
 	response.Estimate = count
 
-	log.Infof("processQueryPublicRooms recv process data:%v", response)
+	log.Infof("processQueryPublicRooms recv process data:%s", response.String())
 	return &response, nil
 }

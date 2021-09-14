@@ -57,7 +57,7 @@ func (d *DefaultHander) OnUserStateChange(*types.NotifyUserState) {
 func (d *DefaultHander) OnBatchStateChange([]*types.NotifyDeviceState) {
 }
 
-func (d *DefaultHander) OnUserOnlineDetail([]*types.NotifyOnlineDetail){
+func (d *DefaultHander) OnUserOnlineDetail([]*types.NotifyOnlineDetail) {
 }
 
 type Device struct {
@@ -69,11 +69,11 @@ type Device struct {
 }
 
 type User struct {
-	id     string
-	ts 	   int64
-	lastState int
-	curState  int
-	devMap sync.Map
+	id         string
+	ts         int64
+	lastState  int
+	curState   int
+	devMap     sync.Map
 	lastActive int64
 	lastCalc   int64
 }
@@ -122,11 +122,11 @@ type OnlineUserRepo struct {
 	userMap         sync.Map
 	timer           time.Timer
 	handler         StateChangeHandler
-	spec 			string
+	spec            string
 	detailSpec      string
-	cron  			*cron.Cron
-	ttl				int64
-	ttlReport  		int64
+	cron            *cron.Cron
+	ttl             int64
+	ttlReport       int64
 	onlineDetail    sync.Map
 }
 
@@ -142,7 +142,7 @@ func NewOnlineUserRepo(ttl, ttlReport int64, spec, detailSpec string) *OnlineUse
 	ol.cron.AddFunc(ol.spec, func() {
 		go ol.job()
 	})
-	ol.cron.AddFunc(ol.detailSpec, func(){
+	ol.cron.AddFunc(ol.detailSpec, func() {
 		go ol.detailJob()
 	})
 	ol.cron.Start()
@@ -152,7 +152,12 @@ func NewOnlineUserRepo(ttl, ttlReport int64, spec, detailSpec string) *OnlineUse
 	return ol
 }
 
-func (ol *OnlineUserRepo) job(){
+func (ol *OnlineUserRepo) job() {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("OnlineUserRepo job panic recovered err %#v", e)
+		}
+	}()
 	batch := []*types.NotifyDeviceState{}
 	ol.userMap.Range(func(key, value interface{}) bool {
 		user := value.(*User)
@@ -174,8 +179,13 @@ func (ol *OnlineUserRepo) job(){
 	}
 }
 
-func (ol *OnlineUserRepo) detailJob(){
-	now := time.Now().UnixNano()/1000000
+func (ol *OnlineUserRepo) detailJob() {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("OnlineUserRepo detailJob panic recovered err %#v", e)
+		}
+	}()
+	now := time.Now().UnixNano() / 1000000
 	ol.userMap.Range(func(key, value interface{}) bool {
 		user := value.(*User)
 		user.lastActive = now
@@ -238,50 +248,55 @@ func (ol *OnlineUserRepo) Pet(uid, devId string, pos, ttl int64) {
 	}
 }
 
-func (ol *OnlineUserRepo) calcOnlineDuration(user *User){
+func (ol *OnlineUserRepo) calcOnlineDuration(user *User) {
 	duration := int64(0)
 	//cur online
 	if user.curState == USER_ONLINE_STATE {
 		//offline to online
 		if user.lastState == USER_OFFLINE_STATE {
 			duration = 0
-		}else{
+		} else {
 			//online remain online
 			if user.lastCalc != 0 {
 				duration = time.Now().UnixNano()/1000000 - user.lastCalc
-			}else{
+			} else {
 				duration = 0
 			}
 		}
-	//cur offline
-	}else{
+		//cur offline
+	} else {
 		//online to offline
 		if user.lastState == USER_ONLINE_STATE {
 			if user.lastCalc != 0 {
 				duration = time.Now().UnixNano()/1000000 - user.lastCalc
-			}else{
+			} else {
 				duration = 0
 			}
-		}else{
+		} else {
 			//offline remain offline
 			duration = 0
 		}
 	}
-	user.lastCalc = time.Now().UnixNano()/1000000
+	user.lastCalc = time.Now().UnixNano() / 1000000
 	if v, ok := ol.onlineDetail.Load(user.id); ok {
 		detail := v.(*types.NotifyOnlineDetail)
 		detail.Duration += duration
 		detail.LastActive = user.lastActive
-	}else{
+	} else {
 		ol.onlineDetail.Store(user.id, &types.NotifyOnlineDetail{
-			UserID: user.id,
-			Duration: duration,
+			UserID:     user.id,
+			Duration:   duration,
 			LastActive: user.lastActive,
 		})
 	}
 }
 
-func (ol *OnlineUserRepo) onReport(){
+func (ol *OnlineUserRepo) onReport() {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("OnlineUserRepo onReport panic recovered err %#v", e)
+		}
+	}()
 	t := time.NewTimer(time.Second * time.Duration(ol.ttlReport))
 	for {
 		select {
@@ -300,7 +315,7 @@ func (ol *OnlineUserRepo) onReport(){
 	}
 }
 
-func (ol *OnlineUserRepo) UpdateUserState(uid string, lastState,curState int){
+func (ol *OnlineUserRepo) UpdateUserState(uid string, lastState, curState int) {
 	ol.handler.OnUserStateChange(&types.NotifyUserState{
 		UserID:    uid,
 		LastState: lastState,
@@ -371,6 +386,11 @@ func (ol *OnlineUserRepo) Release(uid, devId string) {
 }
 
 func (ol *OnlineUserRepo) clean() {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("OnlineUserRepo clean panic recovered err %#v", e)
+		}
+	}()
 	t := time.NewTimer(time.Second * 5) //5s timer
 	for {
 		select {
@@ -431,7 +451,7 @@ func (ol *OnlineUserRepo) GetOnlineUsers() []string {
 			ol.calcOnlineDuration(user)
 			ol.userMap.Delete(key)
 			atomic.AddInt32(&ol.onlineUserCnt, -1)
-		}else{
+		} else {
 			users = append(users, user.id)
 		}
 		return true

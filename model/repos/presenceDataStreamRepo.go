@@ -152,6 +152,11 @@ func (tl *PresenceDataStreamRepo) CheckLoadReady(userID string, sync bool) bool 
 }
 
 func (tl *PresenceDataStreamRepo) loadHistory(userID string) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("OnlineUserRepo onReport panic recovered err %#v", e)
+		}
+	}()
 	defer tl.loading.Delete(userID)
 	userMap := tl.userTimeLine.GetFriendShip(userID, true)
 	if userMap != nil {

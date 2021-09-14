@@ -174,6 +174,11 @@ func (sm *SyncMng) callSyncLoad(req *request) {
 }
 
 func (sm *SyncMng) processSyncLoad(req *request) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("SyncMng processSyncLoad panic recovered err %#v", e)
+		}
+	}()
 	user := req.device.UserID
 	log.Debugf("traceid:%s SyncMng processRequest begin", req.traceId)
 	bs := time.Now().UnixNano() / 1000000
@@ -198,6 +203,11 @@ func (sm *SyncMng) processSyncLoad(req *request) {
 		}
 		remoteFinishedCh := make(chan struct{}, 1)
 		go func() {
+			defer func() {
+				if e := recover(); e != nil {
+					log.Errorf("SyncMng processSyncLoad panic recovered err %#v", e)
+				}
+			}()
 			sm.callSyncLoad(req)
 			remoteFinishedCh <- struct{}{}
 		}()
@@ -304,6 +314,11 @@ func (sm *SyncMng) sendSyncLoadReqAndHandle(req *request, requestMap map[uint32]
 			syncReq *syncapitypes.SyncServerRequest,
 			req *request,
 		) {
+			defer func() {
+				if e := recover(); e != nil {
+					log.Errorf("SyncMng sendSyncLoadReqAndHandle panic recovered err %#v", e)
+				}
+			}()
 			defer wg.Done()
 			syncReq.RequestType = "load"
 			syncReq.UserID = req.device.UserID
