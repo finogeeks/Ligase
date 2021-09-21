@@ -128,7 +128,7 @@ func (s *ProfileConsumer) checkUpdate(output *types.ProfileStreamUpdate) bool {
 	log.Debugf("update base user:%s server status is:%s last presence:%s set presence:%s", output.UserID, presence.ServerStatus, output.Presence.LastPresence, output.Presence.Presence)
 	//other base prop has change, update presence
 	if output.Presence.LastStatusMsg != output.Presence.StatusMsg || output.Presence.LastExtStatusMsg != output.Presence.ExtStatusMsg {
-		if output.Presence.Presence == "offline" && presence.ServerStatus != "offline" {
+		if output.Presence.Presence == "offline" && presence.ServerStatus != "offline" && presence.ServerStatus != "" {
 			output.Presence.Presence = presence.ServerStatus
 		}
 		s.cache.SetPresencesServerStatus(output.UserID, output.Presence.Presence)
@@ -153,7 +153,7 @@ func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
 			log.Errorf("ProfileConsumer onMessage panic recovered err %#v", e)
 		}
 	}()
-	log.Debugf("recv Profile update, user:%s presence:%v", output.UserID, output.Presence.Presence)
+	log.Infof("recv Profile update, user:%s presence:%v", output.UserID, output.Presence.Presence)
 
 	if !s.checkUpdate(output) {
 		return

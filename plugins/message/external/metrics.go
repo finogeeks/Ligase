@@ -2,10 +2,10 @@ package external
 
 // --- syncserver begin ---
 const (
-	ROOM_SCALE_LARGE = "超大"
-	ROOM_SCALE_BIG = "大"
-	ROOM_SCALE_MIDDLE = "中"
-	ROOM_SCALE_SMALL = "小"
+	ROOM_SCALE_LARGE = "大"
+	ROOM_SCALE_BIG = "中"
+	ROOM_SCALE_MIDDLE = "小"
+	ROOM_SCALE_SMALL = "单聊"
 )
 
 type GetSyncServerMetricsRequest struct {
