@@ -733,15 +733,17 @@ func (repo *RoomCurStateRepo) GetRoomScale() external.RoomScaleMetrics {
 		if !ok {
 			return true
 		}
-		count := rs.GetJoinCount()
-		if count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Small {
+		if rs.isDirect {
 			roomScale.Small.Count++
-		} else if count >= repo.base.Cfg.Metrics.SyncServer.RoomScale.Small && count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Middle {
-			roomScale.Middle.Count++
-		} else if count >= repo.base.Cfg.Metrics.SyncServer.RoomScale.Middle && count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Large {
-			roomScale.Big.Count++
-		} else{
-			roomScale.Large.Count++
+		}else{
+			count := rs.GetJoinCount()
+			if count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Small {
+				roomScale.Middle.Count++
+			} else if count >= repo.base.Cfg.Metrics.SyncServer.RoomScale.Small && count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Large {
+				roomScale.Big.Count++
+			} else {
+				roomScale.Large.Count++
+			}
 		}
 		return true
 	})

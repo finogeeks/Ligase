@@ -324,6 +324,23 @@ func (sm *SyncMng) OnSyncRequest(
 
 	statusCode, res := req.fsm.Run()
 
+	now := time.Now().UnixNano() / 1000000
+	if sm.isFullSync(req) {
+		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s presence:%s", req.traceId, req.device.UserID, req.device.ID, res.Presence)
+		log.Infof("SyncMng full sync traceid:%s user:%s dev:%s account data:%s", req.traceId, req.device.UserID, req.device.ID, res.AccountData)
+		spend := now - start
+		if spend > types.CHECK_LOAD_EXCEED_TIME {
+			log.Warnf("SyncMng full sync exceed %d ms traceid:%s user:%s dev:%s spend:%d ms",
+				types.CHECK_LOAD_EXCEED_TIME, req.traceId, req.device.UserID, req.device.ID, spend)
+		} else {
+			log.Infof("SyncMng full sync succ traceid:%s user:%s dev:%s spend:%d ms",
+				req.traceId, req.device.UserID, req.device.ID, spend)
+		}
+	} else {
+		log.Infof("SyncMng Increment sync response succ traceid:%s user:%s dev:%s spend:%d ms events:%s",
+			req.traceId, req.device.UserID, req.device.ID, now-start, res)
+	}
+
 	return statusCode, res
 }
 
