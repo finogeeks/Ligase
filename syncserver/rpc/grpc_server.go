@@ -201,7 +201,7 @@ func (s *Server) OnReceipt(ctx context.Context, req *pb.OnReceiptReq) (result *p
 		}
 	}()
 	s.receiptConsumer.OnReceipt(&types.ReceiptContent{
-		UserID:      req.DeviceID,
+		UserID:      req.UserID,
 		DeviceID:    req.DeviceID,
 		RoomID:      req.RoomID,
 		ReceiptType: req.ReceiptType,
