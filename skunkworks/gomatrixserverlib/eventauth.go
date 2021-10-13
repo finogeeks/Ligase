@@ -58,6 +58,7 @@ const (
 	// channel archive
 	MRoomArchive = "m.room.archive"
 	MRoomUpdate  = "m.room.update"
+	MRoomRawRedact = "m.room.rawredact"
 	MRoomMessage = "m.room.message"
 )
 
@@ -349,7 +350,7 @@ func Allowed(event Event, authEvents AuthEventProvider) error {
 		return memberEventAllowed(event, authEvents)
 	case MRoomPowerLevels:
 		return powerLevelsEventAllowed(event, authEvents)
-	case MRoomRedaction, MRoomUpdate:
+	case MRoomRedaction, MRoomUpdate, MRoomRawRedact:
 		return redactEventAllowed(event, authEvents)
 	default:
 		if event.Type() == MRoomMessage {
