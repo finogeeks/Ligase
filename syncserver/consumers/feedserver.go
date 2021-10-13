@@ -244,6 +244,9 @@ func (s *RoomEventFeedConsumer) processRedactEv(ev *gomatrixserverlib.ClientEven
 		redactEv.Content = empty
 		redactEv.Hint = fmt.Sprintf("%s撤回了一条消息", extra.GetDisplayName(s.displayNameRepo, ev.Sender))
 		unsigned.RedactedBecause = ev
+	} else if ev.Type == "m.room.rawredact" {
+		redactEv.Hint = "该消息已被撤回"
+		unsigned.RedactedBecause = ev
 	} else {
 		redactEv.Content = ev.Content
 		unsigned.UpdatedBecause = ev
@@ -546,7 +549,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 
 	if common.IsStateClientEv(&ev) == true { //state ev
 		ev, _ = s.processStateEv(&ev)
-	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
+	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.rawredact" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)
 	}
 	log.Debugf("feedserver onNewRoomEvent update unsigned roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
@@ -776,7 +779,7 @@ func (s *RoomEventFeedConsumer) onBackFillEvent(
 	if common.IsStateClientEv(&ev) {
 		ev, _ = s.processStateEv(&ev)
 		s.roomStateTimeLine.AddBackfillEv(&ev, ev.EventOffset, true)
-	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.update" {
+	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.rawredact" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)
 	}
 	if ev.Type == "m.room.message" || ev.Type == "m.room.encrypted" {
