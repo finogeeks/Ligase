@@ -505,6 +505,50 @@ func (ReqPutRoomRedact) Process(consumer interface{}, msg core.Coder, device *au
 	)
 }
 
+type ReqPutRoomRawRedact struct{}
+
+func (ReqPutRoomRawRedact) GetRoute() string       { return "/rooms/{roomID}/rawredact/{eventId}" }
+func (ReqPutRoomRawRedact) GetMetricsName() string { return "raw_redact_event" }
+func (ReqPutRoomRawRedact) GetMsgType() int32      { return internals.MSG_PUT_ROOM_RAW_REDACT }
+func (ReqPutRoomRawRedact) GetAPIType() int8       { return apiconsumer.APITypeAuth }
+func (ReqPutRoomRawRedact) GetMethod() []string {
+	return []string{http.MethodPut, http.MethodPost, http.MethodOptions}
+}
+func (ReqPutRoomRawRedact) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqPutRoomRawRedact) NewRequest() core.Coder {
+	return new(external.PutRedactEventRequest)
+}
+func (ReqPutRoomRawRedact) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.PutRedactEventRequest)
+	if vars != nil {
+		msg.EventID = vars["eventId"]
+		msg.RoomID = vars["roomID"]
+	}
+	data, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, msg); err != nil {
+		return err
+	}
+	msg.Content = data
+	return nil
+}
+func (ReqPutRoomRawRedact) NewResponse(code int) core.Coder {
+	return new(external.PutRedactEventResponse)
+}
+func (ReqPutRoomRawRedact) GetPrefix() []string { return []string{"r0", "v1", "inr0"} }
+func (ReqPutRoomRawRedact) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+	c := consumer.(*InternalMsgConsumer)
+	req := msg.(*external.PutRedactEventRequest)
+	userID := device.UserID
+	deviceID := device.ID
+	return routing.RedactEvent(
+		context.Background(), req.Content, userID, deviceID, req.RoomID,
+		nil, nil, c.Cfg, c.localcache, c.rsRpcCli, req.EventID, "m.room.rawredact", c.idg,
+	)
+}
+
 type ReqPutRoomRedactWithTxnID struct{}
 
 func (ReqPutRoomRedactWithTxnID) GetRoute() string {
