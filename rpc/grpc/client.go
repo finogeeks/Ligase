@@ -866,11 +866,13 @@ func (r *Client) QueryRoomEventByID(ctx context.Context, req *roomserverapi.Quer
 	cl := newCallLog("QueryRoomEventByID", req)
 	conn, err := r.connGetter.GetConn(r.connMgr, &r.cfg.Rpc.RoomServer, 0)
 	if err != nil {
+		log.Errorf("QueryRoomEventByID get conn err:%s", err.Error())
 		return nil, err
 	}
 	c := pb.NewRoomServerClient(conn)
 	resp, err := c.QueryRoomEventByID(ctx, &pb.QueryRoomEventByIDReq{EventID: req.EventID, RoomID: req.RoomID})
 	if err != nil {
+		log.Errorf("QueryRoomEventByID query err:%s", err.Error())
 		return nil, err
 	}
 	cl.end(resp)
