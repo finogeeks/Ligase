@@ -133,6 +133,7 @@ func init() {
 	apiconsumer.SetAPIProcessor(ReqPutRoomStateWidthType{})
 	apiconsumer.SetAPIProcessor(ReqPutRoomStateWidthTypeAndKey{})
 	apiconsumer.SetAPIProcessor(ReqPutRoomRedact{})
+	apiconsumer.SetAPIProcessor(ReqPutRoomRawRedact{})
 	apiconsumer.SetAPIProcessor(ReqPutRoomRedactWithTxnID{})
 	apiconsumer.SetAPIProcessor(ReqPutRoomUpdate{})
 	apiconsumer.SetAPIProcessor(ReqPutRoomUpdateWithTxnID{})
