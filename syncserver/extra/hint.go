@@ -103,6 +103,7 @@ const (
 	MRoomTopicWaterMark         = "m.room.topic#watermark"
 	MRoomMessage                = "m.room.message"
 	MRoomMessageShake           = "m.room.message#shake"
+	MRoomChatWith               = "m.room._ext.chatwith"
 )
 
 var (
@@ -144,6 +145,7 @@ func init() {
 	hintFormat[MRoomTopicWaterMark] = "%s已%s\"水印背景\""
 	hintFormat[MRoomMessageShake] = "%s发送了一个窗口抖动"
 	hintFormat[MRoomMessageShakeChange] = "%s已%s“仅允许管理员发送窗口抖动”"
+	hintFormat[MRoomChatWith] = "您正在和%s的%s进行聊天"
 }
 
 func getFormat(evType string) string {
@@ -966,6 +968,18 @@ func mRoomMessageHandler(userID string, displayNameRepo *repos.DisplayNameRepo, 
 	}
 }
 
+func mRoomChatWitchHandler(userID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent) {
+	var content struct {
+		OrgName string `json:"orgName"`
+		Fcid    string `json:"fcid"`
+	}
+	json.Unmarshal(e.Content, &content)
+	if userID != content.Fcid {
+		name := GetDisplayName(displayNameRepo, content.Fcid)
+		e.Hint = fmt.Sprintf(getFormat(MRoomChatWith), content.OrgName, name)
+	}
+}
+
 func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID string, displayNameRepo *repos.DisplayNameRepo, e *gomatrixserverlib.ClientEvent, prvStates *list.List) {
 	timespend := common.NewTimeSpend()
 	if e.Type == MRoomCreate {
@@ -986,6 +1000,8 @@ func doExtra(repo *repos.RoomCurStateRepo, device *authtypes.Device, roomID stri
 		mRoomDescHandler(device.UserID, displayNameRepo, e)
 	} else if e.Type == MRoomTopic {
 		mRoomTopicHandller(device.UserID, displayNameRepo, e)
+	} else if e.Type == MRoomChatWith {
+		mRoomChatWitchHandler(device.UserID, displayNameRepo, e)
 	}
 	timespend.WarnIfExceedf(300, "extra hint %s", e.Type)
 }
