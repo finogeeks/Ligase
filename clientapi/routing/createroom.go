@@ -320,13 +320,13 @@ func createRoom(ctx context.Context, r *external.PostCreateRoomRequest,
 			domain, err := common.DomainFromID(invitor)
 			if err == nil && !common.CheckValidDomain(domain, cfg.Matrix.ServerName) {
 				log.Infof("get profile from fedration %s", invitor)
-				resp, err := federation.LookupProfile(domain, userID)
+				resp, err := federation.LookupProfile(domain, invitor)
 				if err != nil {
 					log.Errorf("get profile from federation error %v", err)
 				} else {
 					avatarURL = resp.AvatarURL
 					displayName = resp.DisplayName
-					complexCache.SetProfile(ctx, userID, resp.DisplayName, resp.AvatarURL)
+					complexCache.SetProfile(ctx, invitor, resp.DisplayName, resp.AvatarURL)
 				}
 			}
 		}
