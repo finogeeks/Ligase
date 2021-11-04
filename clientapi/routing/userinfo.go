@@ -225,7 +225,7 @@ func SetUserInfo(
 		Landline:  r.Landline,
 		Email:     r.Email,
 		State:     r.State,
-		//Presence:        "online",
+		Presence:  "online",
 		CurrentlyActive: true,
 		UserID:          userID,
 		LastActiveAgo:   0,
