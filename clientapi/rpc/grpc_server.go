@@ -121,7 +121,7 @@ func (s *Server) UpdateProfile(ctx context.Context, req *pb.UpdateProfileReq) (r
 	if oldUserInfo != nil {
 		if oldUserInfo.UserName == req.UserName && oldUserInfo.JobNumber == req.JobNumber &&
 			oldUserInfo.Mobile == req.Mobile && oldUserInfo.Landline == req.Landline &&
-			oldUserInfo.Email == req.Email {
+			oldUserInfo.Email == req.Email && oldUserInfo.State == int(req.State) {
 			upUserInfo = false
 		}
 	}
