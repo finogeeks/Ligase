@@ -153,12 +153,12 @@ func (s *ProfileConsumer) onMessage(output *types.ProfileStreamUpdate) {
 			log.Errorf("ProfileConsumer onMessage panic recovered err %#v", e)
 		}
 	}()
-	log.Infof("recv Profile update, user:%s presence:%v", output.UserID, output.Presence.Presence)
+	log.Infof("recv Profile update, user:%s presence:%v", output.UserID, output.Presence)
 
 	if !s.checkUpdate(output) {
 		return
 	}
-	log.Infof("do Profile update, user:%s presence:%v", output.UserID, output.Presence.Presence)
+	log.Infof("do Profile update, user:%s presence:%v", output.UserID, output.Presence)
 	event := &gomatrixserverlib.ClientEvent{}
 	event.Type = "m.presence"
 	event.Sender = output.UserID

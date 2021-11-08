@@ -954,7 +954,7 @@ func (sm *SyncMng) addOneTimeKeyCountInfo(req *request, res *syncapitypes.Respon
 func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 	maxPos := int64(-1)
 	if sm.presenceStreamRepo.ExistsPresence(req.device.UserID, req.marks.preRecv) {
-		log.Debugf("add presence for %s", req.device.UserID)
+		log.Infof("add presence for %s", req.device.UserID)
 		friendShipMap := sm.userTimeLine.GetFriendShip(req.device.UserID, true)
 		if friendShipMap != nil {
 			var presenceEvent gomatrixserverlib.ClientEvent
@@ -969,7 +969,7 @@ func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 
 					response.Presence.Events = append(response.Presence.Events, presenceEvent)
 					data, _ := json.Marshal(presenceEvent)
-					log.Debugf("add presence for %s %d %d %s", req.device.UserID, feed.GetOffset(), req.marks.preRecv, data)
+					log.Infof( "add presence for %s %d %d %s", req.device.UserID, feed.GetOffset(), req.marks.preRecv, data)
 
 					if maxPos < feed.GetOffset() {
 						maxPos = feed.GetOffset()
@@ -985,7 +985,7 @@ func (sm *SyncMng) addPresence(req *request, response *syncapitypes.Response) {
 	}
 
 	req.marks.preProcess = maxPos
-	log.Debugf("process precense user:%s cur:%d", req.device.UserID, req.marks.preProcess)
+	log.Infof("process precense user:%s cur:%d", req.device.UserID, req.marks.preProcess)
 	return
 }
 

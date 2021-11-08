@@ -24,9 +24,9 @@ import (
 	"math"
 
 	"github.com/finogeeks/ligase/common/config"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/storage/model"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
@@ -132,15 +132,18 @@ func (s *RoomQryProcessor) QueryRoomEventByID(
 ) error {
 	response.EventID = request.EventID
 	response.RoomID = request.RoomID
+	log.Infof("############## begin QueryRoomEventByID, eventID: %s, roomID: %s", response.EventID, response.RoomID)
 
 	eventNID, err := s.DB.EventNID(ctx, request.EventID)
 	if err != nil {
+		log.Errorf("############## QueryRoomEventByID from db nid, eventID: %s, roomID: %s,  err:%s", response.EventID, response.RoomID, err.Error())
 		return err
 	}
-	log.Infof("############## QueryRoomEventByID, EventNID: %d, eventID: %d, roomID: %d", eventNID, response.EventID, response.RoomID)
+	log.Infof("############## after QueryRoomEventByID, EventNID: %d, eventID: %s, roomID: %s", eventNID, response.EventID, response.RoomID)
 
 	evs, _, err := s.DB.Events(ctx, []int64{eventNID})
 	if err != nil {
+		log.Errorf("############## QueryRoomEventByID from db event, eventID: %s, roomID: %s,  err:%s", response.EventID, response.RoomID, err.Error())
 		return err
 	}
 

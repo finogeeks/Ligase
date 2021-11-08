@@ -25,11 +25,11 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/core"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/service/roomserverapi"
 	"github.com/finogeeks/ligase/plugins/message/external"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 
 	log "github.com/finogeeks/ligase/skunkworks/log"
 )
@@ -84,17 +84,21 @@ func RedactEvent(
 		EventID: redacts,
 		RoomID:  roomID,
 	}
+	log.Infof("RedactEvent type:%s event_id:%s room_id:%s", eventType, redacts, roomID)
+
 	var queryRoomEventByIDResponse roomserverapi.QueryRoomEventByIDResponse
 
 	if err := rsRpcCli.QueryRoomEventByID(ctx, &queryRoomEventByIDRequest, &queryRoomEventByIDResponse); err != nil {
+		log.Errorf("RedactEvent rsRpcCli.QueryRoomEventByID event_id:%s room_id:%s err:%s", redacts, roomID, err.Error())
 		return 404, jsonerror.Unknown(err.Error())
 	}
 
 	if queryRoomEventByIDResponse.Event == nil {
+		log.Errorf("RedactEvent rsRpcCli.QueryRoomEventByID event_id:%s room_id:%s not found", redacts, roomID)
 		return 404, jsonerror.NotFound("can't find original event")
 	}
 
-	log.Infof("------------------------RedactEvent get target ev %s sender %v", queryRoomEventByIDResponse.Event, queryRoomEventByIDResponse.Event.Sender())
+	log.Infof("------------------------RedactEvent get target event_id:%s room_id:%s ev %v sender %v", queryRoomEventByIDResponse.Event.EventID(), queryRoomEventByIDResponse.Event.RoomID(), queryRoomEventByIDResponse.Event, queryRoomEventByIDResponse.Event.Sender())
 
 	builder := gomatrixserverlib.EventBuilder{
 		Sender:        userID,
