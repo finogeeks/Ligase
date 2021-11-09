@@ -2058,3 +2058,11 @@ func (externalReq *GetSyncServerMetricsRequest) Decode(data []byte) error {
 func (externalReq *SyncServerMetrics) Decode(data []byte) error {
 	return json.Unmarshal(data, externalReq)
 }
+
+func (externalReq *GetRoomHistoryRequest) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}
+
+func (externalReq *GetRoomEventSearchRequest) Decode(data []byte) error {
+	return json.Unmarshal(data, externalReq)
+}

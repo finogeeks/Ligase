@@ -314,6 +314,29 @@ func (d *Database) SelectEventsByDirRange(
 	return d.events.selectEventsByDirRange(ctx, roomID, dir, from, to)
 }
 
+func (d *Database) SelectEventHistory(
+	ctx context.Context,
+	roomID string,
+	limit, offset int,
+) ([]gomatrixserverlib.ClientEvent, error) {
+	return d.events.selectEventHistory(ctx, roomID, limit, offset)
+}
+
+func (d *Database) SelectEventCount(
+	ctx context.Context,
+	roomID string,
+) (int64, error) {
+	return d.events.selectEventCount(ctx, roomID)
+}
+
+func (d *Database) SelectEventCountBefore(
+	ctx context.Context,
+	roomID string,
+	id int64,
+) (int64, error) {
+	return d.events.selectEventCountBefore(ctx, roomID, id)
+}
+
 func (d *Database) GetRidsForUser(
 	ctx context.Context,
 	userID string,

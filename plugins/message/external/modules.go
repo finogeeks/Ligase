@@ -471,6 +471,13 @@ type GetRoomEventContextResponse struct {
 	State        []StateEvent `json:"state"`
 }
 
+//GET /_matrix/client/r0/rooms/{roomId}/search/{eventId}
+type GetRoomEventSearchRequest struct {
+	RoomID  string `json:"roomId"`
+	EventID string `json:"eventId"`
+	Size    int64  `json:"size"`
+}
+
 //GET /_matrix/client/r0/admin/whois/{userId}
 type GetWhoIsRequest struct {
 	UserID string `json:"userId"`

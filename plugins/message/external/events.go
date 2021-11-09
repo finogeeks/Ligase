@@ -319,6 +319,13 @@ type GetRoomMessagesResponse struct {
 	Chunk []RoomEvent `json:"chunk,omitempty"`
 }
 
+type GetRoomHistoryRequest struct {
+	RoomID string `json:"roomId,omitempty"`
+	Filter string `json:"filter,omitempty"`
+	Page   int    `json:"page,omitempty"`
+	Size   int    `json:"size,omitempty"`
+}
+
 //GET /_matrix/client/r0/rooms/{roomId}/initialSync
 type GetRoomInitialSyncRequest struct {
 	RoomID string `json:"roomId,omitempty"`
