@@ -319,8 +319,8 @@ func (s *PushConsumer) OnEvent(input *gomatrixserverlib.ClientEvent, eventOffset
 					log.Errorf("PushConsumer OnEvent process panic recovered err %#v", e)
 				}
 			}()
+			defer wg.Done()
 			s.preProcessPush(&member, helperEvent, memCount, eventOffset, redactOffset, eventJson, pushContents, isRelatesContent, static, pushData)
-			wg.Done()
 		}(member, &helperEvent, memCount, eventOffset, redactOffset, &eventJson, &pushContents, isRelatesContent, static, pushData)
 	}
 	wg.Wait()
