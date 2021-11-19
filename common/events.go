@@ -68,25 +68,8 @@ func IsCreatingDirectRoomEv(ev *gomatrixserverlib.Event) (bool, error) {
 	return false, nil
 }
 
-func IsStateEv(ev *gomatrixserverlib.Event) bool {
-	switch ev.Type() {
-	case "m.room.create", "m.room.member", "m.room.power_levels":
-		return true
-	case "m.room.join_rules", "m.room.history_visibility", "m.room.visibility":
-		return true
-	case "m.room.name", "m.room.topic", "m.room.pinned_events", "m.room.desc":
-		return true
-	case "m.room.aliases", "m.room.canonical_alias", "m.room.avatar":
-		return true
-	case "m.room.encryption":
-		return true
-	default:
-		return false
-	}
-}
-
-func IsStateClientEv(ev *gomatrixserverlib.ClientEvent) bool {
-	switch ev.Type {
+func IsStateEventType(typ string) bool {
+	switch typ {
 	case "m.room.create", "m.room.member", "m.room.power_levels":
 		return true
 	case "m.room.join_rules", "m.room.history_visibility", "m.room.visibility":
@@ -103,7 +86,7 @@ func IsStateClientEv(ev *gomatrixserverlib.ClientEvent) bool {
 }
 
 func IsExtEvent(ev *gomatrixserverlib.ClientEvent) bool {
-	if ev.Type == "m.room._ext.leave" || ev.Type == "m.room._ext.enter" {
+	if ev.Type == "m.room._ext.leave" || ev.Type == "m.room._ext.enter" || ev.Type == "m.room._ext.chatwith" {
 		return true
 	}
 	return false

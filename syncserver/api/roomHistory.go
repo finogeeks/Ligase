@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
@@ -30,6 +29,7 @@ import (
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/skunkworks/gomatrix"
@@ -136,21 +136,28 @@ func (r ReqGetRoomHistory) Process(consumer interface{}, msg core.Coder, device 
 
 	log.Infof("OnRoomHistoryRequest user:%s filter: %s", userId, filterStr)
 
+	ranges := rs.GetEventVisibility(userID)
+	rangeItems := make([]types.RangeItem, len(ranges))
+	for i, v := range ranges {
+		rangeItems[i] = types.RangeItem{
+			Start: v.Start,
+			End:   v.End,
+		}
+	}
+
 	ctx := context.TODO()
-	outputRoomEvents, err := r.selectFromDB(ctx, c, rs, userID, roomID, req.Size, (req.Page-1)*req.Size)
+	outputRoomEvents, err := r.selectFromDB(ctx, c, rs, userID, roomID, rangeItems, req.Size, (req.Page-1)*req.Size)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown(err.Error())
 	}
 	if outputRoomEvents == nil {
 		outputRoomEvents = []gomatrixserverlib.ClientEvent{}
 	}
-	count, err := c.db.SelectEventCount(ctx, roomID)
+	count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
 	if err != nil {
 		log.Warnf("cannot count event, roomID: %s", roomID)
 		return http.StatusInternalServerError, jsonerror.Unknown("count event error")
 	}
-
-	//total := int64(int64(math.Ceil(float64(count) / float64(req.Size))))
 
 	resp := new(syncapitypes.RoomHistoryResp)
 	resp.Page = req.Page
@@ -160,6 +167,9 @@ func (r ReqGetRoomHistory) Process(consumer interface{}, msg core.Coder, device 
 		resp.Chunk = *common.FilterEventTypes(&outputRoomEvents, &evFilter.Types, &evFilter.NotTypes)
 	} else {
 		resp.Chunk = outputRoomEvents
+	}
+	for i := 0; i < len(resp.Chunk)/2; i++ {
+		resp.Chunk[i], resp.Chunk[len(resp.Chunk)-1-i] = resp.Chunk[len(resp.Chunk)-1-i], resp.Chunk[i]
 	}
 	resp.Size = len(resp.Chunk)
 
@@ -171,31 +181,32 @@ func (r ReqGetRoomHistory) selectFromDB(
 	c *InternalMsgConsumer,
 	rs *repos.RoomState,
 	userId, roomID string,
+	rangeItems []types.RangeItem,
 	limit int, offset int,
 ) (outputRoomEvents []gomatrixserverlib.ClientEvent, err error) {
 	c.rsTimeline.QueryHitCounter.WithLabelValues("db", "RoomMessages", "getEvents").Inc()
 
-	events, err := c.db.SelectEventHistory(ctx, roomID, limit, offset)
+	events, err := c.db.SelectEventHistoryByRanges(ctx, roomID, rangeItems, limit, offset)
 	if err != nil {
 		return
 	}
 
-	visibilityTime := c.GetCfg().Sync.Visibility
-	nowTs := time.Now().Unix()
+	// visibilityTime := c.GetCfg().Sync.Visibility
+	// nowTs := time.Now().Unix()
 
 	for idx := range events {
-		isState := common.IsStateClientEv(&events[idx])
-		if !isState && !rs.CheckEventVisibility(userId, int64(events[idx].OriginServerTS)) {
-			log.Infof("getHistory select from db check visibility false %s %s ts:%d", roomID, events[idx].EventID, events[idx].OriginServerTS)
-			continue
-		}
-		if visibilityTime > 0 {
-			ts := int64(events[idx].OriginServerTS) / 1000
-			if ts+visibilityTime < nowTs && !isState {
-				log.Infof("getHistory select from db skip event %s, ts: %d", events[idx].EventID, events[idx].OriginServerTS)
-				continue
-			}
-		}
+		// isState := common.IsStateClientEv(&events[idx])
+		// if !isState && !rs.CheckEventVisibility(userId, int64(events[idx].OriginServerTS)) {
+		// 	log.Infof("getHistory select from db check visibility false %s %s ts:%d", roomID, events[idx].EventID, events[idx].OriginServerTS)
+		// 	continue
+		// }
+		// if visibilityTime > 0 {
+		// 	ts := int64(events[idx].OriginServerTS) / 1000
+		// 	if ts+visibilityTime < nowTs && !isState {
+		// 		log.Infof("getHistory select from db skip event %s, ts: %d", events[idx].EventID, events[idx].OriginServerTS)
+		// 		continue
+		// 	}
+		// }
 
 		extra.ExpandMessages(&events[idx], userId, c.rsCurState, c.displayNameRepo)
 		outputRoomEvents = append(outputRoomEvents, events[idx])

@@ -15,10 +15,11 @@
 package repos
 
 import (
-	"github.com/finogeeks/ligase/common/basecomponent"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/finogeeks/ligase/common/basecomponent"
 
 	"github.com/finogeeks/ligase/adapter"
 	"github.com/finogeeks/ligase/common"
@@ -53,10 +54,10 @@ type RoomState struct {
 	canonicalAlias       string
 	power                *common.PowerLevelContent
 	isEncrypted          bool
-	joinCount int64
-	join   sync.Map
-	leave  sync.Map
-	invite sync.Map
+	joinCount            int64
+	join                 sync.Map
+	leave                sync.Map
+	invite               sync.Map
 
 	visiableTl []*RangeItem
 
@@ -141,7 +142,7 @@ func (rs *RoomState) onEvent(ev *gomatrixserverlib.ClientEvent, offset int64, ba
 			rs.isEncrypted = true
 		}
 
-		if common.IsStateClientEv(ev) {
+		if common.IsStateEventType(ev.Type) {
 			stream := new(feedstypes.StreamEvent)
 			stream.Offset = offset
 			stream.Ev = ev
@@ -245,7 +246,7 @@ func (rs *RoomState) onMembership(ev *gomatrixserverlib.ClientEvent, offset int6
 
 	if member.Membership == "join" {
 		if !hasJoin {
-			atomic.AddInt64(&rs.joinCount,1)
+			atomic.AddInt64(&rs.joinCount, 1)
 		}
 		rs.join.Store(*ev.StateKey, offset)
 	} else if member.Membership == "invite" {
@@ -417,7 +418,7 @@ func (rs *RoomState) insertIntoRanges(ranges []*RangeItem, ev *gomatrixserverlib
 }
 
 func (rs *RoomState) GetPreState(ev *gomatrixserverlib.ClientEvent) *feedstypes.StreamEvent {
-	if common.IsStateClientEv(ev) {
+	if common.IsStateEventType(ev.Type) {
 		if ev.Type == "m.room.member" {
 			if val, ok := rs.preMemberState.Load(*ev.StateKey); ok {
 				return val.(*feedstypes.StreamEvent)
@@ -644,13 +645,13 @@ func (rs *RoomState) findRangeIdx(ranges []*RangeItem, evTS int64, isRef bool) i
 
 type RoomCurStateRepo struct {
 	roomState sync.Map
-	count 	  int64
+	count     int64
 	persist   model.SyncAPIDatabase
-	base *basecomponent.BaseDendrite
+	base      *basecomponent.BaseDendrite
 }
 
-func NewRoomCurStateRepo(base *basecomponent.BaseDendrite,) *RoomCurStateRepo{
-	return &RoomCurStateRepo{base:base}
+func NewRoomCurStateRepo(base *basecomponent.BaseDendrite) *RoomCurStateRepo {
+	return &RoomCurStateRepo{base: base}
 }
 
 type RoomCurStateLoadedData struct {
@@ -691,7 +692,7 @@ func (repo *RoomCurStateRepo) onEvent(ev *gomatrixserverlib.ClientEvent, offset 
 	} else if !backfill {
 		rs = newRoomState()
 		log.Debugf("=-------==-=-=-==-= new %s %s", ev.RoomID, ev.Type)
-		atomic.AddInt64(&repo.count,1)
+		atomic.AddInt64(&repo.count, 1)
 		repo.roomState.Store(ev.RoomID, rs)
 	} else {
 		return
@@ -708,23 +709,23 @@ func (repo *RoomCurStateRepo) removeRoomState(roomID string) {
 func (repo *RoomCurStateRepo) GetRoomScale() external.RoomScaleMetrics {
 	roomScale := external.RoomScaleMetrics{
 		Large: external.RoomScale{
-			Label: external.ROOM_SCALE_LARGE,
-			Count: 0,
+			Label:    external.ROOM_SCALE_LARGE,
+			Count:    0,
 			MsgCount: 0,
 		},
 		Big: external.RoomScale{
-			Label: external.ROOM_SCALE_BIG,
-			Count: 0,
+			Label:    external.ROOM_SCALE_BIG,
+			Count:    0,
 			MsgCount: 0,
 		},
 		Middle: external.RoomScale{
-			Label: external.ROOM_SCALE_MIDDLE,
-			Count: 0,
+			Label:    external.ROOM_SCALE_MIDDLE,
+			Count:    0,
 			MsgCount: 0,
 		},
 		Small: external.RoomScale{
-			Label: external.ROOM_SCALE_SMALL,
-			Count: 0,
+			Label:    external.ROOM_SCALE_SMALL,
+			Count:    0,
 			MsgCount: 0,
 		},
 	}
@@ -735,7 +736,7 @@ func (repo *RoomCurStateRepo) GetRoomScale() external.RoomScaleMetrics {
 		}
 		if rs.isDirect {
 			roomScale.Small.Count++
-		}else{
+		} else {
 			count := rs.GetJoinCount()
 			if count < repo.base.Cfg.Metrics.SyncServer.RoomScale.Small {
 				roomScale.Middle.Count++

@@ -531,11 +531,9 @@ func (r *EventsProcessor) postProcessNew(
 
 	log.Debugf("============postProcessNew before write kafka %v", time.Now().Sub(last))
 	last = time.Now()
-	//if (rs.HasUpdate && common.IsStateEv(event) == true) || common.IsStateEv(event) == false {
 	if err := r.WriteOutputEvents(event.RoomID(), updates); err != nil {
 		return err
 	}
-	//}
 
 	log.Debugf("============postProcessNew  write kafka %v", time.Now().Sub(last))
 
@@ -622,11 +620,9 @@ func (r *EventsProcessor) postProcessBackfill(
 		return err
 	}
 
-	//if (rs.HasUpdate && common.IsStateEv(event) == true) || common.IsStateEv(event) == false {
 	if err := r.WriteOutputEvents(event.RoomID(), updates); err != nil {
 		return err
 	}
-	//}
 
 	sendDomain, _ := common.DomainFromID(event.Sender())
 	err = r.DB.SaveRoomDomainsOffset(ctx, roomNID, sendDomain, event.DomainOffset())
@@ -653,7 +649,7 @@ func (r *EventsProcessor) buildOutputRoomEvent(
 
 	ore.Event.InitFromEvent(&event)
 
-	if common.IsStateEv(&event) {
+	if common.IsStateEventType(event.Type()) {
 		ore.AddsStateEventIDs = []string{event.EventID()}
 	}
 

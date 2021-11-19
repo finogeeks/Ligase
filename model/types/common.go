@@ -451,3 +451,8 @@ type StaticItem struct {
 	Login  *StaticLoginItem  `json:"login,omitempty"`
 	Online *StaticOnlineItem `json:"online,omitempty"`
 }
+
+type RangeItem struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
+}

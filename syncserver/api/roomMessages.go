@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
@@ -204,11 +203,9 @@ func (r ReqGetRoomMessages) Process(consumer interface{}, msg core.Coder, device
 		}
 	} else { // use cache
 		var (
-			loadFromDB     = false
-			dbFromPos      = fromPos
-			dbFromTs       = fromTs
-			visibilityTime = c.GetCfg().Sync.Visibility
-			nowTs          = time.Now().Unix()
+			loadFromDB = false
+			dbFromPos  = fromPos
+			dbFromTs   = fromTs
 
 			foundAll    = false // loaded all request event from cache
 			feeds       []feedstypes.Feed
@@ -243,28 +240,17 @@ func (r ReqGetRoomMessages) Process(consumer interface{}, msg core.Coder, device
 					break
 				}
 			}
-			if (rs.CheckEventVisibility(userId, int64(stream.Ev.OriginServerTS)) || common.IsStateClientEv(&ev)) && stream.GetOffset() > roomMinStream {
-				skipEv := false
-				if visibilityTime > 0 {
-					ts := int64(ev.OriginServerTS) / 1000
-					if ts+visibilityTime < nowTs && !common.IsStateClientEv(&ev) {
-						log.Debugf("getMessage select from db skip event %s, ts: %d", ev.EventID, ev.OriginServerTS)
-						skipEv = true
-					}
-				}
+			if (rs.CheckEventVisibility(userId, int64(stream.Ev.OriginServerTS)) || common.IsStateEventType(ev.Type)) && stream.GetOffset() > roomMinStream {
+				extra.ExpandMessages(&ev, userID, c.rsCurState, c.displayNameRepo)
 
-				if !skipEv {
-					extra.ExpandMessages(&ev, userID, c.rsCurState, c.displayNameRepo)
-
-					if idx, ok := outputRecords[ev.EventID]; ok {
-						log.Warnf("get messages dir: %s from cache, found replicate events, eventID: %s, eventNID: %d, index: %d", dir, ev.EventID, ev.EventNID, idx)
-						outputRoomEvents[idx] = ev
-					} else {
-						outputRoomEvents = append(outputRoomEvents, ev)
-						outputRecords[ev.EventID] = len(outputRoomEvents) - 1
-						if toPos == 0 {
-							limit = limit - 1
-						}
+				if idx, ok := outputRecords[ev.EventID]; ok {
+					log.Warnf("get messages dir: %s from cache, found replicate events, eventID: %s, eventNID: %d, index: %d", dir, ev.EventID, ev.EventNID, idx)
+					outputRoomEvents[idx] = ev
+				} else {
+					outputRoomEvents = append(outputRoomEvents, ev)
+					outputRecords[ev.EventID] = len(outputRoomEvents) - 1
+					if toPos == 0 {
+						limit = limit - 1
 					}
 				}
 			}
@@ -369,20 +355,9 @@ func (r ReqGetRoomMessages) selectFromDB(
 		return
 	}
 
-	visibilityTime := c.GetCfg().Sync.Visibility
-	nowTs := time.Now().Unix()
-
 	for idx := range events {
 		if (dir == "b" && ((fromPos >= 0 && offsets[idx] <= fromPos) || (fromPos < 0 && (offsets[idx] > 0 || offsets[idx] <= fromPos)))) || (dir == "f" && offsets[idx] >= fromPos) {
-			if rs.CheckEventVisibility(userId, int64(events[idx].OriginServerTS)) || common.IsStateClientEv(&events[idx]) == true {
-				if visibilityTime > 0 {
-					ts := int64(events[idx].OriginServerTS) / 1000
-					if ts+visibilityTime < nowTs && !common.IsStateClientEv(&events[idx]) {
-						log.Infof("getMessage select from db skip event %s, ts: %d", events[idx].EventID, events[idx].OriginServerTS)
-						continue
-					}
-				}
-
+			if rs.CheckEventVisibility(userId, int64(events[idx].OriginServerTS)) || common.IsStateEventType(events[idx].Type) == true {
 				extra.ExpandMessages(&events[idx], userId, c.rsCurState, c.displayNameRepo)
 				outputRoomEvents = append(outputRoomEvents, events[idx])
 				endPos = events[idx].EventOffset

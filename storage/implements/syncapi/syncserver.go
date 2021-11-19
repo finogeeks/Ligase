@@ -20,6 +20,8 @@ package syncapi
 import (
 	"context"
 	"database/sql"
+	"strconv"
+	"strings"
 	"time"
 
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -40,6 +42,29 @@ import (
 
 func init() {
 	common.Register("syncapi", NewDatabase)
+}
+
+var stateEventTypeSubSQL = `'m.room.create','m.room.member','m.room.power_levels',` +
+	`'m.room.join_rules', 'm.room.history_visibility','m.room.visibility',` +
+	`'m.room.name','m.room.topic','m.room.pinned_events','m.room.desc',` +
+	`'m.room.aliases','m.room.canonical_alias','m.room.avatar','m.room.encryption'`
+
+func buildRangeSubSQL(items []types.RangeItem) string {
+	builder := strings.Builder{}
+	builder.WriteString("(")
+	for i, v := range items {
+		builder.WriteString("(origin_server_ts>" + strconv.FormatInt(v.Start, 10))
+		if v.End >= 0 {
+			builder.WriteString(" AND origin_server_ts<" + strconv.FormatInt(v.End, 10) + ")")
+		} else {
+			builder.WriteString(")")
+		}
+		if i < len(items)-1 {
+			builder.WriteString(" OR ")
+		}
+	}
+	builder.WriteString(")")
+	return builder.String()
 }
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -314,27 +339,29 @@ func (d *Database) SelectEventsByDirRange(
 	return d.events.selectEventsByDirRange(ctx, roomID, dir, from, to)
 }
 
-func (d *Database) SelectEventHistory(
+func (d *Database) SelectEventHistoryByRanges(
 	ctx context.Context,
-	roomID string,
+	roomID string, rangeItems []types.RangeItem,
 	limit, offset int,
 ) ([]gomatrixserverlib.ClientEvent, error) {
-	return d.events.selectEventHistory(ctx, roomID, limit, offset)
+	return d.events.selectEventHistory(ctx, roomID, rangeItems, limit, offset)
 }
 
-func (d *Database) SelectEventCount(
+func (d *Database) SelectEventCountByRanges(
 	ctx context.Context,
 	roomID string,
+	rangeItems []types.RangeItem,
 ) (int64, error) {
-	return d.events.selectEventCount(ctx, roomID)
+	return d.events.selectEventCountByUser(ctx, roomID, rangeItems)
 }
 
-func (d *Database) SelectEventCountBefore(
+func (d *Database) SelectEventCountAfter(
 	ctx context.Context,
 	roomID string,
 	id int64,
+	rangeItems []types.RangeItem,
 ) (int64, error) {
-	return d.events.selectEventCountBefore(ctx, roomID, id)
+	return d.events.selectEventCountAfter(ctx, roomID, id, rangeItems)
 }
 
 func (d *Database) GetRidsForUser(

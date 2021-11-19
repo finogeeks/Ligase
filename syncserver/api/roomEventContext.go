@@ -19,7 +19,6 @@ import (
 	"math"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/apiconsumer"
@@ -124,16 +123,6 @@ func (ReqGetEventContext) Process(consumer interface{}, msg core.Coder, device *
 	fromTs := int64(baseEvent[0].OriginServerTS)
 	fromPos := offsets[0]
 
-	visibilityTime := c.GetCfg().Sync.Visibility
-	nowTs := time.Now().Unix()
-	if visibilityTime > 0 {
-		ts := int64(baseEvent[0].OriginServerTS) / 1000
-		if ts+visibilityTime < nowTs {
-			log.Infof("ReqGetEventContext skip event %s", eventID)
-			return http.StatusNotFound, jsonerror.NotFound("cannot find event")
-		}
-	}
-
 	// get feed
 	tl := c.rmHsTimeline.GetHistory(roomID)
 	if tl == nil {
@@ -196,8 +185,6 @@ func (source GetMessagesSource) getMessages(
 		log.Debugf("get context [%s dir] from cache, but out of range, get from db, endPos: %d", dir, endPos)
 	} else { // use cache
 		cacheLoaded := true
-		visibilityTime := source.c.GetCfg().Sync.Visibility
-		nowTs := time.Now().Unix()
 		if dir == "b" {
 			source.tl.RAtomic(func(data *feedstypes.TimeLinesAtomicData) {
 				if fromPos < data.Lower || fromPos <= source.roomMinStream {
@@ -215,27 +202,18 @@ func (source GetMessagesSource) getMessages(
 					ev := *stream.GetEv()
 
 					if stream.GetOffset() <= fromPos && stream.GetOffset() >= source.roomMinStream {
-						if ((source.rs.CheckEventVisibility(userID, int64(stream.Ev.OriginServerTS)) && !common.IsExtEvent(&ev)) || common.IsStateClientEv(&ev)) && stream.GetOffset() > source.roomMinStream {
-							skipEv := false
-							if visibilityTime > 0 {
-								ts := int64(ev.OriginServerTS) / 1000
-								if ts+visibilityTime < nowTs && !common.IsStateClientEv(&ev) {
-									log.Debugf("GetMessagesSource.getMessages cache skip event %s, ts: %d", ev.EventID, ev.OriginServerTS)
-									skipEv = true
-								}
-							}
-							if !skipEv {
-								extra.ExpandMessages(&ev, userID, source.c.rsCurState, source.c.displayNameRepo)
+						if ((source.rs.CheckEventVisibility(userID, int64(stream.Ev.OriginServerTS)) && !common.IsExtEvent(&ev)) || common.IsStateEventType(ev.Type)) && stream.GetOffset() > source.roomMinStream {
 
-								// dereplication
-								if idx, ok := outputRecords[ev.EventID]; ok {
-									log.Warnf("get context forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
-									outputRoomEvents[idx] = ev
-								} else {
-									outputRoomEvents = append(outputRoomEvents, ev)
-									outputRecords[ev.EventID] = len(outputRoomEvents) - 1
-									limit = limit - 1
-								}
+							extra.ExpandMessages(&ev, userID, source.c.rsCurState, source.c.displayNameRepo)
+
+							// dereplication
+							if idx, ok := outputRecords[ev.EventID]; ok {
+								log.Warnf("get context forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
+								outputRoomEvents[idx] = ev
+							} else {
+								outputRoomEvents = append(outputRoomEvents, ev)
+								outputRecords[ev.EventID] = len(outputRoomEvents) - 1
+								limit = limit - 1
 							}
 						}
 						if stream.GetOffset() == source.roomMinStream {
@@ -283,30 +261,20 @@ func (source GetMessagesSource) getMessages(
 					ev := *stream.GetEv()
 
 					if stream.GetOffset() >= fromPos && stream.GetOffset() >= source.roomMinStream {
-						skipEv := false
-						if (source.rs.CheckEventVisibility(userID, int64(stream.Ev.OriginServerTS)) && !common.IsExtEvent(&ev)) || common.IsStateClientEv(&ev) {
-							if visibilityTime > 0 {
-								ts := int64(ev.OriginServerTS) / 1000
-								if ts+visibilityTime < nowTs && !common.IsStateClientEv(&ev) {
-									skipEv = true
-								}
-							}
-							if !skipEv {
-								extra.ExpandMessages(&ev, userID, source.c.rsCurState, source.c.displayNameRepo)
+						if (source.rs.CheckEventVisibility(userID, int64(stream.Ev.OriginServerTS)) && !common.IsExtEvent(&ev)) || common.IsStateEventType(ev.Type) {
+							extra.ExpandMessages(&ev, userID, source.c.rsCurState, source.c.displayNameRepo)
 
-								// dereplication
-								if idx, ok := outputRecords[ev.EventID]; ok {
-									log.Warnf("get context forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
-									outputRoomEvents[idx] = ev
-								} else {
-									outputRoomEvents = append(outputRoomEvents, ev)
-									outputRecords[ev.EventID] = len(outputRoomEvents) - 1
-								}
+							// dereplication
+							if idx, ok := outputRecords[ev.EventID]; ok {
+								log.Warnf("get context forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
+								outputRoomEvents[idx] = ev
+							} else {
+								outputRoomEvents = append(outputRoomEvents, ev)
+								outputRecords[ev.EventID] = len(outputRoomEvents) - 1
 							}
+
 						}
-						if !skipEv {
-							limit = limit - 1
-						}
+						limit = limit - 1
 						endPos = stream.GetOffset() + 1
 						log.Debugf("get context forward from cache, stream.Offset: %d", stream.GetOffset())
 						endTs = int64(stream.Ev.OriginServerTS)
@@ -352,18 +320,9 @@ func (source GetMessagesSource) getFromDB(
 		return outputRoomEvents, fromPos, fromTs, nil
 	}
 
-	visibilityTime := source.c.GetCfg().Sync.Visibility
-	nowTs := time.Now().Unix()
 	for i := range events {
 		if (dir == "b" && ((fromPos >= 0 && offsets[i] <= fromPos) || (fromPos < 0 && (offsets[i] > 0 || offsets[i] <= fromPos)))) || (dir == "f" && offsets[i] >= fromPos) {
-			if (source.rs.CheckEventVisibility(userID, int64(events[i].OriginServerTS)) && !common.IsExtEvent(&events[i])) || common.IsStateClientEv(&events[i]) {
-				if visibilityTime > 0 {
-					ts := int64(events[i].OriginServerTS) / 1000
-					if ts+visibilityTime < nowTs && !common.IsStateClientEv(&events[i]) {
-						log.Debugf("GetMessagesSource select from db skip event %s, ts: %d", events[i].EventID, events[i].OriginServerTS)
-						continue
-					}
-				}
+			if (source.rs.CheckEventVisibility(userID, int64(events[i].OriginServerTS)) && !common.IsExtEvent(&events[i])) || common.IsStateEventType(events[i].Type) {
 				extra.ExpandMessages(&events[i], userID, source.c.rsCurState, source.c.displayNameRepo)
 				outputRoomEvents = append(outputRoomEvents, events[i])
 			}
