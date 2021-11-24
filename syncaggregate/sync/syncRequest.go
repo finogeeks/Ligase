@@ -17,7 +17,6 @@ package sync
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common/localExporter"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +24,7 @@ import (
 	"time"
 
 	"github.com/finogeeks/ligase/common"
+	"github.com/finogeeks/ligase/common/localExporter"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
@@ -429,18 +429,18 @@ func (sm *SyncMng) CheckNewEvent(req *request, token map[string]int64, curUtl, s
 		log.Warnf("SyncMng ExistsUserEventUpdate update oldUtl:%d to newUtl:%d", req.marks.utlRecv, curUtl)
 		req.marks.utlRecv = curUtl
 	}
-	if hasEventUpdate && now-start > afterMS {
+	if hasEventUpdate && now-start >= afterMS {
 		log.Infof("SyncMng break has user event traceid:%s user:%s dev:%s now:%d latest:%d utlRecv:%d",
 			req.traceId, req.device.UserID, req.device.ID, now, start, req.marks.utlRecv)
 		return true
 	}
 
-	if sm.clientDataStreamRepo.ExistsAccountDataUpdate(req.marks.accRecv, device.UserID) && now-start > afterMS && req.device.IsHuman {
+	if sm.clientDataStreamRepo.ExistsAccountDataUpdate(req.marks.accRecv, device.UserID) && now-start >= afterMS && req.device.IsHuman {
 		log.Infof("SyncMng break has account data traceid:%s user:%s dev:%s now:%d latest:%d", req.traceId, req.device.UserID, req.device.ID, now, start)
 		return true
 	}
 
-	if sm.typingConsumer.ExistsTyping(device.UserID, device.ID, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)) && now-start > afterMS && req.device.IsHuman {
+	if sm.typingConsumer.ExistsTyping(device.UserID, device.ID, sm.userTimeLine.GetUserCurRoom(device.UserID, device.ID)) && now-start >= afterMS && req.device.IsHuman {
 		log.Infof("SyncMng break has typing traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
 		return true
 	}
@@ -453,18 +453,18 @@ func (sm *SyncMng) CheckNewEvent(req *request, token map[string]int64, curUtl, s
 	}
 
 	if sm.cfg.UseEncrypt {
-		if common.IsActualDevice(device.DeviceType) && sm.keyChangeRepo.ExistsKeyChange(req.marks.kcRecv, device.UserID) && now-start > afterMS && req.device.IsHuman {
+		if common.IsActualDevice(device.DeviceType) && sm.keyChangeRepo.ExistsKeyChange(req.marks.kcRecv, device.UserID) && now-start >= afterMS && req.device.IsHuman {
 			log.Infof("SyncMng break has key change traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
 			return true
 		}
 	}
 
-	if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(req.marks.stdRecv, device.UserID, device.ID) && now-start > afterMS && req.device.IsHuman {
+	if common.IsActualDevice(device.DeviceType) && sm.stdEventStreamRepo.ExistsSTDEventUpdate(req.marks.stdRecv, device.UserID, device.ID) && now-start >= afterMS && req.device.IsHuman {
 		log.Infof("SyncMng break has send to device messages traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
 		return true
 	}
 
-	if sm.presenceStreamRepo.ExistsPresence(req.device.UserID, req.marks.preRecv) && now-start > afterMS && req.device.IsHuman {
+	if sm.presenceStreamRepo.ExistsPresence(req.device.UserID, req.marks.preRecv) && now-start >= afterMS && req.device.IsHuman {
 		log.Infof("SyncMng break has presence messages traceid:%s user:%s dev:%s now:%d latest:%d ", req.traceId, req.device.UserID, req.device.ID, now, start)
 		return true
 	}
