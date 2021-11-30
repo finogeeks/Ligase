@@ -163,7 +163,7 @@ func (ReqGetRoomInitialSync) Process(consumer interface{}, msg core.Coder, devic
 		}
 
 		ev := stream.GetEv()
-		if common.IsStateClientEv(ev) == false && rs.CheckEventVisibility(userId, stream.GetOffset()) {
+		if common.IsStateEventType(ev.Type) == false && rs.CheckEventVisibility(userId, stream.GetOffset()) {
 			if roominfo.Messages.Start == "" {
 				roominfo.Messages.Start = strconv.FormatInt(stream.GetOffset(), 10)
 			}

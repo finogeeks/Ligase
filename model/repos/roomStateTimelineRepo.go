@@ -118,7 +118,7 @@ func (tl *RoomStateTimeLineRepo) AddEv(ev *gomatrixserverlib.ClientEvent, offset
 		}
 	}
 
-	if common.IsStateClientEv(ev) {
+	if common.IsStateEventType(ev.Type) {
 		sev := new(feedstypes.StreamEvent)
 		sev.Ev = ev
 		sev.Offset = offset
@@ -159,7 +159,7 @@ func (tl *RoomStateTimeLineRepo) AddStreamEv(ev *gomatrixserverlib.ClientEvent, 
 		tl.LoadStreamStates(ev.RoomID, true)
 	}
 
-	if common.IsStateClientEv(ev) {
+	if common.IsStateEventType(ev.Type) {
 		sev := new(feedstypes.StreamEvent)
 		sev.Ev = ev
 		sev.Offset = offset
@@ -173,7 +173,7 @@ func (tl *RoomStateTimeLineRepo) AddBackfillEv(ev *gomatrixserverlib.ClientEvent
 	if load == true && ev.Type != "m.room.create" { //
 		tl.LoadStreamStates(ev.RoomID, true)
 	}
-	if common.IsStateClientEv(ev) {
+	if common.IsStateEventType(ev.Type) {
 		tl.rsRepo.onEvent(ev, offset, true)
 	}
 }

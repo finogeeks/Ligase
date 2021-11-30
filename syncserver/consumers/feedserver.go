@@ -547,7 +547,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	}
 	s.roomHistoryTimeLine.SetDomainMaxStream(ev.RoomID, domain, ev.DomainOffset)
 
-	if common.IsStateClientEv(&ev) == true { //state ev
+	if common.IsStateEventType(ev.Type) == true { //state ev
 		ev, _ = s.processStateEv(&ev)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.rawredact" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)
@@ -581,7 +581,7 @@ func (s *RoomEventFeedConsumer) onNewRoomEvent(
 	}
 
 	membership := ""
-	if common.IsStateClientEv(&ev) == true { //state ev
+	if common.IsStateEventType(ev.Type) == true { //state ev
 		log.Debugf("feedserver onNewRoomEvent update state event roomID:%s eventID:%s sender:%s type:%s eventoffset:%d", ev.RoomID, ev.EventID, ev.Sender, ev.Type, ev.EventOffset)
 		s.roomStateTimeLine.AddEv(&ev, ev.EventOffset, true)       //state 也会更新
 		s.roomStateTimeLine.AddStreamEv(&ev, ev.EventOffset, true) //保留state stream
@@ -776,7 +776,7 @@ func (s *RoomEventFeedConsumer) onBackFillEvent(
 		s.roomHistoryTimeLine.SetRoomMinStream(ev.RoomID, ev.EventOffset)
 	}
 
-	if common.IsStateClientEv(&ev) {
+	if common.IsStateEventType(ev.Type) {
 		ev, _ = s.processStateEv(&ev)
 		s.roomStateTimeLine.AddBackfillEv(&ev, ev.EventOffset, true)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.rawredact" || ev.Type == "m.room.update" {

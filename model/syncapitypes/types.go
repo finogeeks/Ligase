@@ -310,6 +310,21 @@ func (r *MessageEventResp) Decode(input []byte) error {
 	return json.Unmarshal(input, r)
 }
 
+type RoomHistoryResp struct {
+	Page  int                             `json:"page"`
+	Size  int                             `json:"size"`
+	Total int                             `json:"total"`
+	Chunk []gomatrixserverlib.ClientEvent `json:"chunk"`
+}
+
+func (r *RoomHistoryResp) Encode() ([]byte, error) {
+	return json.Marshal(r)
+}
+
+func (r *RoomHistoryResp) Decode(input []byte) error {
+	return json.Unmarshal(input, r)
+}
+
 type ContextEventResp struct {
 	Start     string                           `json:"start"`
 	End       string                           `json:"end"`
@@ -324,6 +339,22 @@ func (r *ContextEventResp) Encode() ([]byte, error) {
 }
 
 func (r *ContextEventResp) Decode(input []byte) error {
+	return json.Unmarshal(input, r)
+}
+
+type SearchEventResp struct {
+	Total int                              `json:"total"`
+	Page  int                              `json:"page"`
+	Size  int                              `json:"size"`
+	Chunk []gomatrixserverlib.ClientEvent  `json:"chunk"`
+	State []*gomatrixserverlib.ClientEvent `json:"state"`
+}
+
+func (r *SearchEventResp) Encode() ([]byte, error) {
+	return json.Marshal(r)
+}
+
+func (r *SearchEventResp) Decode(input []byte) error {
 	return json.Unmarshal(input, r)
 }
 

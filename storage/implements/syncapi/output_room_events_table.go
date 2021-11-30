@@ -26,6 +26,7 @@ import (
 	"github.com/finogeeks/ligase/model/dbtypes"
 	"github.com/finogeeks/ligase/model/roomservertypes"
 	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	log "github.com/finogeeks/ligase/skunkworks/log"
 	"github.com/lib/pq"
@@ -118,23 +119,35 @@ const selectEventsSQL = "" +
 
 const selectEventForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND id >= $2" +
-	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
+	" WHERE room_id = $1 AND ABS(id) >= $2" +
+	" ORDER BY ABS(id) ASC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
 
 const selectEventBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND  id <= $2" +
-	" ORDER BY id DESC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
+	" WHERE room_id = $1 AND ABS(id) <= $2" +
+	" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC LIMIT $3"
 
 const selectEventRangeForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND id >= $2 AND id <= $3" +
-	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC"
+	" WHERE room_id = $1 AND ABS(id) >= $2 AND ABS(id) <= $3" +
+	" ORDER BY ABS(id) ASC, origin_server_ts ASC, depth ASC, domain ASC"
 
 const selectEventRangeBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND id <= $2 AND id >= $3" +
-	" ORDER BY id DESC, origin_server_ts ASC, depth ASC, domain ASC"
+	" WHERE room_id = $1 AND ABS(id) <= $2 AND ABS(id) >= $3" +
+	" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC"
+
+const selectEventHisotrySQL = "" +
+	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
+	" WHERE room_id = $1" +
+	" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC" +
+	" LIMIT $2 OFFSET $3"
+
+const selectEventCountSQL = "" +
+	"SELECT COUNT(1) FROM syncapi_output_room_events WHERE room_id = $1"
+
+const selectEvenetCountBeforeSQL = "" +
+	"SELECT COUNT(1) FROM syncapi_output_room_events WHERE room_id = $1 AND ABS(id) < $2"
 
 const updateEventSQL = "" +
 	"UPDATE syncapi_output_room_events SET event_json = $1 WHERE event_id = $2 and room_id= $3"
@@ -211,6 +224,9 @@ type outputRoomEventsStatements struct {
 	selectEventBackStmt         *sql.Stmt
 	selectEventForwardStmt      *sql.Stmt
 	selectEventRangeBackStmt    *sql.Stmt
+	selectEventHistoryStmt      *sql.Stmt
+	selectEventCountStmt        *sql.Stmt
+	selectEventCountBeforeStmt  *sql.Stmt
 	selectEventRangeForwardStmt *sql.Stmt
 	updateEventStmt             *sql.Stmt
 	selectHistoryEventStmt      *sql.Stmt
@@ -261,6 +277,15 @@ func (s *outputRoomEventsStatements) prepare(db *sql.DB, d *Database) (err error
 		return
 	}
 	if s.selectEventRangeBackStmt, err = db.Prepare(selectEventRangeBackSQL); err != nil {
+		return
+	}
+	if s.selectEventHistoryStmt, err = db.Prepare(selectEventHisotrySQL); err != nil {
+		return
+	}
+	if s.selectEventCountStmt, err = db.Prepare(selectEventCountSQL); err != nil {
+		return
+	}
+	if s.selectEventCountBeforeStmt, err = db.Prepare(selectEvenetCountBeforeSQL); err != nil {
 		return
 	}
 	if s.selectEventRangeForwardStmt, err = db.Prepare(selectEventRangeForwardSQL); err != nil {
@@ -682,6 +707,91 @@ func (s *outputRoomEventsStatements) selectEvents(
 	}
 	defer rows.Close() // nolint: errcheck
 	return rowsToStreamEvents(rows)
+}
+
+func (s *outputRoomEventsStatements) selectEventHistory(ctx context.Context, roomID string, rangeItems []types.RangeItem, limit, offset int) ([]gomatrixserverlib.ClientEvent, error) {
+	var rows *sql.Rows
+	var err error
+	if len(rangeItems) == 0 {
+		rows, err = s.selectEventHistoryStmt.QueryContext(ctx, roomID, limit, offset)
+	} else {
+		sql := "" +
+			"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
+			" WHERE room_id = $1 AND (type = ANY(ARRAY[" + stateEventTypeSubSQL + "]) OR " + buildRangeSubSQL(rangeItems) + ")" +
+			" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC" +
+			" LIMIT $2 OFFSET $3"
+		rows, err = s.db.db.QueryContext(ctx, sql, roomID, limit, offset)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() // nolint: errcheck
+
+	var evs []gomatrixserverlib.ClientEvent
+	for rows.Next() {
+		var (
+			streamPos  int64
+			ts         int64
+			eventBytes []byte
+			eventType  string
+		)
+		if err = rows.Scan(&streamPos, &eventBytes, &ts, &eventType); err != nil {
+			return nil, err
+		}
+
+		var ev gomatrixserverlib.ClientEvent
+
+		// decrypt message
+		if encryption.CheckCrypto(eventType) {
+			dec := encryption.Decrypt(eventBytes)
+			err = json.Unmarshal(dec, &ev)
+		} else {
+			err = json.Unmarshal(eventBytes, &ev)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		evs = append(evs, ev)
+	}
+
+	return evs, nil
+}
+
+func (s *outputRoomEventsStatements) selectEventCountByUser(ctx context.Context, roomID string, rangeItems []types.RangeItem) (int64, error) {
+	var err error
+	count := int64(0)
+	if len(rangeItems) == 0 {
+		err = s.selectEventCountStmt.QueryRowContext(ctx, roomID).Scan(&count)
+	} else {
+		sql := "" +
+			"SELECT COUNT(1) FROM syncapi_output_room_events" +
+			" WHERE room_id = $1 AND (type = ANY(ARRAY[" + stateEventTypeSubSQL + "]) OR " + buildRangeSubSQL(rangeItems) + ")"
+		err = s.db.db.QueryRowContext(ctx, sql, roomID).Scan(&count)
+	}
+
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *outputRoomEventsStatements) selectEventCountAfter(ctx context.Context, roomID string, id int64, rangeItems []types.RangeItem) (int64, error) {
+	count := int64(0)
+	var err error
+	if len(rangeItems) == 0 {
+		err = s.selectEventCountBeforeStmt.QueryRowContext(ctx, roomID, id).Scan(&count)
+	} else {
+		sql := "" +
+			"SELECT COUNT(1) FROM syncapi_output_room_events" +
+			" WHERE room_id = $1 AND ABS(id) > $2 AND (type = ANY(ARRAY[" + stateEventTypeSubSQL + "]) OR " + buildRangeSubSQL(rangeItems) + ")"
+		err = s.db.db.QueryRowContext(ctx, sql, roomID, id).Scan(&count)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (s *outputRoomEventsStatements) updateEvent(

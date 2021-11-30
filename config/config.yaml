@@ -589,7 +589,6 @@ gc_timer: 0
 sync:
     rpc_timeout: 2000
     fullsync_rpc_timeout: 15000
-    visibility: 0
 
 metrics:
     sync_server:

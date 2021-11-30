@@ -227,7 +227,7 @@ func (tl *PresenceDataStreamRepo) RegisterPresenceEvent(userID string, cb common
 }
 
 func (tl *PresenceDataStreamRepo) UnregisterPresenceEvent(userID string, cb common.ListenerCallback) {
-	tl.listener.Register(userID, cb)
+	tl.listener.Unregister(userID, cb)
 }
 
 func (tl *PresenceDataStreamRepo) broadcastPresenceEvent(userID string, offset int64) {

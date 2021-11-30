@@ -16,8 +16,8 @@ package api
 
 import (
 	"context"
-	"math"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/finogeeks/ligase/common"
@@ -29,6 +29,7 @@ import (
 	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
+	"github.com/finogeeks/ligase/model/types"
 	"github.com/finogeeks/ligase/plugins/message/external"
 	"github.com/finogeeks/ligase/plugins/message/internals"
 	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
@@ -38,48 +39,48 @@ import (
 
 func init() {
 	apiconsumer.SetServices("sync_server_api")
-	apiconsumer.SetAPIProcessor(ReqGetEventContext{})
+	apiconsumer.SetAPIProcessor(ReqGetEventSearch{})
 }
 
-type ReqGetEventContext struct{}
+type ReqGetEventSearch struct{}
 
-func (ReqGetEventContext) GetRoute() string       { return "/rooms/{roomID}/context/{eventID}" }
-func (ReqGetEventContext) GetMetricsName() string { return "room_event_context" }
-func (ReqGetEventContext) GetMsgType() int32      { return internals.MSG_GET_ROOM_EVENT_CONTEXT }
-func (ReqGetEventContext) GetAPIType() int8       { return apiconsumer.APITypeAuth }
-func (ReqGetEventContext) GetMethod() []string {
+func (ReqGetEventSearch) GetRoute() string       { return "/rooms/{roomID}/search/{eventID}" }
+func (ReqGetEventSearch) GetMetricsName() string { return "room_event_context" }
+func (ReqGetEventSearch) GetMsgType() int32      { return internals.MSG_GET_ROOM_EVENT_SEARCH }
+func (ReqGetEventSearch) GetAPIType() int8       { return apiconsumer.APITypeAuth }
+func (ReqGetEventSearch) GetMethod() []string {
 	return []string{http.MethodGet, http.MethodOptions}
 }
-func (ReqGetEventContext) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
-func (ReqGetEventContext) GetPrefix() []string                  { return []string{"r0"} }
-func (ReqGetEventContext) NewRequest() core.Coder {
-	return new(external.GetRoomEventContextRequest)
+func (ReqGetEventSearch) GetTopic(cfg *config.Dendrite) string { return getProxyRpcTopic(cfg) }
+func (ReqGetEventSearch) GetPrefix() []string                  { return []string{"r0"} }
+func (ReqGetEventSearch) NewRequest() core.Coder {
+	return new(external.GetRoomEventSearchRequest)
 }
-func (ReqGetEventContext) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
-	msg := coder.(*external.GetRoomEventContextRequest)
+func (ReqGetEventSearch) FillRequest(coder core.Coder, req *http.Request, vars map[string]string) error {
+	msg := coder.(*external.GetRoomEventSearchRequest)
 	if vars != nil {
 		msg.RoomID = vars["roomID"]
 		msg.EventID = vars["eventID"]
 	}
 
 	req.ParseForm()
-	limitStr := req.URL.Query().Get("limit")
-	if limitStr == "" {
-		msg.Limit = 50
+	size := req.URL.Query().Get("size")
+	if size == "" {
+		msg.Size = 15
 	} else {
-		msg.Limit, _ = strconv.ParseInt(limitStr, 10, 64)
+		msg.Size, _ = strconv.ParseInt(size, 10, 64)
 	}
 	return nil
 }
-func (ReqGetEventContext) NewResponse(code int) core.Coder {
+func (ReqGetEventSearch) NewResponse(code int) core.Coder {
 	return make(internals.JSONMap)
 }
-func (ReqGetEventContext) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
-	req := msg.(*external.GetRoomEventContextRequest)
+func (ReqGetEventSearch) CalcInstance(msg core.Coder, device *authtypes.Device, cfg *config.Dendrite) []uint32 {
+	req := msg.(*external.GetRoomEventSearchRequest)
 	return []uint32{common.CalcStringHashCode(req.RoomID) % cfg.MultiInstance.SyncServerTotal}
 }
 
-type GetMessagesSource struct {
+type SearchMessagesSource struct {
 	c             *InternalMsgConsumer
 	rs            *repos.RoomState
 	tl            *feedstypes.TimeLines
@@ -87,18 +88,15 @@ type GetMessagesSource struct {
 	roomMinStream int64
 }
 
-func (ReqGetEventContext) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
+func (ReqGetEventSearch) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
-	req := msg.(*external.GetRoomEventContextRequest)
-	if !common.IsRelatedRequest(req.RoomID, c.Cfg.MultiInstance.Instance, c.Cfg.MultiInstance.SyncServerTotal, c.Cfg.MultiInstance.MultiWrite) {
-		return internals.HTTP_RESP_DISCARD, jsonerror.MsgDiscard("msg discard")
-	}
+	req := msg.(*external.GetRoomEventSearchRequest)
 
 	userID := device.UserID
 	roomID := req.RoomID
 	eventID := req.EventID
-	limit := req.Limit
-	log.Debugf("get context process, room: %s, event: %s, limit: %d", roomID, eventID, limit)
+	size := req.Size
+	log.Debugf("search event process, room: %s, event: %s, size: %d", roomID, eventID, size)
 
 	c.rsTimeline.LoadStreamStates(roomID, true)
 	rs := c.rsCurState.GetRoomState(roomID)
@@ -114,8 +112,10 @@ func (ReqGetEventContext) Process(consumer interface{}, msg core.Coder, device *
 
 	roomMinStream := c.rmHsTimeline.GetRoomMinStream(roomID)
 
+	ctx := context.TODO()
+
 	// get fromPos and fromTs by eventID
-	baseEvent, offsets, err := c.db.StreamEvents(context.TODO(), []string{eventID})
+	baseEvent, offsets, err := c.db.StreamEvents(ctx, []string{eventID})
 	if err != nil || len(baseEvent) <= 0 || len(offsets) <= 0 {
 		log.Warnf("cannot find event, eventID: %s, ret events: %v, offsets: %v", eventID, baseEvent, offsets)
 		return http.StatusNotFound, jsonerror.NotFound("cannot find event")
@@ -131,43 +131,79 @@ func (ReqGetEventContext) Process(consumer interface{}, msg core.Coder, device *
 
 	createEv := rs.GetState(gomatrixserverlib.MRoomCreate, "")
 
-	// split into backward and forward dir
-	backwardLimit := int64(math.Floor(float64(limit / 2.0)))
-	forwardLimit := limit - backwardLimit
+	ranges := rs.GetEventVisibility(userID)
+	rangeItems := make([]types.RangeItem, len(ranges))
+	for i, v := range ranges {
+		rangeItems[i] = types.RangeItem{
+			Start: v.Start,
+			End:   v.End,
+		}
+	}
 
-	source := GetMessagesSource{c, rs, tl, createEv, roomMinStream}
-	bwEvents, startPos, startTs, err := source.getMessages(userID, roomID, "b", fromPos-1, fromTs, backwardLimit)
+	count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
 	if err != nil {
-		log.Errorln("get context process, get event before error: ", err.Error())
+		log.Warnf("cannot count event, roomID: %s", roomID)
+		return http.StatusInternalServerError, jsonerror.Unknown("count event error")
+	}
+
+	countAfter, err := c.db.SelectEventCountAfter(ctx, roomID, offsets[0], rangeItems)
+	if err != nil {
+		log.Warnf("cannot count event, roomID: %s, offsets: %v, err: %s", roomID, offsets[0], err)
+		return http.StatusInternalServerError, jsonerror.Unknown("count event before error")
+	}
+
+	page := ((countAfter) / req.Size) + 1
+	idxPage := (countAfter) % req.Size
+
+	// split into backward and forward dir
+	forwardLimit := idxPage
+	backwardLimit := req.Size - forwardLimit - 1
+
+	source := SearchMessagesSource{c, rs, tl, createEv, roomMinStream}
+	bwEvents, _, err := source.getMessages(userID, roomID, "b", fromPos-1, fromTs, backwardLimit)
+	if err != nil {
+		log.Errorln("search event process, get event before error: ", err.Error())
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to get event before")
 	}
 
-	fwEvents, endPos, endTs, err := source.getMessages(userID, roomID, "f", fromPos+1, fromTs, forwardLimit)
+	fwEvents, endPos, err := source.getMessages(userID, roomID, "f", fromPos+1, fromTs, forwardLimit)
 	if err != nil {
-		log.Errorln("get context process, get event after error: ", err.Error())
+		log.Errorln("search event process, get event after error: ", err.Error())
 		return http.StatusInternalServerError, jsonerror.Unknown("failed to get event after")
 	}
 
 	// get current state events
 	_, stateEvents := source.c.rsTimeline.GetStateEvents(roomID, endPos)
 	// append hint
+	for _, v := range stateEvents {
+		extra.ExpandMessages(v, userID, c.rsCurState, c.displayNameRepo)
+	}
 	extra.ExpandMessages(&baseEvent[0], userID, c.rsCurState, c.displayNameRepo)
 
-	resp := new(syncapitypes.ContextEventResp)
-	resp.EvsBefore = bwEvents
-	resp.EvsAfter = fwEvents
-	resp.Event = baseEvent[0]
+	resp := new(syncapitypes.SearchEventResp)
+	resp.Total = int(count)
+	resp.Page = int(page)
+	resp.Chunk = make([]gomatrixserverlib.ClientEvent, 0, len(bwEvents)+len(baseEvent)+len(fwEvents))
+	resp.Chunk = append(resp.Chunk, bwEvents...)
+	resp.Chunk = append(resp.Chunk, baseEvent...)
+	resp.Chunk = append(resp.Chunk, fwEvents...)
+	resp.Size = len(resp.Chunk)
 	resp.State = stateEvents
-	resp.Start = common.BuildPreBatch(startPos, startTs)
-	resp.End = common.BuildPreBatch(endPos, endTs)
+
+	sort.Slice(resp.Chunk, func(i, j int) bool {
+		return resp.Chunk[i].EventOffset < resp.Chunk[j].EventOffset
+	})
 
 	return http.StatusOK, resp
 }
 
-func (source GetMessagesSource) getMessages(
+func (source SearchMessagesSource) getMessages(
 	userID, roomID, dir string, fromPos, fromTs, limit int64,
-) ([]gomatrixserverlib.ClientEvent, int64, int64, error) {
-	var endPos, endTs int64
+) ([]gomatrixserverlib.ClientEvent, int64, error) {
+	if limit <= 0 {
+		return nil, 0, nil
+	}
+	var endPos int64
 	var err error
 
 	outputRoomEvents := []gomatrixserverlib.ClientEvent{}
@@ -176,13 +212,11 @@ func (source GetMessagesSource) getMessages(
 
 	if fromPos > feedUpper && dir == "f" { // latest pos, no more data
 		endPos = fromPos
-		endTs = fromTs
 	} else if source.createEv != nil && fromPos > 0 && fromPos <= source.createEv.GetOffset() && dir == "b" { // we should get nothing before the room is created
 		endPos = fromPos
-		endTs = fromTs
 	} else if fromPos < feedLower || fromPos <= source.roomMinStream { // use db
-		outputRoomEvents, endPos, endTs, err = source.getFromDB(context.TODO(), userID, roomID, dir, fromPos, fromTs, int(limit))
-		log.Debugf("get context [%s dir] from cache, but out of range, get from db, endPos: %d", dir, endPos)
+		outputRoomEvents, endPos, err = source.getFromDB(context.TODO(), userID, roomID, dir, fromPos, fromTs, int(limit))
+		log.Debugf("search event [%s dir] from cache, but out of range, get from db, endPos: %d", dir, endPos)
 	} else { // use cache
 		cacheLoaded := true
 		if dir == "b" {
@@ -203,12 +237,11 @@ func (source GetMessagesSource) getMessages(
 
 					if stream.GetOffset() <= fromPos && stream.GetOffset() >= source.roomMinStream {
 						if ((source.rs.CheckEventVisibility(userID, int64(stream.Ev.OriginServerTS)) && !common.IsExtEvent(&ev)) || common.IsStateEventType(ev.Type)) && stream.GetOffset() > source.roomMinStream {
-
 							extra.ExpandMessages(&ev, userID, source.c.rsCurState, source.c.displayNameRepo)
 
 							// dereplication
 							if idx, ok := outputRecords[ev.EventID]; ok {
-								log.Warnf("get context forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
+								log.Warnf("search event forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
 								outputRoomEvents[idx] = ev
 							} else {
 								outputRoomEvents = append(outputRoomEvents, ev)
@@ -220,29 +253,25 @@ func (source GetMessagesSource) getMessages(
 							endPos = stream.GetOffset()
 						} else {
 							endPos = stream.GetOffset() - 1
-							endTs = int64(stream.Ev.OriginServerTS)
 						}
 
-						// endPos = stream.GetOffset() - 1
-						log.Infof("get context backward from cache, stream.Offset: %d endPos: %d", stream.GetOffset(), endPos)
-						// endTs = int64(stream.Ev.OriginServerTS)
+						log.Infof("search event backward from cache, stream.Offset: %d endPos: %d", stream.GetOffset(), endPos)
 
 						if limit == 0 {
 							break
 						}
 					}
 				}
-				log.Debugf("get context backward from cache, endPos: %d, data.Lower: %d, minStream: %d", endPos, data.Lower, source.roomMinStream)
+				log.Debugf("search event backward from cache, endPos: %d, data.Lower: %d, minStream: %d", endPos, data.Lower, source.roomMinStream)
 
 				if endPos == 0 {
 					endPos = data.Lower - 1
 					if endPos < source.roomMinStream {
 						endPos = source.roomMinStream
 					}
-					endTs = fromTs
-					log.Debugf("get context backward from cache, but endPos is 0, now is : %d", endPos)
+					log.Debugf("search event backward from cache, but endPos is 0, now is : %d", endPos)
 				}
-				log.Debugf("get context backward from cache, endPos: %d", endPos)
+				log.Debugf("search event backward from cache, endPos: %d", endPos)
 			})
 		} else {
 			source.tl.RAtomic(func(data *feedstypes.TimeLinesAtomicData) {
@@ -262,62 +291,60 @@ func (source GetMessagesSource) getMessages(
 
 					if stream.GetOffset() >= fromPos && stream.GetOffset() >= source.roomMinStream {
 						if (source.rs.CheckEventVisibility(userID, int64(stream.Ev.OriginServerTS)) && !common.IsExtEvent(&ev)) || common.IsStateEventType(ev.Type) {
+
 							extra.ExpandMessages(&ev, userID, source.c.rsCurState, source.c.displayNameRepo)
 
 							// dereplication
 							if idx, ok := outputRecords[ev.EventID]; ok {
-								log.Warnf("get context forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
+								log.Warnf("search event forward from cache, found replicate events, eventID: %d, index: %d", ev.EventID, idx)
 								outputRoomEvents[idx] = ev
 							} else {
 								outputRoomEvents = append(outputRoomEvents, ev)
 								outputRecords[ev.EventID] = len(outputRoomEvents) - 1
 							}
-
 						}
 						limit = limit - 1
 						endPos = stream.GetOffset() + 1
-						log.Debugf("get context forward from cache, stream.Offset: %d", stream.GetOffset())
-						endTs = int64(stream.Ev.OriginServerTS)
+						log.Debugf("search event forward from cache, stream.Offset: %d", stream.GetOffset())
 
 						if limit == 0 {
 							break
 						}
 					}
 				}
-				log.Debugf("get context forward from cache, endPos: %d, data.Lower: %d, minStream: %d", endPos, data.Lower, source.roomMinStream)
+				log.Debugf("search event forward from cache, endPos: %d, data.Lower: %d, minStream: %d", endPos, data.Lower, source.roomMinStream)
 
 				if endPos == 0 {
 					endPos = data.Upper + 1
-					endTs = fromTs
-					log.Debugf("get context forward from cache, but endPos is 0, now is : %d", endPos)
+					log.Debugf("search event forward from cache, but endPos is 0, now is : %d", endPos)
 				}
-				log.Debugf("get context forward from cache, endPos: %d", endPos)
+				log.Debugf("search event forward from cache, endPos: %d", endPos)
 			})
 		}
 		if !cacheLoaded {
-			outputRoomEvents, endPos, endTs, err = source.getFromDB(context.TODO(), userID, roomID, dir, fromPos, fromTs, int(limit))
-			log.Debugf("get context [%s dir], load cache failed , get from db, endPos: %d", dir, endPos)
+			outputRoomEvents, endPos, err = source.getFromDB(context.TODO(), userID, roomID, dir, fromPos, fromTs, int(limit))
+			log.Debugf("search event [%s dir], load cache failed , get from db, endPos: %d", dir, endPos)
 		}
 	}
 
-	return outputRoomEvents, endPos, endTs, err
+	return outputRoomEvents, endPos, err
 }
 
-func (source GetMessagesSource) getFromDB(
+func (source SearchMessagesSource) getFromDB(
 	ctx context.Context,
 	userID, roomID, dir string,
 	fromPos, fromTs int64, limit int,
-) ([]gomatrixserverlib.ClientEvent, int64, int64, error) {
+) ([]gomatrixserverlib.ClientEvent, int64, error) {
 	source.c.rsTimeline.QueryHitCounter.WithLabelValues("db", "RoomEventContext", "getEvents").Inc()
 
 	outputRoomEvents := []gomatrixserverlib.ClientEvent{}
 
-	events, offsets, _, err, endPos, endTs := source.c.db.SelectEventsByDir(ctx, userID, roomID, dir, fromPos, limit)
+	events, offsets, _, err, endPos, _ := source.c.db.SelectEventsByDir(ctx, userID, roomID, dir, fromPos, limit)
 	if err != nil {
-		return outputRoomEvents, fromPos, fromTs, err
+		return outputRoomEvents, fromPos, err
 	}
 	if len(events) == 0 {
-		return outputRoomEvents, fromPos, fromTs, nil
+		return outputRoomEvents, fromPos, nil
 	}
 
 	for i := range events {
@@ -339,5 +366,5 @@ func (source GetMessagesSource) getFromDB(
 		endPos = endPos + 1
 	}
 
-	return outputRoomEvents, endPos, endTs, nil
+	return outputRoomEvents, endPos, nil
 }

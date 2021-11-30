@@ -90,6 +90,23 @@ type SyncAPIDatabase interface {
 		ctx context.Context,
 		userID, roomID string, dir string, from, to int64,
 	) ([]gomatrixserverlib.ClientEvent, []int64, []int64, error, int64, int64)
+	SelectEventHistoryByRanges(
+		ctx context.Context,
+		roomID string,
+		rangeItems []types.RangeItem,
+		limit, offset int,
+	) ([]gomatrixserverlib.ClientEvent, error)
+	SelectEventCountByRanges(
+		ctx context.Context,
+		roomID string,
+		rangeItems []types.RangeItem,
+	) (int64, error)
+	SelectEventCountAfter(
+		ctx context.Context,
+		roomID string,
+		id int64,
+		rangeItems []types.RangeItem,
+	) (int64, error)
 	GetRidsForUser(
 		ctx context.Context,
 		userID string,

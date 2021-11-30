@@ -519,7 +519,7 @@ func (s *RoomEventConsumer) onNewRoomEvent(
 	}
 	s.roomHistoryTimeLine.SetDomainMaxStream(ev.RoomID, domain, ev.DomainOffset)
 
-	if common.IsStateClientEv(&ev) == true { //state ev
+	if common.IsStateEventType(ev.Type) == true { //state ev
 		ev, _ = s.processStateEv(&ev)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.rawredact" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)
@@ -562,7 +562,7 @@ func (s *RoomEventConsumer) onNewRoomEvent(
 	}
 
 	membership := ""
-	if common.IsStateClientEv(&ev) {
+	if common.IsStateEventType(ev.Type) {
 		if ev.Type == "m.room.member" {
 			con := external.MemberContent{}
 			json.Unmarshal(ev.Content, &con)
@@ -599,7 +599,7 @@ func (s *RoomEventConsumer) onBackFillEvent(
 		s.db.InsertOutputMinStream(context.TODO(), ev.EventOffset, ev.RoomID)
 	}
 
-	if common.IsStateClientEv(&ev) == true { //state ev
+	if common.IsStateEventType(ev.Type) == true { //state ev
 		ev, _ = s.processStateEv(&ev)
 	} else if ev.Type == "m.room.redaction" || ev.Type == "m.room.rawredact" || ev.Type == "m.room.update" {
 		s.processRedactEv(&ev)

@@ -824,7 +824,6 @@ func (s *SyncServer) getLatestValidEvIdx(opt BuildRoomRespOpt, reversed []feedst
 
 func (s *SyncServer) getJoinRoomEvents(opt *BuildRoomRespOpt, feeds []feedstypes.Feed, rs *repos.RoomState, index int, minStream int64) []gomatrixserverlib.ClientEvent {
 	var (
-		nowTs         = time.Now().Unix()
 		evRecords     = make(map[string]int)
 		msgEvent      = []gomatrixserverlib.ClientEvent{}
 		firstTimeLine = opt.firstTimeLine
@@ -864,15 +863,11 @@ func (s *SyncServer) getJoinRoomEvents(opt *BuildRoomRespOpt, feeds []feedstypes
 		}
 
 		meetCreate = ev.Type == gomatrixserverlib.MRoomCreate
-		isStateEv := common.IsStateClientEv(ev)
+		isStateEv := common.IsStateEventType(ev.Type)
 
 		if !isStateEv {
 			if !rs.CheckEventVisibility(opt.UserID, int64(ev.OriginServerTS)) {
 				log.Infof("SyncServer.buildRoomJoinResp skip event for visibity eventID:%s %s", ev.EventID, opt)
-				continue
-			}
-			if s.isSkipEv(opt, ev, nowTs) {
-				log.Infof("SyncServer.buildRoomJoinResp skip event for setting eventID:%s %s", ev.EventID, opt)
 				continue
 			}
 		}
@@ -944,18 +939,6 @@ func (s *SyncServer) getJoinUsers(roomID string) []string {
 		})
 	}
 	return users
-}
-
-func (s *SyncServer) isSkipEv(opt *BuildRoomRespOpt, ev *gomatrixserverlib.ClientEvent, checkTs int64) bool {
-	skipEv := false
-	visibilityTime := s.cfg.Sync.Visibility
-	if visibilityTime > 0 {
-		if int64(ev.OriginServerTS)/1000+visibilityTime < checkTs {
-			log.Infof("SyncServer.buildRoomJoinResp skip traceid:%s event:%s, ts:%d", opt.TraceID, ev.EventID, ev.OriginServerTS)
-			skipEv = true
-		}
-	}
-	return skipEv
 }
 
 func (s *SyncServer) buildRoomInviteResp(req *syncapitypes.SyncServerRequest, roomID, user string) (*syncapitypes.InviteResponse, int64) {
@@ -1062,9 +1045,6 @@ func (s *SyncServer) buildRoomLeaveResp(req *syncapitypes.SyncServerRequest, roo
 	msgEvent = []gomatrixserverlib.ClientEvent{}
 	minStream := s.roomHistory.GetRoomMinStream(roomID)
 
-	visibilityTime := s.cfg.Sync.Visibility
-	nowTs := time.Now().Unix()
-
 	for i, feed := range feeds {
 		if feed != nil {
 			stream := feed.(*feedstypes.StreamEvent)
@@ -1083,20 +1063,9 @@ func (s *SyncServer) buildRoomLeaveResp(req *syncapitypes.SyncServerRequest, roo
 					firstTs = int64(stream.Ev.OriginServerTS)
 				}
 
-				if common.IsStateClientEv(stream.GetEv()) == true || rs.CheckEventVisibility(req.UserID, int64(stream.Ev.OriginServerTS)) {
-					skipEv := false
-					if visibilityTime > 0 {
-						ts := int64(stream.Ev.OriginServerTS) / 1000
-						if ts+visibilityTime < nowTs && !common.IsStateClientEv(stream.Ev) {
-							log.Infof("buildLeaveRoomResp skip event %s, ts: %d", stream.Ev.EventID, stream.Ev.OriginServerTS)
-							skipEv = true
-						}
-					}
-
-					if !skipEv {
-						msgEvent = append(msgEvent, *stream.GetEv())
-						limit = limit - 1
-					}
+				if common.IsStateEventType(stream.GetEv().Type) == true || rs.CheckEventVisibility(req.UserID, int64(stream.Ev.OriginServerTS)) {
+					msgEvent = append(msgEvent, *stream.GetEv())
+					limit = limit - 1
 				}
 
 				if limit == 0 || stream.GetEv().Type == gomatrixserverlib.MRoomCreate || stream.Offset <= minStream {

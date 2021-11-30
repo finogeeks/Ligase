@@ -863,7 +863,7 @@ func (tl *UserTimeLineRepo) RegisterReceiptUpdate(userID string, cb common.Liste
 }
 
 func (tl *UserTimeLineRepo) UnregisterReceiptUpdate(userID string, cb common.ListenerCallback) {
-	tl.listener.Register(userID, cb)
+	tl.listener.Unregister(userID, cb)
 }
 
 func (tl *UserTimeLineRepo) broadcastReceiptUpdate(userID string, offset int64) {

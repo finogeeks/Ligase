@@ -1899,3 +1899,11 @@ func (externalReq *GetSyncServerMetricsRequest) Encode() ([]byte, error) {
 func (externalReq *SyncServerMetrics) Encode() ([]byte, error) {
 	return json.Marshal(externalReq)
 }
+
+func (externalReq *GetRoomHistoryRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}
+
+func (externalReq *GetRoomEventSearchRequest) Encode() ([]byte, error) {
+	return json.Marshal(externalReq)
+}
