@@ -864,6 +864,9 @@ func rowsToStreamEvents(rows *sql.Rows) ([]streamEvent, error) {
 func (s *outputRoomEventsStatements) selectRoomStateStream(
 	ctx context.Context, roomID string, pos int64,
 ) ([]*gomatrixserverlib.ClientEvent, []int64, error) {
+	if roomID == "!254438765391511552:tp.sumscope.cloud.com" {
+		return []*gomatrixserverlib.ClientEvent{}, []int64{}, nil
+	}
 	rows, err := s.selectRoomStateStreamStmt.QueryContext(ctx, roomID, pos)
 	if err != nil {
 		return nil, nil, err
