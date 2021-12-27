@@ -119,35 +119,35 @@ const selectEventsSQL = "" +
 
 const selectEventForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND ABS(id) >= $2" +
-	" ORDER BY ABS(id) ASC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
+	" WHERE room_id = $1 AND id >= $2" +
+	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC LIMIT $3"
 
 const selectEventBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND ABS(id) <= $2" +
-	" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC LIMIT $3"
+	" WHERE room_id = $1 AND id <= $2" +
+	" ORDER BY id DESC, origin_server_ts DESC, depth DESC, domain DESC LIMIT $3"
 
 const selectEventRangeForwardSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND ABS(id) >= $2 AND ABS(id) <= $3" +
-	" ORDER BY ABS(id) ASC, origin_server_ts ASC, depth ASC, domain ASC"
+	" WHERE room_id = $1 AND id >= $2 AND id <= $3" +
+	" ORDER BY id ASC, origin_server_ts ASC, depth ASC, domain ASC"
 
 const selectEventRangeBackSQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
-	" WHERE room_id = $1 AND ABS(id) <= $2 AND ABS(id) >= $3" +
-	" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC"
+	" WHERE room_id = $1 AND id <= $2 AND id >= $3" +
+	" ORDER BY id DESC, origin_server_ts DESC, depth DESC, domain DESC"
 
 const selectEventHisotrySQL = "" +
 	"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
 	" WHERE room_id = $1" +
-	" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC" +
+	" ORDER BY id DESC, origin_server_ts DESC, depth DESC, domain DESC" +
 	" LIMIT $2 OFFSET $3"
 
 const selectEventCountSQL = "" +
 	"SELECT COUNT(1) FROM syncapi_output_room_events WHERE room_id = $1"
 
 const selectEvenetCountBeforeSQL = "" +
-	"SELECT COUNT(1) FROM syncapi_output_room_events WHERE room_id = $1 AND ABS(id) < $2"
+	"SELECT COUNT(1) FROM syncapi_output_room_events WHERE room_id = $1 AND id < $2"
 
 const updateEventSQL = "" +
 	"UPDATE syncapi_output_room_events SET event_json = $1 WHERE event_id = $2 and room_id= $3"
@@ -718,7 +718,7 @@ func (s *outputRoomEventsStatements) selectEventHistory(ctx context.Context, roo
 		sql := "" +
 			"SELECT id, event_json, origin_server_ts, type FROM syncapi_output_room_events" +
 			" WHERE room_id = $1 AND (type = ANY(ARRAY[" + stateEventTypeSubSQL + "]) OR " + buildRangeSubSQL(rangeItems) + ")" +
-			" ORDER BY ABS(id) DESC, origin_server_ts DESC, depth DESC, domain DESC" +
+			" ORDER BY id DESC, origin_server_ts DESC, depth DESC, domain DESC" +
 			" LIMIT $2 OFFSET $3"
 		rows, err = s.db.db.QueryContext(ctx, sql, roomID, limit, offset)
 	}
