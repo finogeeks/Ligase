@@ -154,15 +154,15 @@ func (r ReqGetRoomHistory) Process(consumer interface{}, msg core.Coder, device 
 	if outputRoomEvents == nil {
 		outputRoomEvents = []gomatrixserverlib.ClientEvent{}
 	}
-	count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
-	if err != nil {
-		log.Warnf("cannot count event, roomID: %s", roomID)
-		return http.StatusInternalServerError, jsonerror.Unknown("count event error")
-	}
+	// count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
+	// if err != nil {
+	// 	log.Warnf("cannot count event, roomID: %s", roomID)
+	// 	return http.StatusInternalServerError, jsonerror.Unknown("count event error")
+	// }
 
 	resp := new(syncapitypes.RoomHistoryResp)
 	resp.Page = req.Page
-	resp.Total = int(count)
+	// resp.Total = int(count)
 
 	if c.Cfg.UseMessageFilter {
 		resp.Chunk = *common.FilterEventTypes(&outputRoomEvents, &evFilter.Types, &evFilter.NotTypes)
