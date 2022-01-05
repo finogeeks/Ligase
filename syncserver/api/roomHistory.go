@@ -27,6 +27,7 @@ import (
 	"github.com/finogeeks/ligase/common/jsonerror"
 	"github.com/finogeeks/ligase/core"
 	"github.com/finogeeks/ligase/model/authtypes"
+	"github.com/finogeeks/ligase/model/feedstypes"
 	"github.com/finogeeks/ligase/model/repos"
 	"github.com/finogeeks/ligase/model/syncapitypes"
 	"github.com/finogeeks/ligase/model/types"
@@ -146,22 +147,22 @@ func (r ReqGetRoomHistory) Process(consumer interface{}, msg core.Coder, device 
 	}
 
 	ctx := context.TODO()
-	outputRoomEvents, err := r.selectFromDB(ctx, c, rs, userID, roomID, rangeItems, req.Size, (req.Page-1)*req.Size)
+	outputRoomEvents, err := r.loadEvents(ctx, c, rs, userID, roomID, rangeItems, req.Size, (req.Page-1)*req.Size)
 	if err != nil {
 		return http.StatusInternalServerError, jsonerror.Unknown(err.Error())
 	}
 	if outputRoomEvents == nil {
 		outputRoomEvents = []gomatrixserverlib.ClientEvent{}
 	}
-	count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
-	if err != nil {
-		log.Warnf("cannot count event, roomID: %s", roomID)
-		return http.StatusInternalServerError, jsonerror.Unknown("count event error")
-	}
+	// count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
+	// if err != nil {
+	// 	log.Warnf("cannot count event, roomID: %s", roomID)
+	// 	return http.StatusInternalServerError, jsonerror.Unknown("count event error")
+	// }
 
 	resp := new(syncapitypes.RoomHistoryResp)
 	resp.Page = req.Page
-	resp.Total = int(count)
+	// resp.Total = int(count)
 
 	if c.Cfg.UseMessageFilter {
 		resp.Chunk = *common.FilterEventTypes(&outputRoomEvents, &evFilter.Types, &evFilter.NotTypes)
@@ -176,7 +177,7 @@ func (r ReqGetRoomHistory) Process(consumer interface{}, msg core.Coder, device 
 	return http.StatusOK, resp
 }
 
-func (r ReqGetRoomHistory) selectFromDB(
+func (r ReqGetRoomHistory) loadEvents(
 	ctx context.Context,
 	c *InternalMsgConsumer,
 	rs *repos.RoomState,
@@ -184,6 +185,32 @@ func (r ReqGetRoomHistory) selectFromDB(
 	rangeItems []types.RangeItem,
 	limit int, offset int,
 ) (outputRoomEvents []gomatrixserverlib.ClientEvent, err error) {
+	dbOffset := offset
+	dbLimit := limit
+	c.rmHsTimeline.LoadHistory(roomID, true)
+	history := c.rmHsTimeline.GetHistory(roomID)
+	if history != nil {
+		feeds, _, _, _, _ := history.GetAllFeedsReverse()
+		if dbOffset < len(feeds) {
+			feeds = feeds[dbOffset:]
+			for i := 0; i < dbLimit; i++ {
+				if i >= len(feeds) {
+					break
+				}
+				feed := feeds[i]
+				stream := feed.(*feedstypes.StreamEvent)
+				ev := stream.GetEv()
+				extra.ExpandMessages(ev, userId, c.rsCurState, c.displayNameRepo)
+				outputRoomEvents = append(outputRoomEvents, *ev)
+			}
+			dbLimit -= len(feeds)
+			dbOffset += len(feeds)
+		}
+	}
+	if dbLimit <= 0 {
+		return outputRoomEvents, nil
+	}
+
 	c.rsTimeline.QueryHitCounter.WithLabelValues("db", "RoomMessages", "getEvents").Inc()
 
 	events, err := c.db.SelectEventHistoryByRanges(ctx, roomID, rangeItems, limit, offset)
@@ -191,23 +218,7 @@ func (r ReqGetRoomHistory) selectFromDB(
 		return
 	}
 
-	// visibilityTime := c.GetCfg().Sync.Visibility
-	// nowTs := time.Now().Unix()
-
 	for idx := range events {
-		// isState := common.IsStateClientEv(&events[idx])
-		// if !isState && !rs.CheckEventVisibility(userId, int64(events[idx].OriginServerTS)) {
-		// 	log.Infof("getHistory select from db check visibility false %s %s ts:%d", roomID, events[idx].EventID, events[idx].OriginServerTS)
-		// 	continue
-		// }
-		// if visibilityTime > 0 {
-		// 	ts := int64(events[idx].OriginServerTS) / 1000
-		// 	if ts+visibilityTime < nowTs && !isState {
-		// 		log.Infof("getHistory select from db skip event %s, ts: %d", events[idx].EventID, events[idx].OriginServerTS)
-		// 		continue
-		// 	}
-		// }
-
 		extra.ExpandMessages(&events[idx], userId, c.rsCurState, c.displayNameRepo)
 		outputRoomEvents = append(outputRoomEvents, events[idx])
 	}

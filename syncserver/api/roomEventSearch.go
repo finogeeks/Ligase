@@ -140,11 +140,11 @@ func (ReqGetEventSearch) Process(consumer interface{}, msg core.Coder, device *a
 		}
 	}
 
-	count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
-	if err != nil {
-		log.Warnf("cannot count event, roomID: %s", roomID)
-		return http.StatusInternalServerError, jsonerror.Unknown("count event error")
-	}
+	// count, err := c.db.SelectEventCountByRanges(ctx, roomID, rangeItems)
+	// if err != nil {
+	// 	log.Warnf("cannot count event, roomID: %s", roomID)
+	// 	return http.StatusInternalServerError, jsonerror.Unknown("count event error")
+	// }
 
 	countAfter, err := c.db.SelectEventCountAfter(ctx, roomID, offsets[0], rangeItems)
 	if err != nil {
@@ -181,7 +181,7 @@ func (ReqGetEventSearch) Process(consumer interface{}, msg core.Coder, device *a
 	extra.ExpandMessages(&baseEvent[0], userID, c.rsCurState, c.displayNameRepo)
 
 	resp := new(syncapitypes.SearchEventResp)
-	resp.Total = int(count)
+	// resp.Total = int(count)
 	resp.Page = int(page)
 	resp.Chunk = make([]gomatrixserverlib.ClientEvent, 0, len(bwEvents)+len(baseEvent)+len(fwEvents))
 	resp.Chunk = append(resp.Chunk, bwEvents...)
