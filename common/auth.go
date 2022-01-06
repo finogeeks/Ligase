@@ -30,9 +30,9 @@ import (
 	"github.com/finogeeks/ligase/common/config"
 	"github.com/finogeeks/ligase/common/filter"
 	"github.com/finogeeks/ligase/common/jsonerror"
-	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 	"github.com/finogeeks/ligase/model/authtypes"
 	"github.com/finogeeks/ligase/model/service"
+	"github.com/finogeeks/ligase/skunkworks/gomatrixserverlib"
 )
 
 func VerifyToken(token string, requestURI string, cache service.Cache, cfg config.Dendrite, devFilter *filter.SimpleFilter) (*authtypes.Device, *util.JSONResponse) {
@@ -92,6 +92,14 @@ func VerifyToken(token string, requestURI string, cache service.Cache, cfg confi
 					JSON: jsonerror.PwdChangeKick("kick password change device"),
 				}
 				cache.DelPwdChangeDevice(device.ID, device.UserID)
+				return nil, resErr
+			} else if devFilter.GetClientTypeKick(device.UserID, device.ID) != "" {
+				log.Infof("invalid token filter not found key:%s for client type kick, req:%s", key, requestURI)
+				resErr := &util.JSONResponse{
+					Code: 401,
+					JSON: jsonerror.ClientTypeKick(devFilter.GetClientTypeKick(device.UserID, device.ID)),
+				}
+				devFilter.DelClientTypeKick(device.UserID, device.ID)
 				return nil, resErr
 			} else {
 				log.Infof("invalid token filter not found key:%s, req:%s", key, requestURI)

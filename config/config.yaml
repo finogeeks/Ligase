@@ -597,3 +597,4 @@ metrics:
             large: 1000     # 超大
             middle: 300     # 中
             small: 100      # 小
+kick_client_type: false

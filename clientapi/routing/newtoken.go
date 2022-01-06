@@ -17,6 +17,7 @@ package routing
 import (
 	"context"
 	"fmt"
+	"github.com/finogeeks/ligase/model/service"
 	"net/http"
 	"time"
 
@@ -45,6 +46,7 @@ func GenNewToken(
 	syncDB model.SyncAPIDatabase,
 	rpcCli rpc.RpcClient,
 	ip string,
+	cache service.Cache,
 ) (int, core.Coder) {
 	mac := common.GetDeviceMac(device.ID)
 	mac = fmt.Sprintf("%s-%s", mac, "gen")
@@ -71,6 +73,15 @@ func GenNewToken(
 		httputil.LogThenErrorCtx(ctx, err)
 	}
 
+	deviceName, clientType := getDeviceInfo(device.DisplayName, cfg.KickClientType)
+
+	if cfg.KickClientType && clientType != "" {
+		list := kickClientTypeDevice(device.UserID, cache, clientType, cfg.KickClientType)
+		for _, id := range list {
+			LogoutDevice(device.UserID, id, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "kick_client_type")
+		}
+	}
+
 	dev, err := deviceDB.CreateDevice(
 		ctx, device.UserID, deviceID, deviceType, &device.DisplayName, true, &mac, -1,
 	)
@@ -80,7 +91,8 @@ func GenNewToken(
 	}
 
 	log.Infof("login success user %s device %s ip:%s token %s", dev.UserID, dev.ID, ip, token)
-	pubLoginToken(dev.UserID, dev.ID, rpcCli)
+
+	pubLoginToken(dev.UserID, dev.ID, clientType, deviceName, rpcCli)
 	pubLoginInfo(dev.UserID, ip, device.DisplayName, "newtoken", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      dev.UserID,
@@ -155,7 +167,7 @@ func GetSuperAdminToken(
 	}
 
 	log.Infof("login success super user %s device %s ip:%s gen token %s", userID, dev.ID, ip, token)
-	pubLoginToken(userID, dev.ID, rpcCli)
+	pubLoginToken(userID, dev.ID, "", "", rpcCli)
 	pubLoginInfo(userID, displayName, ip, "super", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      userID,

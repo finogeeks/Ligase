@@ -987,7 +987,7 @@ func (ReqPostLogin) Process(consumer interface{}, msg core.Coder, device *authty
 	req := msg.(*external.PostLoginRequest)
 	return routing.LoginPost(
 		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
-		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter, c.RpcClient,
+		c.syncDB, c.Cfg, false, c.idg, c.tokenFilter, c.RpcClient, c.cacheIn,
 	)
 }
 
@@ -1043,7 +1043,7 @@ func (ReqPostLoginAdmin) Process(consumer interface{}, msg core.Coder, device *a
 	req := msg.(*external.PostLoginRequest)
 	return routing.LoginPost(
 		context.Background(), req, c.accountDB, c.deviceDB, c.encryptDB,
-		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter, c.RpcClient,
+		c.syncDB, c.Cfg, true, c.idg, c.tokenFilter, c.RpcClient, c.cacheIn,
 	)
 }
 
@@ -2092,7 +2092,7 @@ func (ReqGetUserNewToken) GetPrefix() []string { return []string{"r0"} }
 func (ReqGetUserNewToken) Process(consumer interface{}, msg core.Coder, device *authtypes.Device) (int, core.Coder) {
 	c := consumer.(*InternalMsgConsumer)
 	req := msg.(*external.PostLoginRequest)
-	return routing.GenNewToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcClient, req.IP)
+	return routing.GenNewToken(context.Background(), c.deviceDB, device, c.tokenFilter, c.idg, c.Cfg, c.encryptDB, c.syncDB, c.RpcClient, req.IP, c.cacheIn)
 }
 
 type ReqGetSuperAdminToken struct{}

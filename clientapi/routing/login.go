@@ -19,6 +19,7 @@ package routing
 
 import (
 	"context"
+	"github.com/finogeeks/ligase/model/service"
 	"net/http"
 	"strings"
 	"time"
@@ -58,6 +59,7 @@ func providerLogin(
 	idg *uid.UidGenerator,
 	tokenFilter *filter.Filter,
 	rpcCli rpc.RpcClient,
+	cache service.Cache,
 ) (int, core.Coder) {
 	if admin == true {
 		if r.Password != cfg.Authorization.AuthorizeCode {
@@ -103,6 +105,19 @@ func providerLogin(
 		return httputil.LogThenErrorCtx(ctx, err)
 	}
 
+	info := ""
+	if r.InitialDisplayName != nil {
+		info = *r.InitialDisplayName
+	}
+	deviceName, clientType := getDeviceInfo(info, cfg.KickClientType)
+
+	if cfg.KickClientType && clientType != "" {
+		list := kickClientTypeDevice(userID, cache, clientType, cfg.KickClientType)
+		for _, id := range list {
+			LogoutDevice(userID, id, deviceDB, cache, encryptDB, syncDB, tokenFilter, rpcCli, "kick_client_type")
+		}
+	}
+
 	dev, err := deviceDB.CreateDevice(
 		ctx, userID, deviceID, deviceType, r.InitialDisplayName, human, devID, -1,
 	)
@@ -126,11 +141,8 @@ func providerLogin(
 			log.Errorf("pub login info err %v", err)
 		}
 	}
-	pubLoginToken(userID, deviceID, rpcCli)
-	info := ""
-	if r.InitialDisplayName != nil {
-		info = *r.InitialDisplayName
-	}
+
+	pubLoginToken(userID, deviceID, clientType, deviceName, rpcCli)
 	pubLoginInfo(userID, r.IP, info, "login", cfg)
 	return http.StatusOK, &external.PostLoginResponse{
 		UserID:      dev.UserID,
@@ -140,15 +152,56 @@ func providerLogin(
 	}
 }
 
-func pubLoginToken(userID string, deviceID string, rpcCli rpc.RpcClient) {
+func kickClientTypeDevice(userID string, cache service.Cache, loginClientType string, kickClientType bool) (list []string) {
+	list = []string{}
+	if loginClientType == "" || !kickClientType {
+		return
+	}
+	deviceList := cache.GetDevicesByUserID(userID)
+	for _, device := range *deviceList {
+		_, clientType := getDeviceInfo(device.DisplayName, kickClientType)
+		if loginClientType == clientType {
+			list = append(list, device.ID)
+		}
+	}
+	return
+}
+
+func pubLoginToken(userID, deviceID, clientType, deviceName string, rpcCli rpc.RpcClient) {
 	content := types.FilterTokenContent{
 		UserID:     userID,
 		DeviceID:   deviceID,
 		FilterType: types.FILTERTOKENADD,
+		ClientType: clientType,
+		DeviceName: deviceName,
 	}
 	err := rpcCli.AddFilterToken(context.Background(), &content)
 	if err != nil {
 		log.Errorf("pub login filter token info err %v", err)
+	}
+}
+
+func getDeviceInfo(info string, kickClientType bool) (deviceName string, clientType string) {
+	if info == "" || !kickClientType {
+		return "", ""
+	}
+	m := make(map[string]interface{})
+	err := json.Unmarshal([]byte(info), &m)
+	if err == nil {
+		if v, ok := m["deviceName"]; ok {
+			deviceName = v.(string)
+		}
+		if v, ok := m["clientType"]; ok {
+			clientType = v.(string)
+			if clientType != "Desktop" {
+				clientType = "NotDesktop"
+			}
+		} else {
+			clientType = "NotDesktop"
+		}
+		return deviceName, clientType
+	} else {
+		return "", ""
 	}
 }
 
@@ -185,6 +238,7 @@ func LoginPost(
 	idg *uid.UidGenerator,
 	tokenFilter *filter.Filter,
 	rpcCli rpc.RpcClient,
+	cache service.Cache,
 ) (int, core.Coder) {
 	// var r external.PostLoginRequest
 	// resErr := httputil.UnmarshalJSONRequest(req, &r)
@@ -208,7 +262,7 @@ func LoginPost(
 	}
 
 	if strings.EqualFold(cfg.Authorization.AuthorizeMode, "provider") {
-		return providerLogin(req.User, ctx, *req, cfg, deviceDB, accountDB, encryptDB, syncDB, admin, idg, tokenFilter, rpcCli)
+		return providerLogin(req.User, ctx, *req, cfg, deviceDB, accountDB, encryptDB, syncDB, admin, idg, tokenFilter, rpcCli, cache)
 	}
 
 	return http.StatusServiceUnavailable, jsonerror.Unknown("Internal Server Error")
