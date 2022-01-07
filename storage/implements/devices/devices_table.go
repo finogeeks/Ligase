@@ -69,7 +69,7 @@ const recoverDeviceSQL = "" +
 	"SELECT device_id, user_id, last_active_ts, created_ts, display_name, device_type, identifier FROM device_devices WHERE device_type = 'actual' or device_type = 'bot' limit $1 offset $2"
 
 const selectActiveDeviceSQL = "" +
-	"SELECT device_id, identifier, user_id, display_name FROM device_devices ORDER BY created_ts ASC LIMIT $1 OFFSET $2"
+	"SELECT device_id, identifier, user_id, display_name, created_ts FROM device_devices ORDER BY created_ts ASC LIMIT $1 OFFSET $2"
 
 const updateDeviceActiveTsSQL = "" +
 	"UPDATE device_devices SET last_active_ts = $3 WHERE device_id = $1 AND user_id = $2"
