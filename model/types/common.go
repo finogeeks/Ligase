@@ -402,6 +402,8 @@ type FilterTokenContent struct {
 	UserID     string `json:"user_id,omitempty"`
 	DeviceID   string `json:"device_id,omitempty"`
 	FilterType string `json:"filter_type,omitempty"`
+	ClientType string `json:"client_type,omitempty"`
+	DeviceName string `json:"device_name,omitempty"`
 }
 
 type VerifyTokenRequest struct {

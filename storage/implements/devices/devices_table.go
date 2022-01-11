@@ -69,7 +69,7 @@ const recoverDeviceSQL = "" +
 	"SELECT device_id, user_id, last_active_ts, created_ts, display_name, device_type, identifier FROM device_devices WHERE device_type = 'actual' or device_type = 'bot' limit $1 offset $2"
 
 const selectActiveDeviceSQL = "" +
-	"SELECT device_id, identifier, user_id FROM device_devices ORDER BY created_ts ASC LIMIT $1 OFFSET $2"
+	"SELECT device_id, identifier, user_id, display_name, created_ts FROM device_devices ORDER BY created_ts ASC LIMIT $1 OFFSET $2"
 
 const updateDeviceActiveTsSQL = "" +
 	"UPDATE device_devices SET last_active_ts = $3 WHERE device_id = $1 AND user_id = $2"
@@ -260,30 +260,36 @@ func (s *devicesStatements) selectDeviceTotal(
 
 func (s *devicesStatements) selectActiveDevices(
 	ctx context.Context, limit, offset int,
-) ([]string, []string, []string, int, error) {
+) ([]string, []string, []string, []string, []int64, int, error) {
 	total := 0
 	rows, err := s.selectActiveDeviceStmt.QueryContext(ctx, limit, offset)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, nil, nil, 0, err
 	}
 	defer rows.Close()
 	devids := []string{}
 	dids := []string{}
 	uids := []string{}
+	displayNames := []string{}
+	tss := []int64{}
 	for rows.Next() {
 		var devid string
 		var did string
 		var uid string
-		if err = rows.Scan(&devid, &did, &uid); err != nil {
-			return nil, nil, nil, 0, err
+		var displayName string
+		var ts int64
+		if err = rows.Scan(&devid, &did, &uid, &displayName, &ts); err != nil {
+			return nil, nil, nil, nil, nil, 0, err
 		}
 
 		total = total + 1
 		devids = append(devids, devid)
 		dids = append(dids, did)
 		uids = append(uids, uid)
+		displayNames = append(displayNames, displayName)
+		tss = append(tss, ts)
 	}
-	return devids, dids, uids, total, nil
+	return devids, dids, uids, displayNames, tss, total, nil
 }
 
 func (s *devicesStatements) updateDeviceActiveTs(

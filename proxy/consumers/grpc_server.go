@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/config"
@@ -87,7 +88,7 @@ func (s *Server) AddFilterToken(ctx context.Context, req *pb.AddFilterTokenReq) 
 			err = toErr(e)
 		}
 	}()
-	s.tokenFilter.Insert(req.UserID, req.DeviceID)
+	s.tokenFilter.Insert(req.UserID, req.DeviceID, req.ClientType, req.DeviceName, time.Now().UnixNano()/1e6)
 	return &pb.Empty{}, nil
 }
 

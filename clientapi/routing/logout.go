@@ -94,8 +94,9 @@ func LogoutDevice(
 	if err != nil {
 		log.Errorf("Log out pub key update, device: %s, user: %s , error: %v", deviceID, userID, err)
 	}
-
-	pubLogoutToken(ctx, userID, deviceID, rpcCli)
+	if source != "kick_client_type" {
+		pubLogoutToken(ctx, userID, deviceID, rpcCli)
+	}
 }
 
 func pubLogoutToken(ctx context.Context, userID string, deviceID string, rpcCli rpc.RpcClient) {

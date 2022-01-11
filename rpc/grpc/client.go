@@ -665,8 +665,10 @@ func (r *Client) AddFilterToken(ctx context.Context, req *types.FilterTokenConte
 			}
 		}()
 		_, err = c.AddFilterToken(ctx, &pb.AddFilterTokenReq{
-			UserID:   req.UserID,
-			DeviceID: req.DeviceID,
+			UserID:     req.UserID,
+			DeviceID:   req.DeviceID,
+			ClientType: req.ClientType,
+			DeviceName: req.DeviceName,
 		})
 		if err != nil {
 			log.Errorf("AddFilterToken err %s", err)

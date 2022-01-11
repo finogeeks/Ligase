@@ -532,6 +532,8 @@ type Dendrite struct {
 	Metrics struct {
 		SyncServer SyncServerMetrics `yaml:"sync_server"`
 	} `yaml:"metrics"`
+
+	KickClientType bool `yaml:"kick_client_type"`
 }
 
 type SyncServerMetrics struct {

@@ -148,7 +148,7 @@ func StartMonolithServer(base *basecomponent.BaseDendrite, cmd *serverCmdPar) {
 
 	tokenFilter := filter.GetFilterMng().Register("device", deviceDB)
 	tokenFilter.Load()
-	newTokenFilter := filter.NewSimpleFilter(deviceDB)
+	newTokenFilter := filter.NewSimpleFilter(deviceDB, base.Cfg.KickClientType)
 	newTokenFilter.Load()
 
 	newFederation := fed.NewFederation(base.Cfg, rpcCli)

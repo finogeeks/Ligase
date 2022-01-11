@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"net/http"
 
-	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 	"github.com/finogeeks/ligase/plugins/message/internals"
+	util "github.com/finogeeks/ligase/skunkworks/gomatrixutil"
 )
 
 type MatrixError = internals.MatrixError
@@ -105,6 +105,10 @@ func UnknownToken(msg string) *MatrixError {
 
 func PwdChangeKick(msg string) *MatrixError {
 	return &MatrixError{"M_PWD_CHANGE_KICK", msg}
+}
+
+func ClientTypeKick(msg string) *MatrixError {
+	return &MatrixError{"M_CLIENT_TYPE_KICK", msg}
 }
 
 // WeakPassword is an error which is returned when the client tries to register

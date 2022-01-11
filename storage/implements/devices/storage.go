@@ -20,6 +20,7 @@ package devices
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	mon "github.com/finogeeks/ligase/skunkworks/monitor/go-client/monitor"
@@ -250,13 +251,30 @@ func (d *Database) LoadSimpleFilterData(f *filter.SimpleFilter) bool {
 			return true
 		}
 		log.Infof("LoadSimpleFilterData limit:%d @offset:%d", limit, offset)
-		devids, _, uids, total, err := d.devices.selectActiveDevices(ctx, limit, offset)
+		devids, _, uids, displayNames, tss, total, err := d.devices.selectActiveDevices(ctx, limit, offset)
 		if err != nil {
 			log.Errorf("LoadSimpleFilterData from db with err %v", err)
 			return false
 		}
 		for idx := range devids {
-			f.Insert(uids[idx], devids[idx])
+			displayName := displayNames[idx]
+			m := make(map[string]interface{})
+			deviceName, clientType := "", ""
+			err = json.Unmarshal([]byte(displayName), &m)
+			if err == nil {
+				if v, ok := m["deviceName"]; ok {
+					deviceName = v.(string)
+				}
+				if v, ok := m["clientType"]; ok {
+					clientType = v.(string)
+					if clientType != "Desktop" {
+						clientType = "NotDesktop"
+					}
+				} else {
+					clientType = "NotDesktop"
+				}
+			}
+			f.Insert(uids[idx], devids[idx], clientType, deviceName, tss[idx])
 		}
 		if total < limit {
 			finish = true

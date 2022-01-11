@@ -15,6 +15,7 @@
 package filter
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/finogeeks/ligase/skunkworks/log"
 	"strings"
@@ -22,21 +23,27 @@ import (
 )
 
 type SimpleFilter struct {
-	loader SimpleFilterLoader
-	repo   sync.Map //key: userId:mac, val: device
-	ready  bool
+	loader         SimpleFilterLoader
+	repo           sync.Map //key: userId:mac, val: device
+	userRepo       sync.Map //key: userId:client_type, val:true
+	delRepo        sync.Map //key: userId:mac val:string
+	ready          bool
+	kickClientType bool
 }
 
 type Device struct {
-	devMap sync.Map //key: userId:mac , val: true
+	devMap sync.Map
+	//key: userId:mac , val: true
 }
 
 func NewSimpleFilter(
 	loader SimpleFilterLoader,
+	kickClientType bool,
 ) *SimpleFilter {
 	sf := &SimpleFilter{
-		loader: loader,
-		ready:  false,
+		loader:         loader,
+		ready:          false,
+		kickClientType: kickClientType,
 	}
 	return sf
 }
@@ -69,7 +76,7 @@ func (sf *SimpleFilter) isVirtual(mac string) bool {
 	return mac == "virtual"
 }
 
-func (sf *SimpleFilter) Insert(userId, deviceId string) {
+func (sf *SimpleFilter) Insert(userId, deviceId, clientType, deviceName string, createTs int64) {
 	mac := fmt.Sprintf("%s:%s", userId, sf.getMac(deviceId))
 	key := fmt.Sprintf("%s:%s", userId, deviceId)
 	var dev *Device
@@ -90,6 +97,20 @@ func (sf *SimpleFilter) Insert(userId, deviceId string) {
 		sf.repo.Store(mac, dev)
 	}
 	log.Infof("insert token: %s", key)
+	if clientType == "" || !sf.kickClientType {
+		return
+	}
+	userClientKey := fmt.Sprintf("%s:%s", userId, clientType)
+	if val, ok := sf.userRepo.Load(userClientKey); ok {
+		kickDeviceId := val.(string)
+		sf.Delete(userId, kickDeviceId)
+		delInfo := make(map[string]interface{})
+		delInfo["deviceName"] = deviceName
+		delInfo["loginTime"] = createTs
+		strDelInfo, _ := json.Marshal(delInfo)
+		sf.delRepo.Store(fmt.Sprintf("%s:%s", userId, kickDeviceId), string(strDelInfo))
+	}
+	sf.userRepo.Store(userClientKey, deviceId)
 }
 
 func (sf *SimpleFilter) Delete(userId, deviceId string) {
@@ -127,4 +148,18 @@ func (sf *SimpleFilter) Lookup(userId, deviceId string) bool {
 		log.Infof("cannot found token: %s", key)
 		return false
 	}
+}
+
+func (sf *SimpleFilter) GetClientTypeKick(userId, deviceId string) string {
+	key := fmt.Sprintf("%s:%s", userId, deviceId)
+	if v, ok := sf.delRepo.Load(key); ok {
+		return v.(string)
+	} else {
+		return ""
+	}
+}
+
+func (sf *SimpleFilter) DelClientTypeKick(userId, deviceId string) {
+	key := fmt.Sprintf("%s:%s", userId, deviceId)
+	sf.delRepo.Delete(key)
 }
