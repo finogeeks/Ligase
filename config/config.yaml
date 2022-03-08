@@ -493,6 +493,7 @@ push_service:
     remove_fail_times: 3
     push_server_url: "<your push server url>"
     android_push_server_url: "<your android push server url>"
+    custom_push_server_url: ""
 
 log:
     level: info

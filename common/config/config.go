@@ -361,6 +361,7 @@ type Dendrite struct {
 		RemoveFailTimes      int    `yaml:"remove_fail_times"`
 		PushServerUrl        string `yaml:"push_server_url"`
 		AndroidPushServerUrl string `yaml:"android_push_server_url"`
+		CustomPushServerUrl  string `yaml:"custom_push_server_url"`
 	} `yaml:"push_service"`
 
 	Log struct {

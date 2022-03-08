@@ -341,6 +341,7 @@ type Notification struct {
 	Counts            Counts             `json:"counts,omitempty"`
 	Devices           []Device           `json:"devices,omitempty"`
 	CreateEvent       jsonRaw.RawMessage `json:"create_event,omitempty"`
+	UserId            string             `json:"user_id,omitempty"`
 }
 
 type Counts struct {

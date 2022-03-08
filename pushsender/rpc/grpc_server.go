@@ -187,10 +187,37 @@ func (s *Server) SetPushFailTimes(pusher pushapitypes.PusherWitchInterfaceData, 
 	}
 }
 
+func (s *Server) doCustomPush(data *pushapitypes.PushPubContents,
+	pushContent *pushapitypes.PushPubContent) {
+	notify := s.createNotify(data, pushContent, nil, nil)
+	if notify == nil {
+		return
+	}
+	request, err := json.Marshal(notify)
+	if err != nil {
+		log.Errorw("traceid:%s doCustomPush process marshal error", log.KeysAndValues{"traceid", data.TraceId, "err", err})
+		return
+	}
+	code, body, err := s.HttpRequest(s.cfg.PushService.CustomPushServerUrl, request, data.TraceId)
+	if err != nil {
+		log.Errorw("doCustomPush http request error", log.KeysAndValues{"traceid", data.TraceId, "userId", pushContent.UserID, "content", string(request), "error", err})
+		return
+	}
+	if code != http.StatusOK {
+		log.Errorw("http request error", log.KeysAndValues{"traceid", data.TraceId, "status_code", code, "response", string(body), "userId", pushContent.UserID})
+	} else {
+		log.Infof("doCustomPush traceid:%s push content success userId:%s, content:%s", data.TraceId, pushContent.UserID, string(request))
+	}
+}
+
 func (s *Server) pushData(
 	data *pushapitypes.PushPubContents,
 	pushContent *pushapitypes.PushPubContent,
 ) {
+	if s.cfg.PushService.CustomPushServerUrl != "" && pushContent != nil {
+		go s.doCustomPush(data, pushContent)
+		return
+	}
 	if pushContent == nil || pushContent.Pushers == nil {
 		return
 	}
@@ -212,7 +239,7 @@ func (s *Server) pushData(
 		} else {
 			continue
 		}
-		notify := s.createNotify(data, pushContent, pusher, pusherData)
+		notify := s.createNotify(data, pushContent, &pusher, pusherData)
 		if notify == nil {
 			continue
 		}
@@ -234,7 +261,7 @@ func (s *Server) pushData(
 	}
 }
 
-func (s *Server) createNotify(data *pushapitypes.PushPubContents, pushContent *pushapitypes.PushPubContent, pusher pushapitypes.PusherWitchInterfaceData, pusherData interface{}) *pushapitypes.Notify {
+func (s *Server) createNotify(data *pushapitypes.PushPubContents, pushContent *pushapitypes.PushPubContent, pusher *pushapitypes.PusherWitchInterfaceData, pusherData interface{}) *pushapitypes.Notify {
 	userIsTarget := false
 	if (data.Input.StateKey != nil) && (pushContent.UserID == *data.Input.StateKey) {
 		userIsTarget = true
@@ -264,22 +291,25 @@ func (s *Server) createNotify(data *pushapitypes.PushPubContents, pushContent *p
 			Counts: pushapitypes.Counts{
 				UnRead: pushContent.NotifyCount,
 			},
-			Devices: []pushapitypes.Device{
-				{
-					DeviceID:  pusher.DeviceID,
-					UserName:  pusher.UserName,
-					AppId:     pusher.AppId,
-					PushKey:   pusher.PushKey,
-					PushKeyTs: pusher.PushKeyTs,
-					Data:      pusherData,
-					Tweak: pushapitypes.Tweaks{
-						Sound:     pushContent.Action.Sound,
-						HighLight: pushContent.Action.HighLight,
-					},
+			CreateEvent: data.CreateContent,
+			UserId:      pushContent.UserID,
+		},
+	}
+	if pusher != nil {
+		notify.Notify.Devices = []pushapitypes.Device{
+			{
+				DeviceID:  pusher.DeviceID,
+				UserName:  pusher.UserName,
+				AppId:     pusher.AppId,
+				PushKey:   pusher.PushKey,
+				PushKeyTs: pusher.PushKeyTs,
+				Data:      pusherData,
+				Tweak: pushapitypes.Tweaks{
+					Sound:     pushContent.Action.Sound,
+					HighLight: pushContent.Action.HighLight,
 				},
 			},
-			CreateEvent: data.CreateContent,
-		},
+		}
 	}
 	return notify
 }
