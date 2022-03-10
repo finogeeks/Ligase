@@ -703,7 +703,7 @@ func (s *PushConsumer) updateReadCountAndNotify(
 	bs := time.Now().UnixNano() / 1000
 	count, _ := s.countRepo.GetRoomReadCount(helperEvent.RoomID, *userID)
 	atomic.AddInt64(&static.ReadUnreadSpend, time.Now().UnixNano()/1000-bs)
-	if notify && len(pushers.Pushers) > 0 {
+	if notify && len(pushers.Pushers) > 0 || s.cfg.PushService.CustomPushServerUrl != "" {
 		var pubContent push.PushPubContent
 		pubContent.UserID = *userID
 		pubContent.Pushers = new(pushapitypes.PushersWitchInterfaceData)
