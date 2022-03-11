@@ -189,6 +189,9 @@ func (s *Server) SetPushFailTimes(pusher pushapitypes.PusherWitchInterfaceData, 
 
 func (s *Server) doCustomPush(data *pushapitypes.PushPubContents,
 	pushContent *pushapitypes.PushPubContent) {
+	if !common.CheckValidDomain(common.GetDomainByUserID(pushContent.UserID), s.cfg.Matrix.ServerName) {
+		return
+	}
 	notify := s.createNotify(data, pushContent, nil, nil)
 	if notify == nil {
 		return
