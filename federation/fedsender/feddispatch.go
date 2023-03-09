@@ -85,7 +85,7 @@ func (c *FederationDispatch) onRoomEvent(
 ) error {
 	rs := c.Repo.OnEventNoCache(&ev, ev.EventNID())
 	domains := rs.GetDomainTlMap()
-	hasAddConsumer := false
+	//hasAddConsumer := false
 	domains.Range(func(key, value interface{}) bool {
 		domain := key.(string)
 		log.Infof("fed-dispatch onRoomEvent check domain:%s server:%s", domain, c.cfg.GetServerName())
@@ -93,7 +93,7 @@ func (c *FederationDispatch) onRoomEvent(
 			_, loaded := c.domaimMap.LoadOrStore(domain, true)
 			if !loaded {
 				c.sender.AddConsumer(domain)
-				hasAddConsumer = true
+				//hasAddConsumer = true
 			}
 			// c.writeFedEvents(ev.RoomID(), domain, &ev)
 		}
