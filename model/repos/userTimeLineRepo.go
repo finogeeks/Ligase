@@ -17,13 +17,14 @@ package repos
 import (
 	"context"
 	"fmt"
-	"github.com/finogeeks/ligase/common"
 	"reflect"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/finogeeks/ligase/adapter"
+	"github.com/finogeeks/ligase/common"
 	"github.com/finogeeks/ligase/common/uid"
 	"github.com/finogeeks/ligase/model/service"
 	"github.com/finogeeks/ligase/model/types"
@@ -63,6 +64,9 @@ type UserTimeLineRepo struct {
 	roomOffsets     sync.Map
 	roomMutex       cas.Mutex
 	queryHitCounter mon.LabeledCounter
+
+	tokens    sync.Map
+	utlTokens sync.Map
 }
 
 func NewUserTimeLineRepo(
@@ -259,13 +263,13 @@ func (tl *UserTimeLineRepo) LoadUserFriendShip(userID string) {
 
 func (tl *UserTimeLineRepo) loadRoomLatest(user string, rooms []string) {
 	batchIdInt64, _ := tl.Idg.Next()
-	batchId :=strconv.FormatInt(batchIdInt64,10)
+	batchId := strconv.FormatInt(batchIdInt64, 10)
 	loadRooms := []interface{}{}
 	for _, room := range rooms {
 		loadRooms = append(loadRooms, room)
 	}
-	segmens := common.SplitArray(loadRooms,500)
-	for _,sg := range segmens {
+	segmens := common.SplitArray(loadRooms, 500)
+	for _, sg := range segmens {
 		switch reflect.TypeOf(sg).Kind() {
 		case reflect.Slice, reflect.Array:
 			s := reflect.ValueOf(sg)
@@ -289,7 +293,7 @@ func (tl *UserTimeLineRepo) loadRoomLatestByPage(batchId, user string, rooms []s
 	roomMap, err := tl.persist.GetRoomLastOffsets(context.TODO(), rooms)
 	spend := time.Now().UnixNano()/1000000 - bs
 	if err != nil {
-		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms err:%v",batchId, user,len(rooms), spend, err)
+		log.Errorf("batchId:%s user:%s load db failed UserTimeLineRepo.loadRoomLatest len(rooms):%d spend:%d ms err:%v", batchId, user, len(rooms), spend, err)
 		return err
 	}
 	if spend > types.DB_EXCEED_TIME {
@@ -305,15 +309,15 @@ func (tl *UserTimeLineRepo) loadRoomLatestByPage(batchId, user string, rooms []s
 	return nil
 }
 
-func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map)  {
+func (tl *UserTimeLineRepo) loadJoinRoomOffsets(user string, events []string, res *sync.Map) {
 	batchIdInt64, _ := tl.Idg.Next()
-	batchId :=strconv.FormatInt(batchIdInt64,10)
+	batchId := strconv.FormatInt(batchIdInt64, 10)
 	loadEvents := []interface{}{}
 	for _, event := range events {
 		loadEvents = append(loadEvents, event)
 	}
-	segmens := common.SplitArray(loadEvents,500)
-	for _,sg := range segmens {
+	segmens := common.SplitArray(loadEvents, 500)
+	for _, sg := range segmens {
 		switch reflect.TypeOf(sg).Kind() {
 		case reflect.Slice, reflect.Array:
 			s := reflect.ValueOf(sg)
@@ -370,12 +374,12 @@ func (tl *UserTimeLineRepo) GetJoinRooms(user string) (*sync.Map, error) {
 		loadEvents := []string{}
 		for idx, id := range rooms {
 			res.Store(id, int64(-1))
-			if tl.GetRoomOffset(id,user,"join") == -1 {
+			if tl.GetRoomOffset(id, user, "join") == -1 {
 				loadrooms = append(loadrooms, id)
 			}
 			loadEvents = append(loadEvents, events[idx])
 		}
-		if len(loadrooms)> 0 {
+		if len(loadrooms) > 0 {
 			tl.loadRoomLatest(user, loadrooms)
 		}
 		if len(loadEvents) > 0 {
@@ -560,14 +564,14 @@ func (tl *UserTimeLineRepo) GetRoomOffset(roomID, user, membership string) int64
 	}
 }
 
-func (tl *UserTimeLineRepo) GetJoinMembershipOffset(user,roomID string) (offset int64) {
+func (tl *UserTimeLineRepo) GetJoinMembershipOffset(user, roomID string) (offset int64) {
 	joins, err := tl.GetJoinRooms(user)
 	if err != nil || joins == nil {
 		return -1
 	}
 	if offset, ok := joins.Load(roomID); ok {
 		return offset.(int64)
-	}else{
+	} else {
 		return -1
 	}
 }
@@ -616,8 +620,8 @@ func (tl *UserTimeLineRepo) GetLeaveRoomOffset(roomID, user string) int64 {
 	}
 }
 
-func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceId string) (bool, int64) {
-	curUtl, token, err := tl.LoadToken(user,device,utl)
+func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user, device, traceId string) (bool, int64) {
+	curUtl, token, err := tl.LoadToken(user, device, utl)
 	//load token from redis err
 	if err != nil {
 		log.Errorf("traceId:%s user:%s device:%s utl:%d load token err:%v", traceId, user, device, utl, err)
@@ -632,15 +636,15 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 	//compare token room offset
 	for roomID, offset := range token {
 		membership := tl.GetUserRoomMembership(user, roomID)
-		roomOffset := tl.GetRoomOffset(roomID, user , membership)
+		roomOffset := tl.GetRoomOffset(roomID, user, membership)
 		if roomOffset != -1 && offset < roomOffset {
 			if membership == "join" {
-				if joinedRooms!=nil && tl.GetJoinMembershipOffset(user, roomID) > 0 {
-					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+				if joinedRooms != nil && tl.GetJoinMembershipOffset(user, roomID) > 0 {
+					log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
 					return true, curUtl
 				}
-			}else{
-				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID,offset, roomOffset, membership)
+			} else {
+				log.Infof("traceId:%s user:%s device:%s utl:%d roomID:%s offset:%d roomOffset:%d membership:%s has event", traceId, user, device, utl, roomID, offset, roomOffset, membership)
 				return true, curUtl
 			}
 		}
@@ -652,11 +656,11 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 		joinedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			}else{
+			} else {
 				if tl.GetJoinMembershipOffset(user, key.(string)) > 0 {
 					hasNewJoined = true
 					return false
-				}else{
+				} else {
 					return true
 				}
 			}
@@ -673,7 +677,7 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 		InvitedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			}else{
+			} else {
 				hasNewInvite = true
 				return false
 			}
@@ -690,12 +694,12 @@ func (tl *UserTimeLineRepo) ExistsUserEventUpdate(utl int64, user,device, traceI
 		LeavedRooms.Range(func(key, value interface{}) bool {
 			if _, ok := token[key.(string)]; ok {
 				return true
-			}else{
+			} else {
 				//leave room check self has new msg
 				if value.(int64) != -1 {
 					hasNewLeave = true
 					return false
-				}else{
+				} else {
 					return true
 				}
 			}
@@ -731,7 +735,7 @@ func (tl *UserTimeLineRepo) GetUserLatestReceiptOffset(user string, isHuman bool
 }
 
 func (tl *UserTimeLineRepo) LoadToken(user, device string, utl int64) (int64, map[string]int64, error) {
-	token, err := tl.cache.GetToken(user, device, utl)
+	token, err := tl.getToken(user, device, utl)
 	//get token err, return err
 	if err != nil {
 		return 0, nil, err
@@ -746,7 +750,7 @@ func (tl *UserTimeLineRepo) LoadToken(user, device string, utl int64) (int64, ma
 			return 0, nil, nil
 		} else {
 			//get latest token
-			return tl.cache.GetLastValidToken(user, device)
+			return tl.getLastValidToken(user, device)
 		}
 	}
 }
@@ -757,23 +761,23 @@ func (tl *UserTimeLineRepo) UpdateToken(user, device string, utl int64, roomOffs
 		spend := time.Now().UnixNano()/1000000 - bs
 		log.Infof("update user:%s device:%s token spend:%d ms", user, device, spend)
 	}(bs)
-	err := tl.cache.SetToken(user, device, utl, roomOffsets)
+	err := tl.setToken(user, device, utl, roomOffsets)
 	if err != nil {
 		log.Errorf("update user:%s device:%s utl:%d err:%v", user, device, utl, err)
 		return err
 	}
-	err = tl.cache.AddTokenUtl(user, device, utl)
+	err = tl.addTokenUtl(user, device, utl)
 	if err != nil {
 		log.Warnf("add token utl user:%s device:%s utl:%d err:%v", user, device, utl, err)
 		return nil
 	}
-	utls, err := tl.cache.GetTokenUtls(user, device)
+	utls, err := tl.getTokenUtls(user, device)
 	if err != nil {
 		log.Warnf("scan user:%s device:%s token err:%v", user, device, err)
 		return nil
 	}
 	if len(utls) > adapter.GetLatestToken() {
-		tl.cache.DelTokens(user, device, utls[adapter.GetLatestToken():])
+		tl.delTokens(user, device, utls[adapter.GetLatestToken():])
 	}
 	return nil
 }
@@ -790,4 +794,68 @@ func (tl *UserTimeLineRepo) GetUserCurRoom(user, device string) (room string) {
 		room = val.(string)
 	}
 	return
+}
+
+func (tl *UserTimeLineRepo) setToken(userID, device string, utl int64, roomoffsets map[string]int64) error {
+	key := fmt.Sprintf("%s:%s:%d", userID, device, utl)
+	tl.tokens.Store(key, roomoffsets)
+	return nil
+}
+
+func (tl *UserTimeLineRepo) getToken(userID, device string, utl int64) (map[string]int64, error) {
+	key := fmt.Sprintf("%s:%s:%d", userID, device, utl)
+	val, ok := tl.tokens.Load(key)
+	if !ok {
+		return nil, nil
+	}
+	roomoffsets := val.(map[string]int64)
+	return roomoffsets, nil
+}
+
+func (tl *UserTimeLineRepo) delTokens(userID, device string, utls []int64) error {
+	for _, utl := range utls {
+		key := fmt.Sprintf("%s:%s:%d", userID, device, utl)
+		tl.tokens.Delete(key)
+		tokenUtl := fmt.Sprintf("%s:%s", userID, device)
+		tl.utlTokens.Delete(tokenUtl)
+	}
+	return nil
+}
+
+func (tl *UserTimeLineRepo) addTokenUtl(userID, device string, utl int64) error {
+	key := fmt.Sprintf("%s:%s", userID, device)
+	val, ok := tl.utlTokens.Load(key)
+	if !ok {
+		val = map[int64]int64{}
+	}
+	utls := val.(map[int64]int64)
+	utls[utl] = time.Now().UnixNano() / 1000000
+	return nil
+}
+
+func (tl *UserTimeLineRepo) getTokenUtls(userID, device string) (utls []int64, err error) {
+	key := fmt.Sprintf("%s:%s", userID, device)
+	val, ok := tl.utlTokens.Load(key)
+	if !ok {
+		return []int64{}, nil
+	}
+	for k := range val.(map[int64]int64) {
+		utls = append(utls, k)
+	}
+	sort.Slice(utls, func(i, j int) bool {
+		return utls[i] > utls[j]
+	})
+	return utls, nil
+}
+
+func (tl *UserTimeLineRepo) getLastValidToken(userID, device string) (int64, map[string]int64, error) {
+	utls, err := tl.getTokenUtls(userID, device)
+	if err != nil {
+		return 0, nil, err
+	}
+	if len(utls) <= 0 {
+		return 0, nil, nil
+	}
+	token, err := tl.getToken(userID, device, utls[0])
+	return utls[0], token, err
 }
