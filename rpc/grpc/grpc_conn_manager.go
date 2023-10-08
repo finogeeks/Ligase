@@ -16,6 +16,8 @@ package grpc
 
 import (
 	"errors"
+	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -45,7 +47,7 @@ func NewGrpcConnectManager(consulUrl string) *GrpcConnectManager {
 	return g
 }
 
-//param是指url的参数，例如：wait=10s&tag=mop，代表这个连接超时10秒建立
+// param是指url的参数，例如：wait=10s&tag=mop，代表这个连接超时10秒建立
 func (g *GrpcConnectManager) GetConnWithConsul(server, param string) (*grpc.ClientConn, error) {
 	if connItem, ok := g.GrpcConnectItemMap[server]; ok { //first check
 		if atomic.LoadPointer(&connItem.ClientConn) != nil {
@@ -133,12 +135,19 @@ func (g *GrpcConnectManager) checkState(conn *grpc.ClientConn) error {
 }
 
 func (g *GrpcConnectManager) newGrpcConn(target string) (*grpc.ClientConn, error) {
+	size := 0
+	if buffsize, ok := os.LookupEnv("RPC_RBUF"); ok {
+		size, _ = strconv.Atoi(buffsize)
+	}
+	if size < 4096 {
+		size = 64 * 1024 * 1024
+	}
 	conn, err := grpc.Dial(
 		target,
 		//grpc.WithBlock(),
 		grpc.WithInsecure(),
 		grpc.WithBalancerName("round_robin"),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(64*1024*1024)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(size)),
 		//grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy": "round_robin"}`),
 	)
 	if err != nil {
